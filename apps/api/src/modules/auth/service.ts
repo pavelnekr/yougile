@@ -184,3 +184,20 @@ export function requireSession(prisma: PrismaClient) {
     request.sessionUser = session.user;
   };
 }
+
+/**
+ * Проверка роли. Ставится после requireSession: глобальный хук в server.ts уже
+ * положил request.sessionUser, но проверка остаётся самостоятельной, чтобы
+ * модуль не зависел от порядка регистрации хуков.
+ */
+export function requireRole(...allowed: PortalRole[]) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const role = request.sessionUser?.role;
+    if (!role) {
+      return reply.code(401).send({ error: "Требуется вход в портал." });
+    }
+    if (!allowed.includes(role)) {
+      return reply.code(403).send({ error: "Этот раздел доступен только администраторам." });
+    }
+  };
+}

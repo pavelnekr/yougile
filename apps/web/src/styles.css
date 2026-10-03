@@ -642,10 +642,10 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .history-retention-note svg { flex: 0 0 auto; margin-top: 1px; }
 .history-auth-note { margin: 9px 0 0; color: #9aa2b0; font-size: 7px; line-height: 1.45; }
 .history-table-wrap { width: 100%; overflow: auto; border: 1px solid #edf0f4; border-radius: 7px; }
-.history-users-table, .history-records-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
-.history-users-table th, .history-records-table th { position: sticky; z-index: 1; top: 0; padding: 9px 10px; border-bottom: 1px solid #e9edf3; color: #929bab; background: #fafbfc; font-size: 7px; font-weight: 650; white-space: nowrap; }
-.history-users-table td, .history-records-table td { max-width: 250px; padding: 9px 10px; border-bottom: 1px solid #f0f2f5; color: #657086; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.history-users-table tbody tr:last-child td, .history-records-table tbody tr:last-child td { border-bottom: 0; }
+.history-users-table, .history-records-table, .admin-users-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
+.history-users-table th, .history-records-table th, .admin-users-table th { position: sticky; z-index: 1; top: 0; padding: 9px 10px; border-bottom: 1px solid #e9edf3; color: #929bab; background: #fafbfc; font-size: 7px; font-weight: 650; white-space: nowrap; }
+.history-users-table td, .history-records-table td, .admin-users-table td { max-width: 250px; padding: 9px 10px; border-bottom: 1px solid #f0f2f5; color: #657086; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-users-table tbody tr:last-child td, .history-records-table tbody tr:last-child td, .admin-users-table tbody tr:last-child td { border-bottom: 0; }
 .history-user-name { display: inline-flex; align-items: center; gap: 7px; }
 .history-user-name > span { display: grid; width: 23px; height: 23px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #536bc6; background: #edf1ff; font-size: 8px; font-weight: 700; }
 .history-record-filters { display: flex; gap: 8px; margin-bottom: 10px; }
@@ -765,4 +765,65 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .import-address, .import-engineer { font-size: 7px; }
   .import-file-heading .text-button { padding: 6px; font-size: 7px; }
   .import-preview-action { align-items: stretch; flex-direction: column; }
+}
+
+/* Раздел «Учётные записи»: админ-панель. */
+.admin-hero { flex-wrap: wrap; }
+.admin-hero > div { min-width: 0; flex: 1 1 320px; }
+.admin-hero-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; align-items: center; gap: 8px; }
+.admin-stat-grid { margin-bottom: 15px; }
+.admin-feedback { display: flex; align-items: center; gap: 7px; margin-bottom: 11px; padding: 9px 11px; border-radius: 7px; font-size: 8px; }
+.admin-feedback-error { border: 1px solid #f0cfc4; color: #ad5f4a; background: #fbefec; }
+.admin-feedback-success { border: 1px solid #c9e6d8; color: #3f8163; background: #eaf6ef; }
+.admin-users-panel { display: grid; gap: 11px; margin-top: 15px; padding: 15px; }
+.admin-table-wrap { max-height: 520px; }
+.admin-users-table { min-width: 1080px; }
+.admin-users-table td { max-width: 300px; white-space: normal; vertical-align: top; }
+.admin-users-table td > strong { display: block; color: #4a566c; font-size: 10px; }
+.admin-row-blocked td { opacity: .7; }
+/* .history-user-name > span красит любой вложенный span как кружок-аватар,
+   поэтому для блока «имя + логин» переопределяем всё перечисленное. */
+.history-user-name > .admin-user-copy { display: grid; width: auto; height: auto; place-items: initial; border-radius: 0; color: inherit; background: none; font-size: inherit; font-weight: inherit; }
+.admin-user-copy { gap: 2px; }
+.admin-user-copy strong { color: #4a566c; font-size: 8px; }
+.admin-user-copy small { color: #929aaa; font-size: 7px; }
+.admin-role-select { min-height: 27px; padding: 0 6px; border: 1px solid #e7ebf1; border-radius: 5px; outline: 0; color: #59667b; background: #fff; font: 8px "Segoe UI", sans-serif; cursor: pointer; }
+.admin-role-select:focus { border-color: #b5c1eb; box-shadow: 0 0 0 2px #eef1ff; }
+.admin-role-select:disabled { opacity: .5; cursor: not-allowed; }
+.admin-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 5px; font-size: 7px; font-weight: 650; }
+.admin-badge-active { color: #4a9275; background: #eaf6ef; }
+.admin-badge-blocked { color: #ad5f4a; background: #fbefec; }
+.admin-cell-note { display: block; margin-top: 2px; color: #929aaa; font-size: 7px; }
+.admin-row-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.admin-action-button { display: inline-flex; min-height: 26px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid #e6eaf1; border-radius: 5px; color: #66728a; background: #fff; font-size: 7px; cursor: pointer; }
+.admin-action-button:hover:not(:disabled) { border-color: #b8c5ed; color: #4a64c4; }
+.admin-action-button:disabled { opacity: .45; cursor: not-allowed; }
+.admin-action-danger:hover:not(:disabled) { border-color: #eabdb0; color: #ad5f4a; }
+.admin-loading { display: flex; min-height: 95px; align-items: center; justify-content: center; gap: 8px; color: #9aa2b0; font-size: 8px; }
+.admin-panel-note { display: flex; align-items: center; gap: 6px; color: #a0a7b3; font-size: 7px; }
+
+/* Модальные окна админки: смена пароля и создание записи. */
+.modal-overlay { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(33, 41, 56, .38); }
+.modal-dialog { display: grid; width: min(430px, 100%); gap: 14px; padding: 16px; border: 1px solid #e9edf3; border-radius: 9px; background: #fff; box-shadow: 0 16px 36px rgba(30, 38, 54, .18); }
+.modal-heading { display: flex; align-items: center; gap: 10px; }
+.modal-heading h2 { font-size: 12px; }
+.modal-heading p { color: #929aaa; font-size: 8px; }
+.modal-icon { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: #536dd2; background: #edf1ff; }
+.modal-body { display: grid; gap: 10px; }
+.modal-field { display: grid; gap: 5px; color: #6a7688; font-size: 8px; font-weight: 600; }
+.modal-field input, .modal-field select { width: 100%; min-height: 34px; padding: 0 9px; border: 1px solid #e7ebf1; border-radius: 6px; outline: 0; color: #59667b; background: #fff; font: 8px "Segoe UI", sans-serif; }
+.modal-field input:focus, .modal-field select:focus { border-color: #b5c1eb; box-shadow: 0 0 0 2px #eef1ff; }
+.modal-field-row { display: flex; align-items: center; gap: 7px; }
+.modal-field-row input { flex: 1; }
+.modal-note { color: #929aaa; font-size: 7px; line-height: 1.6; }
+.modal-error { padding: 7px 9px; border-radius: 6px; color: #ad5f4a; background: #fbefec; font-size: 8px; }
+.modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 720px) {
+  .admin-hero-actions { width: 100%; }
+  .admin-table-wrap { max-height: none; }
+}
+@media (max-width: 520px) {
+  .admin-users-panel { padding: 12px; }
+  .modal-dialog { padding: 14px; }
 }

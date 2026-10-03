@@ -290,6 +290,8 @@ export async function registerImportRoutes(
             fileName: filename.slice(0, 255),
             checksum,
             rowCount: rows.length,
+            // Загрузивший: по нему считается статистика сотрудников в админке.
+            createdById: request.sessionUser?.id ?? null,
             metadata: {
               sheetName: parsedPlan.sheetName,
               importedAt: new Date().toISOString()
@@ -581,6 +583,8 @@ export async function registerImportRoutes(
         data: {
           type: OperationType.REMOVE,
           status: OperationStatus.QUEUED,
+          // Автор операции: по нему считается статистика сотрудников в админке.
+          createdById: request.sessionUser?.id ?? null,
           total: prepared.items.length,
           metadata: { sourceBatchId: prepared.batchId, fileName: prepared.fileName },
           items: {
@@ -637,6 +641,8 @@ export async function registerImportRoutes(
           data: {
             type: OperationType.ASSIGN,
             status: OperationStatus.QUEUED,
+            // Автор операции: по нему считается статистика сотрудников в админке.
+            createdById: request.sessionUser?.id ?? null,
             total: prepared.items.length,
             metadata: {
               importBatchId: prepared.batchId,

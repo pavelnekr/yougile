@@ -16,6 +16,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerSettingsRoutes } from "./modules/settings/routes.js";
 import { registerHistoryRoutes } from "./modules/history/routes.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
+import { registerAdminRoutes } from "./modules/admin/routes.js";
 import { requireSession } from "./modules/auth/service.js";
 
 const app = Fastify({ logger: true });
@@ -49,6 +50,7 @@ await registerCommentRoutes(app, prisma, yougile);
 await registerImportRoutes(app, prisma, yougile);
 await registerHistoryRoutes(app, prisma, yougile);
 await registerSettingsRoutes(app, prisma);
+await registerAdminRoutes(app, prisma);
 
 app.addHook("onClose", async () => {
   await operationWorker.close();

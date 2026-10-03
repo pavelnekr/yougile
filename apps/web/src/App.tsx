@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -29,11 +29,12 @@ import XlsxRemovalPage from "./XlsxRemovalPage.js";
 import CommentPage from "./CommentPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import HistoryPage from "./HistoryPage.js";
+import AdminUsersPage from "./AdminUsersPage.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
 import { useStepScroll } from "./useStepScroll.js";
 
-type Section = "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "Аудит" | "История" | "Настройки";
+type Section = "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "Аудит" | "История" | "Настройки" | "Учётные записи";
 type Health = "loading" | "ok" | "error";
 type SiteLoadState = "loading" | "ready" | "error";
 type PlannedSite = {
@@ -72,11 +73,14 @@ type WorkTypeStatistic = {
   items: { type: "filter" | "balancers" | "bypasses" | "ehw"; label: string; count: number }[];
 };
 
-const navigation: { label: Section; icon: typeof LayoutDashboard }[] = [
+// adminOnly — пункт показывается только роли ADMIN. Проверка роли есть и в API
+// (requireRole), здесь она нужна, чтобы не показывать недоступный раздел.
+const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: boolean }[] = [
   { label: "Обзор", icon: LayoutDashboard },
   { label: "Аудит", icon: ClipboardCheck },
   { label: "История", icon: History },
-  { label: "Настройки", icon: Settings2 }
+  { label: "Настройки", icon: Settings2 },
+  { label: "Учётные записи", icon: UsersRound, adminOnly: true }
 ];
 
 const actions = [
@@ -205,6 +209,17 @@ function App() {
     setMobileNavOpen(false);
   };
 
+  const isAdmin = sessionUser?.role === "ADMIN";
+  const visibleNavigation = useMemo(
+    () => navigation.filter((item) => !item.adminOnly || isAdmin),
+    [isAdmin]
+  );
+  // Если роль сменили, пока пользователь сидел в портале, раздел мог остаться
+  // открытым — возвращаем на обзор, а не показываем ошибку 403.
+  const activeSection: Section = !isAdmin && navigation.some((item) => item.label === section && item.adminOnly)
+    ? "Обзор"
+    : section;
+
   if (!sessionChecked) {
     return (
       <div className="session-check">
@@ -236,8 +251,8 @@ function App() {
 
         <p className="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</p>
         <nav className="navigation" aria-label="Основная навигация">
-          {navigation.map(({ label, icon: Icon }) => (
-            <button key={label} className={`nav-link ${section === label ? "nav-link-active" : ""}`} onClick={() => chooseSection(label)}>
+          {visibleNavigation.map(({ label, icon: Icon }) => (
+            <button key={label} className={`nav-link ${activeSection === label ? "nav-link-active" : ""}`} onClick={() => chooseSection(label)}>
               <Icon size={18} strokeWidth={1.8} />
               <span>{label}</span>
             </button>
@@ -261,7 +276,7 @@ function App() {
       <main className="main-area">
         <header className="topbar">
           <button className="icon-button mobile-menu" aria-label="Открыть меню" onClick={() => setMobileNavOpen(true)}><Menu size={19} /></button>
-          <div className="breadcrumbs"><span>Портал операций</span><span className="crumb-separator">/</span><strong>{section}</strong></div>
+          <div className="breadcrumbs"><span>Портал операций</span><span className="crumb-separator">/</span><strong>{activeSection}</strong></div>
           <div className="topbar-actions">
             <div className={`service-status status-${health}`}><span className="status-dot" />{health === "ok" ? "API и сервисы доступны" : health === "loading" ? "Проверка API" : "API не подключён"}</div>
             <button className="icon-button search-button" aria-label="Поиск"><Search size={18} /></button>
@@ -271,15 +286,15 @@ function App() {
         </header>
 
         <div className="page-content">
-          {section === "Обзор" ? (
+          {activeSection === "Обзор" ? (
             <Overview onNavigate={chooseSection} health={health} sites={sites} siteLoadState={siteLoadState} siteError={siteError} />
-          ) : section === "Площадки" ? (
+          ) : activeSection === "Площадки" ? (
             <SitesPage sites={sites} loadState={siteLoadState} error={siteError} />
-          ) : section === "Назначить инженера" ? (
+          ) : activeSection === "Назначить инженера" ? (
             <XlsxAssignmentPage onComplete={refreshSites} />
-          ) : section === "Снять инженеров" ? (
+          ) : activeSection === "Снять инженеров" ? (
             <XlsxRemovalPage onComplete={refreshSites} />
-          ) : section === "Написать комментарий" ? (
+          ) : activeSection === "Написать комментарий" ? (
             <CommentPage
               sites={sites}
               loadState={siteLoadState}
@@ -287,16 +302,19 @@ function App() {
               onComplete={refreshSites}
               onOpenHistory={() => chooseSection("История")}
             />
-          ) : section === "Проверить работы" ? (
+          ) : activeSection === "Проверить работы" ? (
             <XlsxWorkCheckPage />
-          ) : section === "Настройки" ? (
+          ) : activeSection === "Настройки" ? (
             <CommentTemplatesPage />
-          ) : section === "Аудит" ? (
+          ) : activeSection === "Аудит" ? (
             <ImportAuditPage />
-          ) : section === "История" ? (
+          ) : activeSection === "История" ? (
             <HistoryPage />
+          ) : activeSection === "Учётные записи" ? (
+            // activeSection уже проверен на роль выше, поэтому сюда попадает только ADMIN.
+            <AdminUsersPage currentUser={sessionUser} />
           ) : (
-            <SectionPage section={section} health={health} />
+            <SectionPage section={activeSection} health={health} />
           )}
         </div>
       </main>
@@ -788,7 +806,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

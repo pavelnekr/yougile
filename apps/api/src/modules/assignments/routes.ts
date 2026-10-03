@@ -85,6 +85,8 @@ export async function registerAssignmentRoutes(
         data: {
           type: "ASSIGN",
           status: "QUEUED",
+          // Автор операции: по нему считается статистика сотрудников в админке.
+          createdById: request.sessionUser?.id ?? null,
           total: preview.items.length,
           metadata: { targetUserId: preview.user.id, targetUserName: preview.user.name },
           items: {

@@ -45,6 +45,8 @@ export async function registerCommentRoutes(
         data: {
           type: OperationType.COMMENT,
           status: "QUEUED",
+          // Автор операции: по нему считается статистика сотрудников в админке.
+          createdById: request.sessionUser?.id ?? null,
           total: preview.count,
           metadata: {
             comment: preview.comment,
