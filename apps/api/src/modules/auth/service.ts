@@ -5,6 +5,7 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { PortalRole, PrismaClient } from "@prisma/client";
+import { config } from "../../config.js";
 
 const scryptAsync = promisify(scrypt) as (
   password: string | Buffer,
@@ -141,6 +142,28 @@ export function clearSessionCookie(reply: FastifyReply, secure: boolean) {
     sameSite: "lax",
     secure
   });
+}
+
+/**
+ * Регистрация по ключу включается переменной REGISTRATION_KEY. Пустое значение
+ * означает «регистрация выключена»: заведение новых учётных записей делает
+ * скрипт scripts/create-user.ts.
+ */
+export function isRegistrationKeyEnabled() {
+  return config.REGISTRATION_KEY.trim().length > 0;
+}
+
+/**
+ * Сравнение ключа регистрации постоянного времени, чтобы по времени ответа
+ * нельзя было подбирать ключ по частям. Сам ключ в логи не пишется.
+ */
+export function isRegistrationKeyValid(providedKey: string) {
+  const expected = Buffer.from(config.REGISTRATION_KEY.trim(), "utf8");
+  if (expected.length === 0) return false;
+  const provided = Buffer.from(providedKey, "utf8");
+  // Длины разные — сравнивать нечего, timingSafeEqual бросил бы исключение.
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
 }
 
 declare module "fastify" {

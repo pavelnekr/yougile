@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
 import { useStepScroll } from "./useStepScroll";
+import { apiFetch } from "./apiClient";
 
 type ImportRow = {
   rowNumber: number;
@@ -104,7 +105,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     const controller = new AbortController();
     const loadTemplates = async () => {
       try {
-        const response = await fetch("/api/settings/comment-templates", { signal: controller.signal });
+        const response = await apiFetch("/api/settings/comment-templates", { signal: controller.signal });
         const data = await response.json() as { templates?: CommentTemplateOption[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить шаблоны комментариев.");
         if (!data.templates) throw new Error("Сервер не вернул шаблоны комментариев.");
@@ -127,7 +128,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/operations/${encodeURIComponent(operationId)}`);
+        const response = await apiFetch(`/api/operations/${encodeURIComponent(operationId)}`);
         const data = await response.json() as Operation & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось получить ход операции.");
         if (!active) return;
@@ -177,7 +178,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     try {
       const body = new FormData();
       body.append("file", file);
-      const response = await fetch("/api/imports/preview", { method: "POST", body });
+      const response = await apiFetch("/api/imports/preview", { method: "POST", body });
       const data = await response.json() as PlanImport & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось прочитать XLSX.");
       // Лимита площадок нет, поэтому большой план предупреждаем, а не обрезаем.
@@ -214,7 +215,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     setError("");
     setPreview(null);
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(planImport.importId)}/assignment-preview`, {
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(planImport.importId)}/assignment-preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -238,7 +239,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(planImport.importId)}/assign`, {
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(planImport.importId)}/assign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -263,7 +264,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     setDownloadingProblems(true);
     setError("");
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(planImport.importId)}/problematic-sites.xlsx`);
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(planImport.importId)}/problematic-sites.xlsx`);
       if (!response.ok) {
         const data = await response.json() as { error?: string };
         throw new Error(data.error ?? "Не удалось скачать список проблемных площадок.");

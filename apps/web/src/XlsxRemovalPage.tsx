@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, FileSpreadsheet, RefreshCw, ShieldCheck, Upload } from "lucide-react";
 import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
 import { useStepScroll } from "./useStepScroll";
+import { apiFetch } from "./apiClient";
 
 type ImportRow = {
   rowNumber: number;
@@ -87,7 +88,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     setLoadingBatches(true);
     setBatchError("");
     try {
-      const response = await fetch("/api/imports", { signal });
+      const response = await apiFetch("/api/imports", { signal });
       const data = await response.json() as { items?: ImportBatch[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить историю XLSX.");
       if (!data.items) throw new Error("Сервер не вернул историю XLSX.");
@@ -112,7 +113,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/operations/${encodeURIComponent(operationId)}`);
+        const response = await apiFetch(`/api/operations/${encodeURIComponent(operationId)}`);
         const data = await response.json() as Operation & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось получить результат операции.");
         if (!active) return;
@@ -182,7 +183,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     try {
       const body = new FormData();
       body.append("file", file);
-      const response = await fetch("/api/imports/preview", { method: "POST", body });
+      const response = await apiFetch("/api/imports/preview", { method: "POST", body });
       const data = await response.json() as {
         importId?: string;
         fileName?: string;
@@ -213,7 +214,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     setError("");
     resetSelection();
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(batch.id)}`);
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(batch.id)}`);
       const data = await response.json() as {
         id?: string;
         fileName?: string;
@@ -252,7 +253,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     setError("");
     setPreview(null);
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(planImport.id)}/removal-preview`, {
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(planImport.id)}/removal-preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rowNumbers: selectedReadyRows.map((row) => row.rowNumber) })
@@ -272,7 +273,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(planImport.id)}/remove`, {
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(planImport.id)}/remove`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rowNumbers: selectedReadyRows.map((row) => row.rowNumber) })

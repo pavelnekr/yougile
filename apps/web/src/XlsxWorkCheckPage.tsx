@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Clock3, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
+import { apiFetch } from "./apiClient";
 
 type ImportBatch = {
   id: string;
@@ -49,7 +50,7 @@ export default function XlsxWorkCheckPage() {
     setLoadingBatches(true);
     setBatchError("");
     try {
-      const response = await fetch("/api/imports", { signal });
+      const response = await apiFetch("/api/imports", { signal });
       const data = await response.json() as { items?: ImportBatch[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить историю XLSX.");
       if (!data.items) throw new Error("Сервер не вернул историю XLSX.");
@@ -77,7 +78,7 @@ export default function XlsxWorkCheckPage() {
     }
     setBusy(true);
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(file.id)}/work-check`, {
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(file.id)}/work-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rowNumbers })
@@ -106,7 +107,7 @@ export default function XlsxWorkCheckPage() {
     try {
       const body = new FormData();
       body.append("file", file);
-      const response = await fetch("/api/imports/preview", { method: "POST", body });
+      const response = await apiFetch("/api/imports/preview", { method: "POST", body });
       const data = await response.json() as {
         importId?: string;
         fileName?: string;
@@ -132,7 +133,7 @@ export default function XlsxWorkCheckPage() {
     setError("");
     reset();
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(batch.id)}`);
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(batch.id)}`);
       const data = await response.json() as {
         id?: string;
         fileName?: string;

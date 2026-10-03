@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, CheckCircle2, Clock3, FileText, LoaderCircle, Save, Sparkles } from "lucide-react";
+import { apiFetch } from "./apiClient";
 
 type TemplateType = "filter" | "balancers" | "bypasses" | "ehw";
 type CommentTemplate = {
@@ -35,7 +36,7 @@ export default function CommentTemplatesPage() {
     const controller = new AbortController();
     const load = async () => {
       try {
-        const response = await fetch("/api/settings/comment-templates", { signal: controller.signal });
+        const response = await apiFetch("/api/settings/comment-templates", { signal: controller.signal });
         const data = await response.json() as { templates?: CommentTemplate[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить шаблоны.");
         if (!data.templates) throw new Error("Сервер не вернул список шаблонов.");
@@ -74,7 +75,7 @@ export default function CommentTemplatesPage() {
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/settings/comment-templates/${selected.type}`, {
+      const response = await apiFetch(`/api/settings/comment-templates/${selected.type}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: draft })

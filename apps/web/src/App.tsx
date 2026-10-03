@@ -30,6 +30,7 @@ import CommentPage from "./CommentPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import HistoryPage from "./HistoryPage.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
+import { apiFetch, onSessionExpired } from "./apiClient.js";
 import { useStepScroll } from "./useStepScroll.js";
 
 type Section = "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "Аудит" | "История" | "Настройки";
@@ -130,7 +131,7 @@ function App() {
   // Именно это убирает повторный ввод логина и пароля после перезагрузки.
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/auth/session", { signal: controller.signal, credentials: "include" })
+    apiFetch("/api/auth/session", { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) return null;
         return await response.json() as { user?: PortalUser };
@@ -143,9 +144,17 @@ function App() {
     return () => controller.abort();
   }, []);
 
+  // Глобальная обработка 401: apiClient перехватывает любой отказ защищённого
+  // эндпоинта и сообщает сюда. Сессия сбрасывается, форма входа показывается на
+  // весь экран, а страницы размонтируются и отменяют свои запросы.
+  useEffect(() => onSessionExpired(() => {
+    setSessionUser(null);
+    setSection("Обзор");
+  }), []);
+
   const signOut = useCallback(async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      await apiFetch("/api/auth/logout", { method: "POST" });
     } finally {
       // Выход делаем и при ошибке сети: локально всё равно показываем форму входа.
       setSessionUser(null);
@@ -155,7 +164,7 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/health", { signal: controller.signal })
+    apiFetch("/api/health", { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error("Backend недоступен");
         return response.json();
@@ -169,7 +178,7 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/sites/in-plan", { signal: controller.signal })
+    apiFetch("/api/sites/in-plan", { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           const error = await response.json().catch(() => null) as { error?: string } | null;
@@ -313,7 +322,7 @@ function Overview({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/history/work-types", { signal: controller.signal })
+    apiFetch("/api/history/work-types", { signal: controller.signal })
       .then(async (response) => {
         const data = await response.json() as WorkTypeStatistic & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить статистику видов работ.");
@@ -545,7 +554,7 @@ export function AssignmentPage({
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/users", { signal: controller.signal }).then(async (response) => {
+    apiFetch("/api/users", { signal: controller.signal }).then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить сотрудников.");
       return data as { items: AssignmentUser[] };
@@ -567,7 +576,7 @@ export function AssignmentPage({
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/operations/${encodeURIComponent(operationId)}`);
+        const response = await apiFetch(`/api/operations/${encodeURIComponent(operationId)}`);
         const data = await response.json() as AssignmentOperation & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось получить статус операции.");
         if (!active) return;
@@ -615,7 +624,7 @@ export function AssignmentPage({
     setNotice("");
     setPreview(null);
     try {
-      const response = await fetch("/api/assignments/preview", {
+      const response = await apiFetch("/api/assignments/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskIds: selectedTaskIds, userId: targetUserId })
@@ -637,7 +646,7 @@ export function AssignmentPage({
     setOperationError("");
     setOperation(null);
     try {
-      const response = await fetch("/api/assignments", {
+      const response = await apiFetch("/api/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -8,6 +8,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
+import { apiFetch } from "./apiClient";
 
 export type PlannedSite = {
   taskId: string;
@@ -102,7 +103,7 @@ export default function CommentPage({
     const controller = new AbortController();
     const loadTemplates = async () => {
       try {
-        const response = await fetch("/api/settings/comment-templates", { signal: controller.signal });
+        const response = await apiFetch("/api/settings/comment-templates", { signal: controller.signal });
         const data = await response.json() as { templates?: CommentTemplateOption[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить шаблоны комментариев.");
         if (!data.templates) throw new Error("Сервер не вернул шаблоны комментариев.");
@@ -125,7 +126,7 @@ export default function CommentPage({
 
     const poll = async () => {
       try {
-        const response = await fetch(`/api/operations/${encodeURIComponent(operationId)}`);
+        const response = await apiFetch(`/api/operations/${encodeURIComponent(operationId)}`);
         const data = await response.json() as Operation & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось получить ход операции.");
         if (!active) return;
@@ -185,7 +186,7 @@ export default function CommentPage({
     setError("");
     setPreview(null);
     try {
-      const response = await fetch("/api/comments/preview", {
+      const response = await apiFetch("/api/comments/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -211,7 +212,7 @@ export default function CommentPage({
     setOperationError("");
     setOperation(null);
     try {
-      const response = await fetch("/api/comments", {
+      const response = await apiFetch("/api/comments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

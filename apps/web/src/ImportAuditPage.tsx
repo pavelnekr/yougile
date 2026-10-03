@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, FileSpreadsheet, RefreshCw, Rows3 } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
+import { apiFetch } from "./apiClient";
 
 type ImportBatch = {
   id: string;
@@ -73,7 +74,7 @@ export default function ImportAuditPage() {
     setLoadingList(true);
     setListError("");
     try {
-      const response = await fetch("/api/imports", { signal });
+      const response = await apiFetch("/api/imports", { signal });
       const data = await response.json() as { items?: ImportBatch[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить историю XLSX.");
       if (!data.items) throw new Error("Сервер не вернул список загрузок.");
@@ -99,7 +100,7 @@ export default function ImportAuditPage() {
     setError("");
     setLoadingDetails(true);
     try {
-      const response = await fetch(`/api/imports/${encodeURIComponent(batch.id)}`);
+      const response = await apiFetch(`/api/imports/${encodeURIComponent(batch.id)}`);
       const data = await response.json() as ImportDetails & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить содержимое XLSX.");
       if (detailsRequestId.current !== requestId) return;

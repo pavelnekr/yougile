@@ -1,10 +1,13 @@
 import type { FastifyInstance } from "fastify";
-import type { PrismaClient } from "@prisma/client";
-import { loginSchema } from "./schema.js";
+import { PortalRole, Prisma, type PrismaClient } from "@prisma/client";
+import { loginSchema, registerSchema } from "./schema.js";
 import {
   clearSessionCookie,
   createSession,
   destroySession,
+  hashPassword,
+  isRegistrationKeyEnabled,
+  isRegistrationKeyValid,
   resolveSession,
   setSessionCookie,
   verifyPassword
@@ -32,6 +35,10 @@ function publicUser(user: {
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaClient) {
+  if (!isRegistrationKeyEnabled()) {
+    app.log.warn("REGISTRATION_KEY is not set, self-registration in the portal is disabled");
+  }
+
   app.get("/api/auth/session", async (request, reply) => {
     const session = await resolveSession(prisma, request);
     if (!session) return reply.code(401).send({ error: "Активной сессии нет." });
@@ -79,6 +86,54 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
 
     request.log.info({ login: user.login, rememberMe }, "Portal session started");
     return { user: publicUser(user), expiresAt: expiresAt.toISOString(), rememberMe };
+  });
+
+  // Самостоятельная регистрация по ключу администратора. Сессия выдаётся сразу,
+  // поэтому после регистрации отдельный вход не требуется.
+  app.post("/api/auth/register", async (request, reply) => {
+    if (!isRegistrationKeyEnabled()) {
+      return reply.code(503).send({ error: "Регистрация в портале выключена." });
+    }
+
+    const parsed = registerSchema.safeParse(request.body);
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Проверьте данные регистрации.";
+      return reply.code(400).send({ error: message });
+    }
+
+    if (!isRegistrationKeyValid(parsed.data.registrationKey)) {
+      // Ключ в лог не пишем: достаточно логина и адреса клиента.
+      request.log.warn({ login: parsed.data.login, ip: request.ip }, "Rejected portal registration attempt");
+      return reply.code(403).send({ error: "Ключ регистрации не подходит." });
+    }
+
+    const login = parsed.data.login;
+    let user;
+    try {
+      user = await prisma.portalUser.create({
+        data: {
+          login,
+          passwordHash: await hashPassword(parsed.data.password),
+          displayName: parsed.data.displayName ?? login,
+          role: PortalRole.OPERATOR
+        }
+      });
+    } catch (error) {
+      // Гонка двух одинаковых логинов: уникальный индекс срабатывает быстрее, чем
+      // успела бы отработать предварительная проверка, поэтому ответ тот же.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        request.log.info({ login }, "Rejected portal registration for existing login");
+        return reply.code(409).send({ error: "Пользователь с таким логином уже существует." });
+      }
+      throw error;
+    }
+
+    const userAgent = typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : null;
+    const { token, expiresAt } = await createSession(prisma, user.id, "long", userAgent);
+    setSessionCookie(reply, token, expiresAt, isSecureRequest(request));
+
+    request.log.info({ login: user.login, role: user.role }, "Portal account registered");
+    return reply.code(201).send({ user: publicUser(user), expiresAt: expiresAt.toISOString() });
   });
 
   // Маршруты входа и выхода намеренно изолированы: Fastify отвечает 415 на POST

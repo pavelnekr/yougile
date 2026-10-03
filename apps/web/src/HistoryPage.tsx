@@ -10,6 +10,7 @@ import {
   Search,
   UsersRound
 } from "lucide-react";
+import { apiFetch } from "./apiClient";
 
 type Period = "30" | "90" | "all";
 type HistoryType = "ALL" | "ASSIGN" | "REMOVE" | "COMMENT";
@@ -96,7 +97,7 @@ export default function HistoryPage() {
     const controller = new AbortController();
     setLoadingSummary(true);
     setError("");
-    fetch(`/api/history/summary?days=${period}`, { signal: controller.signal })
+    apiFetch(`/api/history/summary?days=${period}`, { signal: controller.signal })
       .then(async (response) => {
         const data = await response.json() as HistorySummary & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить статистику.");
@@ -122,7 +123,7 @@ export default function HistoryPage() {
     });
     setLoadingRecords(true);
     setRecordsError("");
-    fetch(`/api/history/items?${params.toString()}`, { signal: controller.signal })
+    apiFetch(`/api/history/items?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => {
         const data = await response.json() as HistoryItems & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить список работ.");

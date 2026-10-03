@@ -7,6 +7,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32),
+  // Ключ самостоятельной регистрации в портале. Пустое значение не ломает старт
+  // API: регистрация просто отключается (см. isRegistrationKeyEnabled).
+  REGISTRATION_KEY: z.string().default(""),
   YOUGILE_API_URL: z.string().url(),
   YOUGILE_API_TOKEN: z.string().default(""),
   YOUGILE_PLAN_COLUMN_ID: z.string().uuid().default("951ff78e-1fa5-4334-b34f-288f00609b69"),

@@ -25,7 +25,6 @@ cp .env.example .env
 openssl rand -hex 32        # сгенерировать секреты
 nano .env
 ```
-
 Что заполнить:
 
 | Переменная | Значение |
@@ -35,6 +34,7 @@ nano .env
 | `POSTGRES_PASSWORD` | длинный случайный пароль (`openssl rand -base64 24`) |
 | `YOUGILE_API_URL` | `https://yougile.ru/api-v2` |
 | `YOUGILE_API_TOKEN` | токен YouGile |
+| `REGISTRATION_KEY` | ключ самостоятельной регистрации в портале. Пустое значение не ломает старт, но регистрация отвечает 503, и учётные записи приходится заводить `npm run user:create --workspace @portal/api` (в контейнере — `node dist/scripts/create-user.js`) |
 | `WEB_PORT` | порт контейнера веба на хосте |
 
 **`DATABASE_URL` и `REDIS_URL` в `.env` для прода не трогайте.** В них
