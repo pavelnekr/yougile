@@ -30,11 +30,11 @@ import CommentPage from "./CommentPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import HistoryPage from "./HistoryPage.js";
 import AdminUsersPage from "./AdminUsersPage.js";
+import { syncSectionUrl, useSectionUrl, type Section } from "./router.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
 import { useStepScroll } from "./useStepScroll.js";
 
-type Section = "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "Аудит" | "История" | "Настройки" | "Учётные записи";
 type Health = "loading" | "ok" | "error";
 type SiteLoadState = "loading" | "ready" | "error";
 type PlannedSite = {
@@ -122,7 +122,7 @@ function App() {
   const [sessionUser, setSessionUser] = useState<PortalUser | null>(null);
   // null = проверяем, false = гость, true = вход выполнен.
   const [sessionChecked, setSessionChecked] = useState(false);
-  const [section, setSection] = useState<Section>("Обзор");
+  const [section, navigate] = useSectionUrl();
   const [health, setHealth] = useState<Health>("loading");
   const [sites, setSites] = useState<PlannedSite[]>([]);
   const [siteLoadState, setSiteLoadState] = useState<SiteLoadState>("loading");
@@ -151,9 +151,10 @@ function App() {
   // Глобальная обработка 401: apiClient перехватывает любой отказ защищённого
   // эндпоинта и сообщает сюда. Сессия сбрасывается, форма входа показывается на
   // весь экран, а страницы размонтируются и отменяют свои запросы.
+  // Адрес не трогаем: после входа пользователь возвращается на тот же раздел,
+  // поэтому ссылку с историей можно переслать даже без действующей сессии.
   useEffect(() => onSessionExpired(() => {
     setSessionUser(null);
-    setSection("Обзор");
   }), []);
 
   const signOut = useCallback(async () => {
@@ -162,7 +163,6 @@ function App() {
     } finally {
       // Выход делаем и при ошибке сети: локально всё равно показываем форму входа.
       setSessionUser(null);
-      setSection("Обзор");
     }
   }, []);
 
@@ -205,7 +205,7 @@ function App() {
   }, [siteRefreshKey]);
 
   const chooseSection = (label: Section) => {
-    setSection(label);
+    navigate(label);
     setMobileNavOpen(false);
   };
 
@@ -216,9 +216,27 @@ function App() {
   );
   // Если роль сменили, пока пользователь сидел в портале, раздел мог остаться
   // открытым — возвращаем на обзор, а не показываем ошибку 403.
-  const activeSection: Section = !isAdmin && navigation.some((item) => item.label === section && item.adminOnly)
+  // Проверка именно на sessionUser, а не на !isAdmin: пока сессия проверяется,
+  // роль ещё неизвестна, и иначе глубокая ссылка /admin/users потерялась бы при
+  // первом рендере. Гость админ-раздел тоже увидеть не может, но форму входа
+  // показываем по любой ссылке: после входа раздел откроется, если права есть.
+  const activeSection: Section = sessionUser && !isAdmin && navigation.some((item) => item.label === section && item.adminOnly)
     ? "Обзор"
     : section;
+
+  // Адрес приводим к открытому разделу: неизвестный путь, лишний слеш и раздел
+  // без прав заменяются корнем через replaceState, без записи в историю.
+  useEffect(() => {
+    syncSectionUrl(activeSection);
+  }, [activeSection]);
+
+  // Заголовок вкладки повторяет раздел: в закладках и истории браузера видно,
+  // какая страница портала открыта, а не всегда «Портал операций».
+  useEffect(() => {
+    document.title = activeSection === "Обзор"
+      ? "Портал операций — YouGile"
+      : `${activeSection} — Портал операций`;
+  }, [activeSection]);
 
   if (!sessionChecked) {
     return (
