@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { PrismaClient } from "@prisma/client";
 import { Redis } from "ioredis";
+import cookie from "@fastify/cookie";
 import { config } from "./config.js";
 import { closeOperationQueue } from "./jobs/queue.js";
 import { createOperationWorker } from "./jobs/worker.js";
@@ -13,6 +14,8 @@ import { registerSiteRoutes } from "./modules/sites/routes.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerSettingsRoutes } from "./modules/settings/routes.js";
 import { registerHistoryRoutes } from "./modules/history/routes.js";
+import { registerAuthRoutes } from "./modules/auth/routes.js";
+import { requireSession } from "./modules/auth/service.js";
 
 const app = Fastify({ logger: true });
 const prisma = new PrismaClient();
@@ -27,8 +30,18 @@ await app.register(cors, {
   origin: config.WEB_ORIGIN,
   credentials: true
 });
+await app.register(cookie);
+
+// Защита добавляется до регистрации маршрутов, иначе хук не применится к уже
+// созданным маршрутам в Fastify. Публичные пути перечислены явно.
+const publicPaths = ["/api/auth/", "/api/health"];
+app.addHook("preHandler", async (request, reply) => {
+  if (publicPaths.some((path) => request.url.startsWith(path))) return;
+  await requireSession(prisma)(request, reply);
+});
 
 await registerHealthRoutes(app, prisma, redis);
+await registerAuthRoutes(app, prisma);
 await registerSiteRoutes(app, yougile);
 await registerAssignmentRoutes(app, prisma, yougile);
 await registerImportRoutes(app, prisma, yougile);

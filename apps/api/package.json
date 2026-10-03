@@ -8,9 +8,11 @@
     "start": "node dist/server.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --skip-generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "user:create": "tsx scripts/create-user.ts"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^10.0.2",
     "@fastify/multipart": "^9.0.3",
     "@prisma/client": "^6.2.1",

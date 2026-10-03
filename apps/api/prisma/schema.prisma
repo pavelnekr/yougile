@@ -53,16 +53,32 @@ enum ImportRowStatus {
 }
 
 model PortalUser {
-  id           String      @id @default(cuid())
-  login        String      @unique
+  id           String          @id @default(cuid())
+  login        String          @unique
   passwordHash String
   displayName  String
-  role         PortalRole  @default(OPERATOR)
-  active       Boolean     @default(true)
-  operations   Operation[] @relation("CreatedOperations")
+  role         PortalRole      @default(OPERATOR)
+  active       Boolean         @default(true)
+  operations   Operation[]     @relation("CreatedOperations")
   imports      ImportBatch[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  sessions     PortalSession[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+}
+
+// Сессия входа: сам токен живёт только в httpOnly-cookie, в базе хранится его SHA-256.
+model PortalSession {
+  id         String     @id @default(cuid())
+  tokenHash  String     @unique
+  userId     String
+  user       PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent  String?
+  expiresAt  DateTime
+  createdAt  DateTime   @default(now())
+  lastSeenAt DateTime   @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model YougileUser {

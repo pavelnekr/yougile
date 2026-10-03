@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   History,
   LayoutDashboard,
+  LogOut,
   Menu,
   RefreshCw,
   Search,
@@ -22,11 +23,11 @@ import {
 } from "lucide-react";
 import XlsxAssignmentPage from "./XlsxAssignmentPage.js";
 import CommentTemplatesPage from "./CommentTemplatesPage.js";
-import LoginPage from "./LoginPage.js";
 import ImportAuditPage from "./ImportAuditPage.js";
 import XlsxRemovalPage from "./XlsxRemovalPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import HistoryPage from "./HistoryPage.js";
+import LoginPage, { type PortalUser } from "./LoginPage.js";
 
 type Section = "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Проверить работы" | "Аудит" | "История" | "Настройки";
 type Health = "loading" | "ok" | "error";
@@ -102,7 +103,9 @@ const actions = [
 ];
 
 function App() {
-  const [showPortalPreview, setShowPortalPreview] = useState(false);
+  const [sessionUser, setSessionUser] = useState<PortalUser | null>(null);
+  // null = проверяем, false = гость, true = вход выполнен.
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [section, setSection] = useState<Section>("Обзор");
   const [health, setHealth] = useState<Health>("loading");
   const [sites, setSites] = useState<PlannedSite[]>([]);
@@ -111,6 +114,33 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [siteRefreshKey, setSiteRefreshKey] = useState(0);
   const refreshSites = useCallback(() => setSiteRefreshKey((key) => key + 1), []);
+
+  // При загрузке страницы спрашиваем у API, есть ли действующая сессия.
+  // Именно это убирает повторный ввод логина и пароля после перезагрузки.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/auth/session", { signal: controller.signal, credentials: "include" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return await response.json() as { user?: PortalUser };
+      })
+      .then((data) => setSessionUser(data?.user ?? null))
+      .catch(() => setSessionUser(null))
+      .finally(() => {
+        if (!controller.signal.aborted) setSessionChecked(true);
+      });
+    return () => controller.abort();
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } finally {
+      // Выход делаем и при ошибке сети: локально всё равно показываем форму входа.
+      setSessionUser(null);
+      setSection("Обзор");
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -155,8 +185,18 @@ function App() {
     setMobileNavOpen(false);
   };
 
-  if (!showPortalPreview) {
-    return <LoginPage onPreview={() => setShowPortalPreview(true)} />;
+  if (!sessionChecked) {
+    return (
+      <div className="session-check">
+        <span className="session-check-spinner" />
+        <p>Проверяем сессию…</p>
+      </div>
+    );
+  }
+
+  if (!sessionUser) {
+    // Гость: либо ещё не вошёл, либо сессия истекла — в обоих случаях нужна форма входа.
+    return <LoginPage onAuthenticated={setSessionUser} />;
   }
 
   return (
@@ -190,10 +230,10 @@ function App() {
             <strong>Изменения под контролем</strong>
             <p>Перед записью будет доступна проверка плана.</p>
           </div>
-          <button className="profile">
-            <span className="profile-avatar">У</span>
-            <span className="profile-copy"><strong>Локальный оператор</strong><small>Доступ по паролю операций</small></span>
-            <ChevronDown size={15} />
+          <button className="profile" type="button" onClick={() => void signOut()} title="Выйти из портала">
+            <span className="profile-avatar">{sessionUser.displayName.slice(0, 1).toLocaleUpperCase("ru")}</span>
+            <span className="profile-copy"><strong>{sessionUser.displayName}</strong><small>{sessionUser.login} · выход</small></span>
+            <LogOut size={15} />
           </button>
         </div>
       </aside>
@@ -206,7 +246,7 @@ function App() {
             <div className={`service-status status-${health}`}><span className="status-dot" />{health === "ok" ? "API и сервисы доступны" : health === "loading" ? "Проверка API" : "API не подключён"}</div>
             <button className="icon-button search-button" aria-label="Поиск"><Search size={18} /></button>
             <button className="icon-button notification-button" aria-label="Уведомления"><Bell size={18} /><i /></button>
-            <span className="topbar-avatar">У</span>
+            <span className="topbar-avatar">{sessionUser.displayName.slice(0, 1).toLocaleUpperCase("ru")}</span>
           </div>
         </header>
 

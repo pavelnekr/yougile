@@ -1,13 +1,61 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
 
-export default function LoginPage({ onPreview }: { onPreview: () => void }) {
+export type PortalUser = {
+  id: string;
+  login: string;
+  displayName: string;
+  role: string;
+};
+
+export default function LoginPage({
+  onAuthenticated
+}: {
+  onAuthenticated: (user: PortalUser) => void;
+}) {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const submitLogin = (event: FormEvent<HTMLFormElement>) => {
+  const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setNotice("Проверка логина и пароля ещё не подключена. Сейчас можно открыть портал в режиме предварительного просмотра.");
+    if (submitting) return;
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    setSubmitting(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // credentials: "include" обязателен, иначе cookie сессии не сохранится.
+        credentials: "include",
+        body: JSON.stringify({
+          login: String(formData.get("username") ?? ""),
+          password: String(formData.get("password") ?? ""),
+          rememberMe
+        })
+      });
+      const data = await response.json() as { user?: PortalUser; error?: string };
+
+      if (!response.ok || !data.user) {
+        setError(data.error ?? "Не удалось войти в портал.");
+        return;
+      }
+
+      // Пароль сразу вычищаем из формы, чтобы он не оставался в DOM.
+      form.reset();
+      onAuthenticated(data.user);
+    } catch {
+      setError("Не удалось связаться с сервером. Проверьте, что API запущен.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -61,17 +109,16 @@ export default function LoginPage({ onPreview }: { onPreview: () => void }) {
               </span>
             </label>
             <div className="login-form-options">
-              <label className="login-remember"><input type="checkbox" /> <span>Запомнить меня</span></label>
+              <label className="login-remember"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} /> <span>Запомнить меня</span></label>
               <span className="login-reset-unavailable">Забыли пароль?</span>
             </div>
-            <button className="login-submit" type="submit">Войти <ArrowRight size={16} /></button>
+            <button className="login-submit" type="submit" disabled={submitting}>
+              {submitting ? "Проверяем…" : <>Войти <ArrowRight size={16} /></>}
+            </button>
+            {error && <p className="login-notice login-notice-error" role="alert">{error}</p>}
             {notice && <p className="login-notice" role="status">{notice}</p>}
           </form>
 
-          <div className="login-preview">
-            <span>Пока настраивается вход?</span>
-            <button type="button" onClick={onPreview}>Открыть предварительный просмотр <ArrowRight size={14} /></button>
-          </div>
           <p className="login-form-footer">Доступ предоставляется администратором рабочего пространства.</p>
         </div>
       </section>
