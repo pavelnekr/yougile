@@ -5,6 +5,7 @@ import { config } from "../config.js";
 import { YougileClient } from "../integrations/yougile/client.js";
 import { processAssignmentOperation } from "../modules/assignments/service.js";
 import { processRemovalOperation } from "../modules/assignments/removal.js";
+import { processCommentOperation } from "../modules/comments/service.js";
 import type { OperationJob } from "./queue.js";
 
 export function createOperationWorker(prisma: PrismaClient, yougile: YougileClient) {
@@ -15,6 +16,8 @@ export function createOperationWorker(prisma: PrismaClient, yougile: YougileClie
       try {
         if (job.name === "remove-engineers") {
           await processRemovalOperation(prisma, yougile, job.data);
+        } else if (job.name === "post-comments") {
+          await processCommentOperation(prisma, yougile, job.data);
         } else {
           await processAssignmentOperation(prisma, yougile, job.data);
         }

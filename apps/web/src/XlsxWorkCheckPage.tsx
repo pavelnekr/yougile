@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Clock3, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
+import { useStepScroll } from "./useStepScroll";
 
 type ImportBatch = {
   id: string;
@@ -41,6 +42,8 @@ export default function XlsxWorkCheckPage() {
   const [items, setItems] = useState<WorkCheckItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const resultsStepRef = useRef<HTMLElement>(null);
+  useStepScroll(checkedFile ? "results" : null, resultsStepRef);
 
   const loadBatches = async (signal?: AbortSignal) => {
     setLoadingBatches(true);
@@ -208,7 +211,7 @@ export default function XlsxWorkCheckPage() {
           )}
         </>
       ) : (
-        <section className="panel work-check-results">
+        <section className="panel work-check-results" ref={resultsStepRef}>
           <div className="panel-heading">
             <div><h2>Результаты проверки</h2><p>{checkedFile.fileName} · последние сообщения из чатов задач YouGile</p></div>
             <button className="text-button" disabled={busy} onClick={reset}>Выбрать другой XLSX</button>

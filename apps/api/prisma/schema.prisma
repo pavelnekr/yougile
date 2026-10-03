@@ -16,6 +16,7 @@ enum PortalRole {
 enum OperationType {
   ASSIGN
   REMOVE
+  COMMENT
   REASSIGN
   AUDIT
   USER_SYNC

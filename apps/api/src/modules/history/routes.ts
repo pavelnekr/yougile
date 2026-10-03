@@ -7,11 +7,19 @@ import { getAssignmentUsers } from "../users/service.js";
 const historyQuerySchema = z.object({
   days: z.enum(["30", "90", "all"]).default("30"),
   page: z.coerce.number().int().min(1).default(1),
-  type: z.enum(["ALL", "ASSIGN", "REMOVE"]).default("ALL"),
+  type: z.enum(["ALL", "ASSIGN", "REMOVE", "COMMENT"]).default("ALL"),
   search: z.string().trim().max(100).default("")
 });
 
 const pageSize = 25;
+// Типы операций, которые попадают в журнал и аналитику портала.
+const journalTypes = [OperationType.ASSIGN, OperationType.REMOVE, OperationType.COMMENT] as const;
+const operationTypeByFilter = {
+  ALL: undefined,
+  ASSIGN: OperationType.ASSIGN,
+  REMOVE: OperationType.REMOVE,
+  COMMENT: OperationType.COMMENT
+} as const;
 const workTypeDefinitions = [
   { type: "filter", label: "Фильтры" },
   { type: "balancers", label: "Балансеры" },
@@ -149,41 +157,37 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
         app.log.warn({ err: error }, "Could not resolve historical engineer names");
       }
 
-      const activity = new Map<string, { uploads: number; assignments: number; removals: number }>();
+      const activity = new Map<string, { uploads: number; assignments: number; removals: number; comments: number }>();
       const ensureBucket = (date: Date) => {
         const key = bucketKey(date, days);
-        const current = activity.get(key) ?? { uploads: 0, assignments: 0, removals: 0 };
+        const current = activity.get(key) ?? { uploads: 0, assignments: 0, removals: 0, comments: 0 };
         activity.set(key, current);
         return current;
       };
       for (const batch of imports) ensureBucket(batch.createdAt).uploads += 1;
       for (const operation of operations) {
         const counts = ensureBucket(operation.createdAt);
-        if (operation.type === OperationType.ASSIGN) {
-          counts.assignments += operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length;
-        }
-        if (operation.type === OperationType.REMOVE) {
-          counts.removals += operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length;
-        }
+        const succeeded = operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length;
+        if (operation.type === OperationType.ASSIGN) counts.assignments += succeeded;
+        if (operation.type === OperationType.REMOVE) counts.removals += succeeded;
+        if (operation.type === OperationType.COMMENT) counts.comments += succeeded;
       }
 
-      const actors = new Map<string, { name: string; uploads: number; operations: number; assignments: number; removals: number }>();
+      const actors = new Map<string, { name: string; uploads: number; operations: number; assignments: number; removals: number; comments: number }>();
       const actor = (name: string | null | undefined) => {
         const label = displayName(name);
-        const current = actors.get(label) ?? { name: label, uploads: 0, operations: 0, assignments: 0, removals: 0 };
+        const current = actors.get(label) ?? { name: label, uploads: 0, operations: 0, assignments: 0, removals: 0, comments: 0 };
         actors.set(label, current);
         return current;
       };
       for (const batch of imports) actor(batch.createdBy?.displayName).uploads += 1;
       for (const operation of operations) {
         const stats = actor(operation.createdBy?.displayName);
+        const succeeded = operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length;
         stats.operations += 1;
-        if (operation.type === OperationType.ASSIGN) {
-          stats.assignments += operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length;
-        }
-        if (operation.type === OperationType.REMOVE) {
-          stats.removals += operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length;
-        }
+        if (operation.type === OperationType.ASSIGN) stats.assignments += succeeded;
+        if (operation.type === OperationType.REMOVE) stats.removals += succeeded;
+        if (operation.type === OperationType.COMMENT) stats.comments += succeeded;
       }
 
       const engineers = new Map<string, { name: string; assignments: number; removals: number }>();
@@ -222,6 +226,9 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
             .reduce((sum, operation) => sum + operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length, 0),
           removals: operations.filter((operation) => operation.type === OperationType.REMOVE)
             .reduce((sum, operation) => sum + operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length, 0),
+          commentOperations: operations.filter((operation) => operation.type === OperationType.COMMENT).length,
+          comments: operations.filter((operation) => operation.type === OperationType.COMMENT)
+            .reduce((sum, operation) => sum + operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length, 0),
           successfulItems,
           failedItems,
           pendingOperations
@@ -253,17 +260,12 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
 
     const { page, type, search } = parsed.data;
     const start = rangeStart(parsed.data.days);
-    const operationWhere = {
-      ...(start ? { createdAt: { gte: start } } : {}),
-      ...(type === "ALL" ? {} : { type: type === "ASSIGN" ? OperationType.ASSIGN : OperationType.REMOVE })
-    };
+    const selectedType = operationTypeByFilter[type];
     const where = {
       operation: {
         is: {
-          ...operationWhere,
-          type: type === "ALL"
-            ? { in: [OperationType.ASSIGN, OperationType.REMOVE] }
-            : operationWhere.type
+          ...(start ? { createdAt: { gte: start } } : {}),
+          type: selectedType ?? { in: [...journalTypes] }
         }
       },
       ...(search ? {
@@ -322,6 +324,7 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
           const metadataEngineer = stringProperty(item.operation.metadata, "targetUserName");
           const fileName = stringProperty(item.operation.metadata, "fileName");
           const taskTitle = stringProperty(item.beforeData, "title");
+          const comment = stringProperty(item.operation.metadata, "comment");
           return {
             id: item.id,
             operationId: item.operation.id,
@@ -338,6 +341,7 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
             address: item.importRow?.address ?? taskTitle,
             rowNumber: item.importRow?.rowNumber ?? null,
             fileName,
+            comment,
             user: displayName(item.operation.createdBy?.displayName),
             error: item.errorMessage,
             createdAt: item.operation.createdAt.toISOString()

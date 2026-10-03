@@ -6,11 +6,13 @@ import {
   ArrowUpRight,
   Clock3,
   FileSpreadsheet,
+  MessageSquarePlus,
   Search,
   UsersRound
 } from "lucide-react";
 
 type Period = "30" | "90" | "all";
+type HistoryType = "ALL" | "ASSIGN" | "REMOVE" | "COMMENT";
 type HistorySummary = {
   period: Period;
   totals: {
@@ -19,12 +21,14 @@ type HistorySummary = {
     assignmentOperations: number;
     assignments: number;
     removals: number;
+    commentOperations: number;
+    comments: number;
     successfulItems: number;
     failedItems: number;
     pendingOperations: number;
   };
-  activity: { key: string; label: string; uploads: number; assignments: number; removals: number }[];
-  users: { name: string; uploads: number; operations: number; assignments: number; removals: number }[];
+  activity: { key: string; label: string; uploads: number; assignments: number; removals: number; comments: number }[];
+  users: { name: string; uploads: number; operations: number; assignments: number; removals: number; comments: number }[];
   engineers: { name: string; assignments: number; removals: number }[];
   engineerNamesAvailable: boolean;
   recentUploads: { fileName: string; rowCount: number; status: string; createdAt: string; uploadedBy: string }[];
@@ -33,7 +37,7 @@ type HistorySummary = {
 type HistoryItem = {
   id: string;
   operationId: string;
-  type: "ASSIGN" | "REMOVE";
+  type: "ASSIGN" | "REMOVE" | "COMMENT";
   status: "PENDING" | "SUCCEEDED" | "FAILED" | "SKIPPED";
   operationStatus: string;
   siteId: string;
@@ -41,6 +45,7 @@ type HistoryItem = {
   address: string | null;
   rowNumber: number | null;
   fileName: string | null;
+  comment: string | null;
   user: string;
   error: string | null;
   createdAt: string;
@@ -69,12 +74,18 @@ function itemStatusLabel(status: HistoryItem["status"]) {
   return "В очереди";
 }
 
+const actionLabels: Record<HistoryItem["type"], string> = {
+  ASSIGN: "Назначение",
+  REMOVE: "Снятие",
+  COMMENT: "Комментарий"
+};
+
 export default function HistoryPage() {
   const [period, setPeriod] = useState<Period>("30");
   const [summary, setSummary] = useState<HistorySummary | null>(null);
   const [records, setRecords] = useState<HistoryItems | null>(null);
   const [page, setPage] = useState(1);
-  const [type, setType] = useState<"ALL" | "ASSIGN" | "REMOVE">("ALL");
+  const [type, setType] = useState<HistoryType>("ALL");
   const [search, setSearch] = useState("");
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingRecords, setLoadingRecords] = useState(true);
@@ -128,7 +139,7 @@ export default function HistoryPage() {
   }, [period, page, type, search]);
 
   const total = summary?.totals;
-  const maxActivity = Math.max(1, ...(summary?.activity.flatMap((day) => [day.uploads, day.assignments, day.removals]) ?? []));
+  const maxActivity = Math.max(1, ...(summary?.activity.flatMap((day) => [day.uploads, day.assignments, day.removals, day.comments]) ?? []));
   const maxEngineerActivity = Math.max(1, ...(summary?.engineers.map((person) => person.assignments) ?? []));
   const pageCount = Math.max(1, Math.ceil((records?.total ?? 0) / (records?.pageSize ?? 25)));
 
@@ -136,7 +147,7 @@ export default function HistoryPage() {
     <section className="section-view history-page">
       <div className="eyebrow"><span className="eyebrow-line" /> АНАЛИТИКА И ЖУРНАЛ</div>
       <div className="history-heading">
-        <div><h1>История операций</h1><p>Загрузки XLSX, назначения инженеров и выполненные работы — в одном отчёте.</p></div>
+        <div><h1>История операций</h1><p>Загрузки XLSX, назначения инженеров, снятия и комментарии — в одном отчёте.</p></div>
         <div className="history-period" role="group" aria-label="Период статистики">
           {([["30", "30 дней"], ["90", "90 дней"], ["all", "Всё время"]] as const).map(([value, label]) => (
             <button key={value} className={period === value ? "history-period-active" : ""} onClick={() => { setPeriod(value); setPage(1); }}>{label}</button>
@@ -149,24 +160,26 @@ export default function HistoryPage() {
       <div className="history-stat-grid">
         <HistoryStat icon={ArrowUpRight} label="Работ назначено" value={total?.assignments} foot={`${number(total?.assignmentOperations ?? 0)} операций назначения`} tone="green" loading={loadingSummary} />
         <HistoryStat icon={ArrowDownToLine} label="Работ снято" value={total?.removals} foot="Инженеры сняты с площадок" tone="violet" loading={loadingSummary} />
+        <HistoryStat icon={MessageSquarePlus} label="Комментариев отправлено" value={total?.comments} foot={`${number(total?.commentOperations ?? 0)} операций комментариев`} tone="blue" loading={loadingSummary} />
         <HistoryStat icon={Activity} label="С ошибкой" value={total?.failedItems} foot={`${number(total?.successfulItems ?? 0)} успешно · ${number(total?.pendingOperations ?? 0)} выполняется`} tone="amber" loading={loadingSummary} />
       </div>
 
       <div className="history-charts-grid">
         <section className="panel history-panel history-activity-panel">
-          <div className="history-panel-heading"><div><h2>Активность по периодам</h2><p>Загрузки и количество строк назначения / снятия</p></div><span className="history-panel-icon"><Activity size={15} /></span></div>
+          <div className="history-panel-heading"><div><h2>Активность по периодам</h2><p>Загрузки и количество строк назначения / снятия / комментариев</p></div><span className="history-panel-icon"><Activity size={15} /></span></div>
           {loadingSummary ? <div className="import-audit-message">Собираем статистику…</div> : summary?.activity.length ? (
             <>
-              <div className="history-chart-legend"><span><i className="legend-upload" /> XLSX</span><span><i className="legend-assign" /> Назначено</span><span><i className="legend-remove" /> Снято</span></div>
+              <div className="history-chart-legend"><span><i className="legend-upload" /> XLSX</span><span><i className="legend-assign" /> Назначено</span><span><i className="legend-remove" /> Снято</span><span><i className="legend-comment" /> Комментарии</span></div>
               <div className={`history-bar-chart ${summary.activity.length > 18 ? "history-bar-chart-dense" : ""}`}>
                 {summary.activity.map((day) => {
                   const maxBarHeight = 122;
                   return (
-                    <div className="history-chart-column" key={day.key} title={`${day.label}: XLSX ${day.uploads}, назначено ${day.assignments}, снято ${day.removals}`}>
+                    <div className="history-chart-column" key={day.key} title={`${day.label}: XLSX ${day.uploads}, назначено ${day.assignments}, снято ${day.removals}, комментариев ${day.comments}`}>
                       <div className="history-bar-stack">
                         <i className="history-bar-upload" style={{ height: `${Math.max(day.uploads > 0 ? 3 : 0, day.uploads / maxActivity * maxBarHeight)}px` }} />
                         <i className="history-bar-assign" style={{ height: `${Math.max(day.assignments > 0 ? 3 : 0, day.assignments / maxActivity * maxBarHeight)}px` }} />
                         <i className="history-bar-remove" style={{ height: `${Math.max(day.removals > 0 ? 3 : 0, day.removals / maxActivity * maxBarHeight)}px` }} />
+                        <i className="history-bar-comment" style={{ height: `${Math.max(day.comments > 0 ? 3 : 0, day.comments / maxActivity * maxBarHeight)}px` }} />
                       </div>
                       <span>{day.label}</span>
                     </div>
@@ -204,9 +217,9 @@ export default function HistoryPage() {
         {loadingSummary ? <div className="import-audit-message">Собираем статистику…</div> : summary?.users.length ? (
           <div className="history-table-wrap">
             <table className="history-users-table">
-              <thead><tr><th>Пользователь</th><th>Загрузил XLSX</th><th>Операций</th><th>Назначено</th><th>Снято</th></tr></thead>
+              <thead><tr><th>Пользователь</th><th>Загрузил XLSX</th><th>Операций</th><th>Назначено</th><th>Снято</th><th>Комментариев</th></tr></thead>
               <tbody>{summary.users.map((user) => (
-                <tr key={user.name}><td><span className="history-user-name"><span>{user.name.slice(0, 1).toLocaleUpperCase("ru")}</span>{user.name}</span></td><td>{number(user.uploads)}</td><td>{number(user.operations)}</td><td>{number(user.assignments)}</td><td>{number(user.removals)}</td></tr>
+                <tr key={user.name}><td><span className="history-user-name"><span>{user.name.slice(0, 1).toLocaleUpperCase("ru")}</span>{user.name}</span></td><td>{number(user.uploads)}</td><td>{number(user.operations)}</td><td>{number(user.assignments)}</td><td>{number(user.removals)}</td><td>{number(user.comments)}</td></tr>
               ))}</tbody>
             </table>
           </div>
@@ -216,13 +229,13 @@ export default function HistoryPage() {
 
       <section className="panel history-panel history-records-panel">
         <div className="history-panel-heading">
-          <div><h2>Какие работы выполнялись</h2><p>{records ? `${number(records.total)} записей за выбранный период` : "Назначения и снятия по каждой площадке"}</p></div>
+          <div><h2>Какие работы выполнялись</h2><p>{records ? `${number(records.total)} записей за выбранный период` : "Назначения, снятия и комментарии по каждой площадке"}</p></div>
           <span className="history-panel-icon"><Clock3 size={15} /></span>
         </div>
         <div className="history-record-filters">
           <label className="history-search"><Search size={14} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Площадка, адрес или инженер" /></label>
-          <select value={type} onChange={(event) => { setType(event.target.value as typeof type); setPage(1); }} aria-label="Тип операции">
-            <option value="ALL">Все операции</option><option value="ASSIGN">Назначения</option><option value="REMOVE">Снятия</option>
+          <select value={type} onChange={(event) => { setType(event.target.value as HistoryType); setPage(1); }} aria-label="Тип операции">
+            <option value="ALL">Все операции</option><option value="ASSIGN">Назначения</option><option value="REMOVE">Снятия</option><option value="COMMENT">Комментарии</option>
           </select>
         </div>
         {recordsError && <div className="import-audit-message import-audit-message-error"><AlertCircle size={15} />{recordsError}</div>}
@@ -230,13 +243,15 @@ export default function HistoryPage() {
           <>
             <div className="history-table-wrap">
               <table className="history-records-table">
-                <thead><tr><th>Дата</th><th>Действие</th><th>Площадка и работа</th><th>Инженер</th><th>Пользователь</th><th>Файл XLSX</th><th>Статус</th></tr></thead>
+                <thead><tr><th>Дата</th><th>Действие</th><th>Площадка и работа</th><th>{type === "COMMENT" ? "Комментарий" : "Инженер"}</th><th>Пользователь</th><th>Файл XLSX</th><th>Статус</th></tr></thead>
                 <tbody>{records.items.map((item) => (
                   <tr key={item.id}>
                     <td>{formatDate(item.createdAt)}</td>
-                    <td><span className={`history-action history-action-${item.type.toLowerCase()}`}>{item.type === "ASSIGN" ? "Назначение" : "Снятие"}</span></td>
+                    <td><span className={`history-action history-action-${item.type.toLowerCase()}`}>{actionLabels[item.type]}</span></td>
                     <td><strong className="history-site-id">{item.siteId}</strong>{item.address && <small className="history-site-address" title={item.address}>{item.address}</small>}</td>
-                    <td>{item.engineer}</td>
+                    <td>{type === "COMMENT" && item.comment
+                      ? <span className="history-comment-cell" title={item.comment}>{item.comment}</span>
+                      : item.engineer}</td>
                     <td>{item.user}</td>
                     <td title={item.fileName ?? ""}>{item.fileName ?? "—"}</td>
                     <td><span className={`history-item-status history-item-status-${item.status.toLowerCase()}`} title={item.error ?? ""}>{itemStatusLabel(item.status)}</span></td>

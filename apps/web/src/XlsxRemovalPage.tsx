@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, FileSpreadsheet, RefreshCw, ShieldCheck, Upload } from "lucide-react";
+import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
+import { useStepScroll } from "./useStepScroll";
 
 type ImportRow = {
   rowNumber: number;
@@ -73,6 +75,13 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
   const [operationId, setOperationId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [bulkWarning, setBulkWarning] = useState<PlanImport | null>(null);
+  const rowsStepRef = useRef<HTMLDivElement>(null);
+  const previewStepRef = useRef<HTMLDivElement>(null);
+  const operationStepRef = useRef<HTMLDivElement>(null);
+  const stepKey = operationId ? "operation" : preview ? "preview" : planImport ? "rows" : null;
+  const stepRef = stepKey === "operation" ? operationStepRef : stepKey === "preview" ? previewStepRef : rowsStepRef;
+  useStepScroll(stepKey, stepRef);
 
   const loadBatches = async (signal?: AbortSignal) => {
     setLoadingBatches(true);
@@ -142,16 +151,28 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     setOperation(null);
     setOperationId("");
     setError("");
+    setBulkWarning(null);
   };
 
-  const setWorkbook = (workbook: PlanImport) => {
-    const rows = workbook.rows.filter((row) => row.status === "READY" && row.siteId && row.engineerName);
+  const readyRowsOf = (workbook: PlanImport) =>
+    workbook.rows.filter((row) => row.status === "READY" && row.siteId && row.engineerName);
+
+  const applyWorkbook = (workbook: PlanImport) => {
     setPlanImport(workbook);
-    setSelectedRows(rows.slice(0, 50).map((row) => row.rowNumber));
+    setSelectedRows(readyRowsOf(workbook).map((row) => row.rowNumber));
     setPreview(null);
     setOperation(null);
     setOperationId("");
     setError("");
+  };
+
+  // Лимита площадок нет, поэтому большой файл предупреждаем, а не обрезаем.
+  const setWorkbook = (workbook: PlanImport) => {
+    if (readyRowsOf(workbook).length > largeSelectionThreshold) {
+      setBulkWarning(workbook);
+      return;
+    }
+    applyWorkbook(workbook);
   };
 
   const uploadWorkbook = async (file: File) => {
@@ -219,15 +240,9 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
 
   const toggleRow = (row: ImportRow) => {
     if (row.status !== "READY" || !row.siteId || !row.engineerName) return;
-    setSelectedRows((current) => {
-      if (current.includes(row.rowNumber)) return current.filter((rowNumber) => rowNumber !== row.rowNumber);
-      if (current.length >= 50) {
-        setError("За одну операцию можно выбрать не более 50 строк XLSX.");
-        return current;
-      }
-      setError("");
-      return [...current, row.rowNumber];
-    });
+    setSelectedRows((current) => current.includes(row.rowNumber)
+      ? current.filter((rowNumber) => rowNumber !== row.rowNumber)
+      : [...current, row.rowNumber]);
     setPreview(null);
   };
 
@@ -280,7 +295,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
       <div className="eyebrow"><span className="eyebrow-line" /> СНЯТИЕ НАЗНАЧЕНИЙ ПО XLSX</div>
       <div className="sites-page-heading">
         <div><h1>Снять инженеров</h1><p>Будут сняты только инженеры из выбранных строк XLSX и только с указанных в них площадок.</p></div>
-        {planImport && <span className="sites-total">{selectedReadyRows.length} строк выбрано · максимум 50</span>}
+        {planImport && <span className="sites-total">{selectedReadyRows.length.toLocaleString("ru-RU")} строк выбрано</span>}
       </div>
 
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}
@@ -347,10 +362,10 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
             <p className="removal-scope-note">Никакие другие площадки и сотрудники не затрагиваются. Даже при повторном запуске сервер повторно проверит текущее назначение перед изменением.</p>
           </div>
 
-          <div className="panel imported-rows-panel removal-rows-panel">
+          <div className="panel imported-rows-panel removal-rows-panel" ref={rowsStepRef}>
             <div className="imported-rows-toolbar">
-              <div><h2>1. Выберите строки XLSX</h2><p>Будут обработаны только строки с найденной площадкой и инженером · до 50 строк за операцию.</p></div>
-              <button className="text-button" disabled={selectedRows.length === readyRows.length || readyRows.length === 0} onClick={() => { setSelectedRows(readyRows.slice(0, 50).map((row) => row.rowNumber)); setPreview(null); }}>Выбрать первые 50</button>
+              <div><h2>1. Выберите строки XLSX</h2><p>Будут обработаны только строки с найденной площадкой и инженером.</p></div>
+              <button className="text-button" disabled={selectedRows.length === readyRows.length || readyRows.length === 0} onClick={() => { setSelectedRows(readyRows.map((row) => row.rowNumber)); setPreview(null); }}>Выбрать все</button>
             </div>
             <div className="import-row-header removal-row-header"><span>Строка / площадка</span><span>Адрес</span><span>Инженер из XLSX</span><span>Проверка</span></div>
             <div className="import-row-list">
@@ -378,7 +393,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
           </div>
 
           {preview && (
-            <div className="panel xlsx-assignment-preview removal-preview">
+            <div className="panel xlsx-assignment-preview removal-preview" ref={previewStepRef}>
               <div className="assignment-panel-heading">
                 <div><h2>2. Предпросмотр снятия</h2><p>К снятию отмечено назначений: {preview.willRemove} из {preview.count} выбранных строк файла «{preview.fileName}».</p></div>
                 <span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span>
@@ -407,7 +422,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
       )}
 
       {operationId && (
-        <div className={`panel assignment-operation ${terminal ? "assignment-operation-done" : ""}`}>
+        <div className={`panel assignment-operation ${terminal ? "assignment-operation-done" : ""}`} ref={operationStepRef}>
           <div className="assignment-panel-heading">
             <div><h2>{operation?.status === "SUCCEEDED" ? "Снятие инженеров завершено" : operation?.status === "PARTIAL" || operation?.status === "FAILED" ? "Результат снятия инженеров" : "Снимаем инженеров по XLSX"}</h2><p>{operation?.message ?? "Операция добавлена в очередь."}</p></div>
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
@@ -418,6 +433,16 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
         </div>
       )}
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Источник снятия — выбранный XLSX из загрузки или аудита</span></footer>
+
+      {bulkWarning && (
+        <BulkWarningDialog
+          fileName={bulkWarning.fileName}
+          siteCount={readyRowsOf(bulkWarning).length}
+          skippedCount={bulkWarning.rows.length - readyRowsOf(bulkWarning).length}
+          onConfirm={() => { applyWorkbook(bulkWarning); setBulkWarning(null); }}
+          onCancel={() => setBulkWarning(null)}
+        />
+      )}
     </section>
   );
 }

@@ -8,6 +8,8 @@ import {
   ShieldCheck,
   Upload
 } from "lucide-react";
+import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
+import { useStepScroll } from "./useStepScroll";
 
 type ImportRow = {
   rowNumber: number;
@@ -90,25 +92,13 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   const [busy, setBusy] = useState(false);
   const [downloadingProblems, setDownloadingProblems] = useState(false);
   const [error, setError] = useState("");
+  const [bulkWarning, setBulkWarning] = useState<PlanImport | null>(null);
   const rowsStepRef = useRef<HTMLDivElement>(null);
   const previewStepRef = useRef<HTMLDivElement>(null);
   const operationStepRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const target = operationId
-      ? operationStepRef.current
-      : preview
-        ? previewStepRef.current
-        : planImport
-          ? rowsStepRef.current
-          : null;
-    if (!target) return;
-
-    const frame = requestAnimationFrame(() => {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [operationId, planImport?.importId, preview]);
+  const stepKey = operationId ? "operation" : preview ? "preview" : planImport ? "rows" : null;
+  const stepRef = stepKey === "operation" ? operationStepRef : stepKey === "preview" ? previewStepRef : rowsStepRef;
+  useStepScroll(stepKey, stepRef);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -190,15 +180,24 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
       const response = await fetch("/api/imports/preview", { method: "POST", body });
       const data = await response.json() as PlanImport & { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось прочитать XLSX.");
-      setPlanImport(data);
-      setSelectedRows(data.rows.filter((row) => row.status === "READY").slice(0, 50).map((row) => row.rowNumber));
-      setPage(1);
-      setQuery("");
+      // Лимита площадок нет, поэтому большой план предупреждаем, а не обрезаем.
+      if (data.counts.ready > largeSelectionThreshold) {
+        setBulkWarning(data);
+        return;
+      }
+      applyWorkbook(data);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
     }
+  };
+
+  const applyWorkbook = (data: PlanImport) => {
+    setPlanImport(data);
+    setSelectedRows(data.rows.filter((row) => row.status === "READY").map((row) => row.rowNumber));
+    setPage(1);
+    setQuery("");
   };
 
   const toggleRow = (row: ImportRow) => {
@@ -293,6 +292,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     setOperationId("");
     setComment("");
     setError("");
+    setBulkWarning(null);
   };
   const problematicRows = [
     ...(planImport?.rows.filter((row) => row.status !== "READY").map((row) => ({
@@ -360,7 +360,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
 
           <div className="panel imported-rows-panel" ref={rowsStepRef}>
             <div className="imported-rows-toolbar">
-              <div><h2>1. Площадки из загруженного плана</h2><p>{selectedReadyRows.length} строк с найденной площадкой и инженером выбрано · до 50 строк за операцию · строки с ошибками нельзя назначить</p></div>
+              <div><h2>1. Площадки из загруженного плана</h2><p>{selectedReadyRows.length} строк с найденной площадкой и инженером выбрано · строки с ошибками нельзя назначить</p></div>
               <label className="sites-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Номер, адрес или инженер" /></label>
             </div>
             <div className="import-row-header"><span>Строка / ID</span><span>Адрес площадки</span><span>Инженер из XLSX</span><span>Статус</span></div>
@@ -368,7 +368,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
               {visibleRows.map((row) => (
                 <label className={`import-plan-row ${row.status === "READY" ? "import-plan-row-ready" : "import-plan-row-invalid"}`} key={row.rowNumber}>
                   <span className="import-row-id">
-                    <input type="checkbox" disabled={row.status !== "READY" || operationPending || (!selectedRows.includes(row.rowNumber) && selectedReadyRows.length >= 50)} checked={selectedRows.includes(row.rowNumber)} onChange={() => toggleRow(row)} />
+                    <input type="checkbox" disabled={row.status !== "READY" || operationPending} checked={selectedRows.includes(row.rowNumber)} onChange={() => toggleRow(row)} />
                     <span>Стр. {row.rowNumber}<small>{row.siteId ?? "—"}</small></span>
                   </span>
                   <span className="import-address" title={row.address ?? ""}>{row.address ?? "Адрес не указан"}</span>
@@ -505,6 +505,16 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
         </div>
       )}
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Источник назначений — выбранные строки XLSX</span></footer>
+
+      {bulkWarning && (
+        <BulkWarningDialog
+          fileName={bulkWarning.fileName}
+          siteCount={bulkWarning.counts.ready}
+          skippedCount={bulkWarning.rowCount - bulkWarning.counts.ready}
+          onConfirm={() => { applyWorkbook(bulkWarning); setBulkWarning(null); }}
+          onCancel={() => setBulkWarning(null)}
+        />
+      )}
     </section>
   );
 }

@@ -6,11 +6,14 @@ import { ImportBatchStatus, ImportRowStatus, OperationStatus, OperationType, Pri
 import { z } from "zod";
 import { config } from "../../config.js";
 import { YougileClient, YougileApiError } from "../../integrations/yougile/client.js";
+import { getChatMessages, getMessageText, getMessageTimestamp } from "../../integrations/yougile/chat.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
   AssignmentValidationError,
-  previewAssignments
+  maxSitesPerOperation,
+  previewAssignments,
+  tooManySitesError
 } from "../assignments/service.js";
 import { importRemovalSchema, prepareImportRemoval } from "../assignments/removal.js";
 import { getPlannedSites } from "../sites/service.js";
@@ -21,7 +24,7 @@ const maxStoredImports = 5;
 const importRetentionLockId = 847201563;
 
 const previewSchema = z.object({
-  rowNumbers: z.array(z.number().int().positive()).min(1).max(50)
+  rowNumbers: z.array(z.number().int().positive()).min(1).max(maxSitesPerOperation, tooManySitesError("строк XLSX"))
     .refine((rows) => new Set(rows).size === rows.length, "В плане выбраны повторяющиеся строки."),
   workType: z.enum(["filter", "balancers", "bypasses", "ehw"]),
   commentTemplate: z.string().trim().min(1, "Введите шаблон комментария.")
@@ -70,42 +73,6 @@ function describeImportRowProblems(row: {
 
 function readError(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка чтения XLSX.";
-}
-
-function getChatMessages(value: unknown): unknown[] {
-  if (Array.isArray(value)) return value;
-  if (!value || typeof value !== "object") return [];
-  const response = value as Record<string, unknown>;
-  for (const key of ["content", "messages", "items", "data"]) {
-    if (Array.isArray(response[key])) return response[key];
-  }
-  return [];
-}
-
-function getMessageTimestamp(message: Record<string, unknown>) {
-  for (const key of ["timestamp", "createdAt", "created_at", "date", "time"]) {
-    const value = message[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string") {
-      const parsed = Date.parse(value);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return null;
-}
-
-function getMessageText(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const message = value as Record<string, unknown>;
-  for (const key of ["text", "message", "textHtml"]) {
-    if (typeof message[key] === "string" && message[key].trim()) {
-      return message[key].replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n")
-        .replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, "\"")
-        .trim();
-    }
-  }
-  return null;
 }
 
 export async function registerImportRoutes(
@@ -580,7 +547,7 @@ export async function registerImportRoutes(
 
   app.post<{ Params: { id: string } }>("/api/imports/:id/removal-preview", async (request, reply) => {
     const parsed = importRemovalSchema.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: "Выберите от 1 до 50 уникальных строк XLSX." });
+    if (!parsed.success) return reply.code(400).send({ error: "Выберите уникальные строки XLSX для снятия инженеров." });
     try {
       const prepared = await prepareImportRemoval(yougile, prisma, request.params.id, parsed.data.rowNumbers);
       return {

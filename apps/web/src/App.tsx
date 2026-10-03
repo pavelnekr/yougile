@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageSquarePlus,
   RefreshCw,
   Search,
   Settings2,
@@ -25,11 +26,13 @@ import XlsxAssignmentPage from "./XlsxAssignmentPage.js";
 import CommentTemplatesPage from "./CommentTemplatesPage.js";
 import ImportAuditPage from "./ImportAuditPage.js";
 import XlsxRemovalPage from "./XlsxRemovalPage.js";
+import CommentPage from "./CommentPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import HistoryPage from "./HistoryPage.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
+import { useStepScroll } from "./useStepScroll.js";
 
-type Section = "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Проверить работы" | "Аудит" | "История" | "Настройки";
+type Section = "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "Аудит" | "История" | "Настройки";
 type Health = "loading" | "ok" | "error";
 type SiteLoadState = "loading" | "ready" | "error";
 type PlannedSite = {
@@ -99,6 +102,14 @@ const actions = [
     icon: ClipboardCheck,
     tone: "green",
     section: "Проверить работы" as Section
+  },
+  {
+    number: "04",
+    title: "Написать комментарий",
+    description: "Выберите одну или несколько площадок и напишите комментарий в чат задач YouGile.",
+    icon: MessageSquarePlus,
+    tone: "orange",
+    section: "Написать комментарий" as Section
   }
 ];
 
@@ -259,6 +270,14 @@ function App() {
             <XlsxAssignmentPage onComplete={refreshSites} />
           ) : section === "Снять инженеров" ? (
             <XlsxRemovalPage onComplete={refreshSites} />
+          ) : section === "Написать комментарий" ? (
+            <CommentPage
+              sites={sites}
+              loadState={siteLoadState}
+              siteError={siteError}
+              onComplete={refreshSites}
+              onOpenHistory={() => chooseSection("История")}
+            />
           ) : section === "Проверить работы" ? (
             <XlsxWorkCheckPage />
           ) : section === "Настройки" ? (
@@ -518,6 +537,11 @@ export function AssignmentPage({
   const [operation, setOperation] = useState<AssignmentOperation | null>(null);
   const [operationError, setOperationError] = useState("");
   const pageSize = 25;
+  const previewStepRef = useRef<HTMLDivElement>(null);
+  const operationStepRef = useRef<HTMLDivElement>(null);
+  const stepKey = operationId ? "operation" : preview ? "preview" : null;
+  const stepRef = stepKey === "operation" ? operationStepRef : previewStepRef;
+  useStepScroll(stepKey, stepRef);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -579,7 +603,7 @@ export function AssignmentPage({
 
   const updateSelection = (taskId: string, checked: boolean) => {
     setSelectedTaskIds((current) => {
-      if (checked) return current.length >= 50 ? current : [...current, taskId];
+      if (checked) return current.includes(taskId) ? current : [...current, taskId];
       return current.filter((id) => id !== taskId);
     });
     setPreview(null);
@@ -647,7 +671,7 @@ export function AssignmentPage({
       <div className="eyebrow"><span className="eyebrow-line" /> ИЗМЕНЕНИЯ ПРИМЕНЯЮТСЯ ТОЛЬКО ПОСЛЕ ПОДТВЕРЖДЕНИЯ</div>
       <div className="sites-page-heading">
         <div><h1>Назначить инженера</h1><p>Выберите инженера и площадки. Перед записью сверим текущих ответственных в YouGile.</p></div>
-        <span className="sites-total">{selectedTaskIds.length} / 50 выбрано</span>
+        <span className="sites-total">{selectedTaskIds.length.toLocaleString("ru-RU")} выбрано</span>
       </div>
 
       {usersError && <div className="assignment-error">{usersError}</div>}
@@ -671,7 +695,6 @@ export function AssignmentPage({
                           <input
                             type="checkbox"
                             checked={checked}
-                            disabled={!checked && selectedTaskIds.length >= 50}
                             onChange={(event) => updateSelection(site.taskId, event.target.checked)}
                           />
                           <span className="site-number">{site.siteNumber}</span>
@@ -708,7 +731,7 @@ export function AssignmentPage({
           </div>
 
           {preview && (
-            <div className="panel assignment-preview-panel">
+            <div className="panel assignment-preview-panel" ref={previewStepRef}>
               <div className="assignment-panel-heading"><div><h2>3. Предпросмотр</h2><p>{preview.user.name} · {preview.items.length} площадок</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
               <div className="preview-summary">Будет добавлен новый ответственный. Текущие инженеры останутся назначенными.</div>
               <div className="assignment-preview-list">
@@ -740,7 +763,7 @@ export function AssignmentPage({
       </div>
 
       {operationId && (
-        <div className={`panel assignment-operation ${operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) ? "assignment-operation-done" : ""}`}>
+        <div className={`panel assignment-operation ${operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) ? "assignment-operation-done" : ""}`} ref={operationStepRef}>
           <div className="assignment-panel-heading">
             <div><h2>{operation?.status === "SUCCEEDED" ? "Назначение завершено" : operation?.status === "PARTIAL" || operation?.status === "FAILED" ? "Результат операции" : "Выполняем назначение"}</h2><p>{operation?.message ?? "Задание добавлено в очередь YouGile."}</p></div>
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
@@ -751,12 +774,12 @@ export function AssignmentPage({
           {operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) && <button className="outline-button assignment-new-button" onClick={resetAssignment}><RefreshCw size={14} /> Новое назначение</button>}
         </div>
       )}
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Операции журналируются · лимит 50 площадок за запуск</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Операции журналируются · обрабатываются последовательно</span></footer>
     </section>
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Проверить работы" | "История" | "Настройки">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

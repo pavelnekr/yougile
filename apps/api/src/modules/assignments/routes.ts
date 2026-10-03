@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { PrismaClient } from "@prisma/client";
+import { OperationType, PrismaClient } from "@prisma/client";
 import { YougileClient } from "../../integrations/yougile/client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { getAssignmentUsers } from "../users/service.js";
@@ -8,6 +8,12 @@ import {
   AssignmentValidationError,
   previewAssignments
 } from "./service.js";
+
+const visibleOperationTypes: OperationType[] = [
+  OperationType.ASSIGN,
+  OperationType.REMOVE,
+  OperationType.COMMENT
+];
 
 export async function registerAssignmentRoutes(
   app: FastifyInstance,
@@ -27,7 +33,7 @@ export async function registerAssignmentRoutes(
   app.post("/api/assignments/preview", async (request, reply) => {
     const parsed = assignmentPreviewBodySchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "Выберите от 1 до 50 уникальных площадок и одного инженера." });
+      return reply.code(400).send({ error: "Выберите уникальные площадки и одного инженера." });
     }
 
     try {
@@ -47,7 +53,7 @@ export async function registerAssignmentRoutes(
       include: { items: { orderBy: { createdAt: "asc" } } }
     });
     if (!operation) return reply.code(404).send({ error: "Операция не найдена." });
-    if (operation.type !== "ASSIGN" && operation.type !== "REMOVE") {
+    if (!visibleOperationTypes.includes(operation.type)) {
       return reply.code(400).send({ error: "Неизвестный тип операции." });
     }
 

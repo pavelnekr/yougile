@@ -4,10 +4,10 @@ import { YougileClient } from "../../integrations/yougile/client.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
-import { AssignmentValidationError, readTask, validatePlanTask } from "./service.js";
+import { AssignmentValidationError, maxSitesPerOperation, readTask, tooManySitesError, validatePlanTask } from "./service.js";
 
 export const importRemovalSchema = z.object({
-  rowNumbers: z.array(z.number().int().positive()).min(1).max(50)
+  rowNumbers: z.array(z.number().int().positive()).min(1).max(maxSitesPerOperation, tooManySitesError("строк XLSX"))
     .refine((rows) => new Set(rows).size === rows.length, "В плане выбраны повторяющиеся строки.")
 });
 

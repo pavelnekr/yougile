@@ -2,6 +2,7 @@ import { OperationItemStatus, OperationStatus, OperationType, PrismaClient } fro
 import { z } from "zod";
 import { config } from "../../config.js";
 import { YougileApiError, YougileClient } from "../../integrations/yougile/client.js";
+import { postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { getPlannedSites, type PlannedSite } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
@@ -16,8 +17,17 @@ const taskDetailsSchema = z.object({
   completed: z.boolean().nullable().optional()
 });
 
+// Лимита площадок на операцию нет: назначение упирается только в последовательную
+// очередь. 2000 — аварийный предохранитель, тот же, что в модуле комментариев.
+export const maxSitesPerOperation = 2000;
+
+// Общее сообщение о переполнении, чтобы лимит звучал одинаково во всех схемах.
+export function tooManySitesError(what: string) {
+  return `За один запуск можно выбрать не больше ${maxSitesPerOperation.toLocaleString("ru-RU")} ${what}. Разбейте операцию на части.`;
+}
+
 const previewInputSchema = z.object({
-  taskIds: z.array(z.string().uuid()).min(1).max(50)
+  taskIds: z.array(z.string().uuid()).min(1).max(maxSitesPerOperation, tooManySitesError("площадок"))
     .refine((ids) => new Set(ids).size === ids.length, "Выбраны повторяющиеся задачи."),
   userId: z.string().uuid()
 });
@@ -191,11 +201,7 @@ export async function processAssignmentOperation(
 
         if (commentText) {
           phase = "comment";
-          await client.request(`chats/${encodeURIComponent(task.id)}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: commentText })
-          });
+          await postChatMessage(client, task.id, commentText);
           afterData = { ...afterData, commentPosted: true };
         }
       } catch (error) {

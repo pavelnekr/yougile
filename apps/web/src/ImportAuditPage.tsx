@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, FileSpreadsheet, RefreshCw, Rows3 } from "lucide-react";
+import { useStepScroll } from "./useStepScroll";
 
 type ImportBatch = {
   id: string;
@@ -62,7 +63,11 @@ export default function ImportAuditPage() {
   const [listError, setListError] = useState("");
   const [page, setPage] = useState(1);
   const detailsRequestId = useRef(0);
+  const detailsStepRef = useRef<HTMLElement>(null);
   const pageSize = 8;
+  // Прокрутка к содержимому файла: список загрузок короткий, строки могут быть
+  // длинными, и без прокрутки панель результатов остаётся за пределами экрана.
+  useStepScroll(details?.id ?? null, detailsStepRef);
 
   const loadBatches = useCallback(async (signal?: AbortSignal) => {
     setLoadingList(true);
@@ -171,7 +176,7 @@ export default function ImportAuditPage() {
         )}
       </section>
 
-      <section className="panel import-audit-details-panel">
+      <section className="panel import-audit-details-panel" ref={detailsStepRef}>
         <div className="panel-heading">
           <div>
             <h2>{details ? details.fileName : "Содержимое XLSX"}</h2>
