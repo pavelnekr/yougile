@@ -1,80 +1,188 @@
 # DEPLOY.md
-Короткая инструкция по развёртыванию на отдельном Linux-сервере.
+
+Развёртывание на отдельном Linux-сервере (Ubuntu/Debian) через Docker Compose.
+Схема: nginx/Caddy на хосте принимает HTTPS и проксирует на контейнер веба,
+веб отдаёт статику и проксирует `/api` на контейнер API. Postgres и Redis
+наружу не выставлены.
 
 ## 1. Что нужно на сервере
-- Docker Engine + Docker Compose (Plugin v2)
-- Git (опционально) или просто скопировать архив репозитория
-- Открыть порт 80/443 (или выбранный WEB_PORT)
 
-## 2. Клонировать/залить проект
+- Docker Engine + Docker Compose Plugin v2
+- nginx или Caddy для HTTPS (Let's Encrypt)
+- Домен, который смотрит на IP сервера
+
+## 2. Залить проект
+
 ```bash
 git clone https://github.com/pavelnekr/yougile.git
 cd yougile
 ```
-Или загрузить архив и распаковать.
 
-## 3. Настроить .env
-Скопируйте пример и заполните реальные значения:
+## 3. Настроить `.env`
+
 ```bash
 cp .env.example .env
+openssl rand -hex 32        # сгенерировать секреты
 nano .env
 ```
-Обязательные переменные:
-- `JWT_SECRET` — минимум 32 символа (любая случайная строка)
-- `YOUGILE_API_URL` — https://yougile.ru/api-v2 (или ваш инстанс)
-- `YOUGILE_API_TOKEN` — токен YouGile
-- `DATABASE_URL` — можно оставить по умолчанию (использует postgres в compose)
-- `REDIS_URL` — можно оставить по умолчанию
-- `WEB_ORIGIN` — URL сайта (например https://portal.example.com). Если HTTPS за прокси (nginx/Cloudflare) — ставьте https://...
 
-Для прода можно переопределить порты:
-```env
-WEB_PORT=80
-# API_PORT можно не указывать (не торчит наружу)
-```
+Что заполнить:
 
-## 4. Создать первого администратора
-```bash
-docker compose -f docker-compose.prod.yml run --rm api node dist/scripts/create-user.js pavel "НАДЁЖНЫЙ_ПАРОЛЬ_МИН_8" "Павел" ADMIN
-# или через tsx в dev-окружении, но в контейнере dist уже собран? Лучше собрать сначала
-```
-Но сначала собрать образы. Альтернатива — создать через API после запуска (но API защищён). Проще: запустить миграции и создать пользователя одной командой после старта БД.
+| Переменная | Значение |
+|---|---|
+| `WEB_ORIGIN` | `https://portal.example.com` — публичный адрес, без слэша на конце |
+| `JWT_SECRET` | строка минимум 32 символа (`openssl rand -hex 32`) |
+| `POSTGRES_PASSWORD` | длинный случайный пароль (`openssl rand -base64 24`) |
+| `YOUGILE_API_URL` | `https://yougile.ru/api-v2` |
+| `YOUGILE_API_TOKEN` | токен YouGile |
+| `WEB_PORT` | порт контейнера веба на хосте |
 
-Либо запустить БД+redis, прогнать миграции, создать пользователя, потом всё остальное.
+**`DATABASE_URL` и `REDIS_URL` в `.env` для прода не трогайте.** В них
+`localhost` — это для локальной разработки. Внутри контейнеров compose
+собирает адреса сам, из `POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD`
+и имени сервиса `postgres`. Если оставить пример как есть, API не достучится
+до базы.
 
-## 5. Собрать и запустить
+`WEB_PORT` — порт, который слушает контейнер веба. Если 80 уже занят вашим
+nginx, поставьте `WEB_PORT=8080` и проксируйте на `127.0.0.1:8080`.
+
+## 4. Собрать и запустить
+
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-После старта:
-- Веб: http://YOUR_SERVER_IP (или :${WEB_PORT})
-- API торчит только во внутренней сети Docker (web проксирует /api)
+Порядок запуска compose выстроен сам:
 
-## 6. Миграции и первый пользователь (один раз)
-После первого запуска БД поднята. Прогнать миграции и создать пользователя:
+1. `postgres` и `redis` поднимаются и ждут.healthcheck.
+2. Служебный контейнер `migrate` выполняет `prisma migrate deploy` и завершается.
+3. `api` стартует только после успешного `migrate` (`service_completed_successfully`).
+4. `web` стартует после того, как `api` станет healthy.
+
+Миграции накатываются автоматически на каждом запуске, отдельной командой
+вызывать `prisma migrate` не нужно.
+
+Проверить:
+
 ```bash
-# Миграции Prisma
-docker compose -f docker-compose.prod.yml exec api npx prisma migrate deploy
-
-# Создать администратора (интерактивно нельзя, передаём аргументы)
-docker compose -f docker-compose.prod.yml exec api node scripts/create-user.js pavel "SuperStrongPass123!" "Павел" ADMIN
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs migrate   # Applied N migrations
+curl http://127.0.0.1:${WEB_PORT:-8080}/api/health
 ```
-Но `scripts/create-user.ts` лежит в `src/`, в `dist/` его нет. Нужно либо копировать скрипты в Dockerfile, либо запускать через tsx? Или добавить копирование scripts в образ API.
 
-Исправление в Dockerfile API: добавить копирование `apps/api/scripts` в `dist/scripts`? Или просто скопировать в `/app/scripts`.
+## 5. Первый администратор
 
-Добавлю копирование скриптов в образ API (чтобы можно было создать пользователя в проде).
+Без пользователя вход не работает: все маршруты кроме `/api/auth/*`
+и `/api/health` закрыты проверкой сессии.
+
+```bash
+docker compose -f docker-compose.prod.yml exec api \
+  node dist/scripts/create-user.js pavel "НАДЁЖНЫЙ_ПАРОЛЬ" "Павел" ADMIN
+```
+
+Без аргументов скрипт спросит логин, пароль, имя и роль интерактивно —
+удобнее для первого раза:
+
+```bash
+docker compose -f docker-compose.prod.yml exec api node dist/scripts/create-user.js
+```
+
+Роли: `ADMIN` (полный доступ) и `OPERATOR`. Тот же скрипт меняет пароль:
+запустите его с существующим логином, старые сессии этого пользователя будут
+завершены.
+
+## 6. HTTPS
+
+Пусть домен `portal.example.com`, веб слушает на хосте порт `8080`.
+
+### Caddy (проще, сертификат сам)
+
+```
+# /etc/caddy/Caddyfile
+portal.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+```bash
+systemctl reload caddy
+```
+
+### nginx
+
+```nginx
+server {
+    listen 80;
+    server_name portal.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name portal.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/portal.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/portal.example.com/privkey.pem;
+
+    # Загрузка XLSX-планов идёт через POST, держим запас.
+    client_max_body_size 12m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Операции идут долго, не обрывать соединение.
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+Сертификат:
+
+```bash
+apt install certbot python3-certbot-nginx
+certbot --nginx -d portal.example.com
+```
+
+Флаг `X-Forwarded-Proto` обязателен: по нему API решает, ставить ли в cookie
+атрибут `secure`. Без него логин через HTTPS не сохранит сессию.
+
+Файлы загрузок не проксируйте наружу — портал работает по cookie-сессии,
+а не по токену в URL.
 
 ## 7. Обновление
+
 ```bash
+cd yougile
 git pull
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec api npx prisma migrate deploy
 ```
 
-## 8. Рекомендации
-- За HTTPS ставьте reverse-proxy (Traefik/Nginx/Cloudflare Tunnel). Тогда `WEB_ORIGIN` должен быть `https://...`, куки `secure` включатся автоматически.
-- Не выставляйте порт 5432/6379 наружу, если сервер не в изолированной сети.
-- Регулярно делайте бэкап Postgres (`postgres-data` volume).
+Миграции применятся сами. Откат миграций Prisma не делает автоматически —
+сначала смотрите `docker compose -f docker-compose.prod.yml logs migrate`.
+
+## 8. Бэкапы
+
+Postgres живёт в volume `postgres-data`. Дамп:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_dump -U portal yougile_portal | gzip > backup-$(date +%F).sql.gz
 ```
+
+Логи и файлы загрузок в этом томе не хранятся, но секреты из `.env`
+в бэкап не попадают — держите `.env` отдельно.
+
+## 9. Если что-то пошло не так
+
+| Симптом | Причина |
+|---|---|
+| `API не может подключиться к базе` | в `.env` остался `localhost` в `DATABASE_URL`; compose должен перекрывать его сам |
+| `migrate` в статусе `Error` | нет `POSTGRES_PASSWORD` в `.env`, либо не применены изменения схемы |
+| healthcheck `api` не проходит | смотрите `docker compose -f docker-compose.prod.yml logs api` |
+| логин не сохраняет сессию | прокси не передаёт `X-Forwarded-Proto`, либо `WEB_ORIGIN` не совпадает с адресом в браузере |
+| порт занят | поставьте `WEB_PORT=8080` в `.env` и перезапустите compose |

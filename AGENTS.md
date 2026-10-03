@@ -276,7 +276,19 @@ cleanup, а в `.catch` проверяет `signal.aborted`, чтобы не п�
 | `YOUGILE_PLAN_COLUMN_ID` | колонка с активными задачами |
 | `UPLOAD_MAX_BYTES` | лимит загрузки XLSX, по умолчанию 10 МБ |
 
+Переменные ниже нужны только `docker-compose.prod.yml`, сам API их не читает:
+
+| Переменная | Назначение |
+|---|---|
+| `WEB_PORT` | порт контейнера веба на хосте, по умолчанию 80 |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | база из compose |
+
 Правила:
+
+- `DATABASE_URL` и `REDIS_URL` в `.env` описывают локальную разработку (`localhost`).
+  В `docker-compose.prod.yml` они намеренно **не** интерполируются из `.env`:
+  compose собирает адреса сам из `POSTGRES_*` и имён сервисов `postgres`/`redis`.
+  Если пробросить туда `.env` с `localhost`, контейнеры не достучатся до базы.
 
 - Все переменные проходят через Zod-схему в `config.ts` при старте. Новая переменная
   добавляется туда, иначе она не провалидируется.
@@ -334,6 +346,20 @@ npm run db:migrate          # новая миграция
 npm run db:studio           # Prisma Studio
 docker compose --profile prod up -d --build web   # образ с nginx
 ```
+
+### Правило: в Dockerfile API `db:generate` идёт перед `tsc`
+
+`npm run build` в корне делает `db:generate` сам, а скрипт воркспейса —
+`tsc -p tsconfig.json` и ничего больше. Поэтому `apps/api/Dockerfile` обязан
+вызывать `npm run db:generate --workspace @portal/api` перед сборкой: без
+сгенерированного клиента `@prisma/client` не экспортирует `PrismaClient`,
+и `tsc` падает каскадом ошибок по всему `src`.
+
+Там же вызывается `npm run build:scripts` — это `tsc -p tsconfig.scripts.json`,
+он кладёт `scripts/create-user.ts` в `dist/scripts/`, чтобы работал
+`node dist/scripts/create-user.js` в контейнере. Этой сборке нужен
+`scripts/fastify-cookie.d.ts`: без него tsc не видит аугментации
+`request.cookies` / `reply.setCookie` из `@fastify/cookie`.
 
 ### Проверка перед завершением работы
 

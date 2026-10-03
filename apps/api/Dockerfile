@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -10,9 +10,14 @@ RUN npm ci --workspace @portal/api --ignore-scripts
 
 COPY apps/api apps/api
 COPY packages/shared packages/shared
-RUN npm run build --workspace @portal/api
+# db:generate обязателен до tsc: без сгенерированного клиента @prisma/client
+# не экспортирует PrismaClient и сборка падает. На уровне корня это делает
+# скрипт build, но здесь вызывается сборка воркспейса напрямую.
+RUN npm run db:generate --workspace @portal/api \
+    && npm run build --workspace @portal/api \
+    && npm run build:scripts --workspace @portal/api
 
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
@@ -21,9 +26,10 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/apps/api/package.json ./package.json
 COPY --from=build /app/apps/api/prisma ./prisma
-COPY --from=build /app/apps/api/node_modules/.prisma ./node_modules/.prisma
-# Скрипты для управления пользователями в продакшене
-COPY --from=build /app/apps/api/scripts ./scripts
+# Сгенерированный клиент лежит в корневом node_modules, а не в apps/api:
+# prisma generate пишет его на уровень npm workspaces. Копировать нечего —
+# он уже приехал вместе с node_modules. Путь apps/api/node_modules/.prisma
+# в старом Dockerfile не существовал, и сборка падала.
 
 RUN apk add --no-cache openssl
 
