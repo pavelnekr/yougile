@@ -12,6 +12,12 @@ const historyQuerySchema = z.object({
 });
 
 const pageSize = 25;
+// Сводка отдаёт всех участников и всех инженеров: в рабочем пространстве на
+// 1300 человек таблица становилась в 54 тысячи пикселей и переставала
+// прокручиваться. Сверху показываем самых активных, а счётчик честно говорит,
+// сколько строк не попало.
+const USERS_LIMIT = 25;
+const ENGINEERS_LIMIT = 10;
 // Типы операций, которые попадают в журнал и аналитику портала.
 const journalTypes = [OperationType.ASSIGN, OperationType.REMOVE, OperationType.COMMENT] as const;
 const operationTypeByFilter = {
@@ -235,9 +241,20 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
         },
         activity: [...activity.entries()].sort(([left], [right]) => left.localeCompare(right))
           .map(([key, values]) => ({ key, label: bucketLabel(key, days), ...values })),
-        users: [...actors.values()].sort((left, right) =>
-          (right.uploads + right.operations) - (left.uploads + left.operations)),
-        engineers: [...engineers.values()].sort((left, right) => right.assignments - left.assignments).slice(0, 10),
+        users: [...actors.values()]
+          .sort((left, right) =>
+            (right.uploads + right.operations) - (left.uploads + left.operations))
+          .slice(0, USERS_LIMIT),
+        usersTotal: actors.size,
+        // Порядок считается по обоим видам работ. Раньше сортировка шла только
+        // по назначениям, и инженер, снятый с 700 площадок, но ни разу не
+        // назначенный, уезжал в конец и попадал под срез — вместе со своими
+        // семьюстами снятиями.
+        engineers: [...engineers.values()]
+          .sort((left, right) =>
+            Math.max(right.assignments, right.removals) - Math.max(left.assignments, left.removals))
+          .slice(0, ENGINEERS_LIMIT),
+        engineersTotal: engineers.size,
         engineerNamesAvailable,
         recentUploads: imports.slice(-5).reverse().map((batch) => ({
           fileName: batch.fileName,

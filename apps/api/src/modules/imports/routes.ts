@@ -22,6 +22,10 @@ import { parsePlanWorkbook } from "./xlsx.js";
 
 const maxStoredImports = 5;
 const importRetentionLockId = 847201563;
+// Сколько строк XLSX отдаём в просмотр содержимого. Дальше пользователь всё
+// равно не читает таблицу глазами, а страница с несколькими тысячами ячеек
+// перестаёт прокручиваться.
+const DETAIL_ROW_LIMIT = 300;
 
 const previewSchema = z.object({
   rowNumbers: z.array(z.number().int().positive()).min(1).max(maxSitesPerOperation, tooManySitesError("строк XLSX"))
@@ -116,7 +120,12 @@ export async function registerImportRoutes(
         where: { id: request.params.id },
         include: {
           createdBy: { select: { displayName: true } },
-          rows: { orderBy: { rowNumber: "asc" } }
+          _count: { select: { rows: true } },
+          // Содержимое показывается целиком, поэтому число строк ограничено:
+          // без take батча на 1200 строк превращалась в 37 тысяч ячеек и
+          // растягивала документ до 33 тысяч пикселей. Имена столбцов у всех
+          // строк одного листа одинаковые, так что по выборке columns тоже верны.
+          rows: { orderBy: { rowNumber: "asc" }, take: DETAIL_ROW_LIMIT }
         }
       });
       if (!batch) return reply.code(404).send({ error: "Загрузка XLSX не найдена." });
@@ -138,6 +147,9 @@ export async function registerImportRoutes(
           ? batch.metadata.sheetName
           : null,
         columns,
+        rowsShown: batch.rows.length,
+        rowsTotal: batch._count.rows,
+        rowsTruncated: batch._count.rows > batch.rows.length,
         rows: batch.rows.map((row) => ({
           rowNumber: row.rowNumber,
           siteId: row.siteId,

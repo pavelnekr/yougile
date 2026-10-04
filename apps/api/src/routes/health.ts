@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import type { Redis } from "ioredis";
+import { config } from "../config.js";
 
 export async function registerHealthRoutes(
   app: FastifyInstance,
@@ -26,7 +27,13 @@ export async function registerHealthRoutes(
     }
 
     const status = database === "ok" && queue === "ok" ? "ok" : "degraded";
-    const result = { status, services: { api: "ok", database, queue } };
+    // Отдельно сообщаем, задан ли токен YouGile. Без него клиент вообще не
+    // ходит в сеть (см. YougileClient), и пять экранов портала падают с
+    // сообщением про колонку плана, хотя колонка тут ни при чём. Статус не
+    // влияет на код ответа: база и очередь живы, это состояние настройки, а не
+    // авария, поэтому 503 не ставим.
+    const yougile = config.YOUGILE_API_TOKEN ? "ok" : "not_configured";
+    const result = { status, services: { api: "ok", database, queue, yougile } };
     return status === "ok" ? result : reply.code(503).send(result);
   });
 }
