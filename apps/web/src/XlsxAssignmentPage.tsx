@@ -11,6 +11,7 @@ import {
 import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { countRu, rowForms, siteForms } from "./plural";
 
 type ImportRow = {
   rowNumber: number;
@@ -346,7 +347,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
           <div className="panel import-summary-panel">
             <div className="import-file-heading">
               <span className="xlsx-file-icon"><FileSpreadsheet size={19} /></span>
-              <div><strong>{planImport.fileName}</strong><small>Лист «{planImport.sheetName}» · строк в плане: {planImport.rowCount}</small></div>
+              <div><strong>{planImport.fileName}</strong><small>Лист «{planImport.sheetName}» · {countRu(planImport.rowCount, rowForms)} в плане</small></div>
               <button className="text-button" disabled={operationPending} onClick={clearImport}>Загрузить другой XLSX</button>
             </div>
             <div className="import-counts">
@@ -361,7 +362,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
 
           <div className="panel imported-rows-panel" ref={rowsStepRef}>
             <div className="imported-rows-toolbar">
-              <div><h2>1. Площадки из загруженного плана</h2><p>{selectedReadyRows.length} строк с найденной площадкой и инженером выбрано · строки с ошибками нельзя назначить</p></div>
+              <div><h2>1. Площадки из загруженного плана</h2><p>{countRu(selectedReadyRows.length, rowForms)} с найденной площадкой и инженером выбрано · строки с ошибками нельзя назначить</p></div>
               <label className="sites-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Номер, адрес или инженер" /></label>
             </div>
             <div className="import-row-header"><span>Строка / ID</span><span>Адрес площадки</span><span>Инженер из XLSX</span><span>Статус</span></div>
@@ -471,7 +472,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
 
           {preview && (
             <div className="panel xlsx-assignment-preview" ref={previewStepRef}>
-              <div className="assignment-panel-heading"><div><h2>3. Предпросмотр изменений</h2><p>{preview.count} площадок, только из загруженного XLSX</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
+              <div className="assignment-panel-heading"><div><h2>3. Предпросмотр изменений</h2><p>{countRu(preview.count, siteForms)}, только из загруженного XLSX</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
               <div className="preview-summary">Для каждой строки будет назначен инженер из XLSX, а сформированный по её дате и времени комментарий отправлен в чат задачи. Существующие ответственные сохраняются; комментарий отправится и если инженер уже назначен.</div>
               <blockquote className="comment-preview"><strong>Шаблон:</strong> {comment.trim()}</blockquote>
               <div className="xlsx-preview-list">
@@ -501,7 +502,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
             <div><h2>{operation?.status === "SUCCEEDED" ? "Назначения и комментарии по XLSX завершены" : operation?.status === "PARTIAL" || operation?.status === "FAILED" ? "Результат назначения и комментариев" : "Назначаем инженеров и отправляем комментарии"}</h2><p>{operation?.message ?? "Операция добавлена в очередь."}</p></div>
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
           </div>
-          {operationPending && <div className="operation-progress"><span style={{ width: `${operation ? Math.round(operation.completed / operation.total * 100) : 2}%` }} /></div>}
+          {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
         </div>
       )}

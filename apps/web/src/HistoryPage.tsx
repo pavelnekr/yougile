@@ -11,6 +11,10 @@ import {
   UsersRound
 } from "lucide-react";
 import { apiFetch } from "./apiClient";
+import { countRu, engineerForms, operationForms, participantForms, recordForms, rowForms } from "./plural";
+import { avatarInitial } from "./avatar";
+import FixtureToggle from "./dev/FixtureToggle";
+import { useFixtureMode } from "./dev/useFixtureMode";
 
 type Period = "30" | "90" | "all";
 type HistoryType = "ALL" | "ASSIGN" | "REMOVE" | "COMMENT";
@@ -32,6 +36,8 @@ type HistorySummary = {
   users: { name: string; uploads: number; operations: number; assignments: number; removals: number; comments: number }[];
   engineers: { name: string; assignments: number; removals: number }[];
   engineerNamesAvailable: boolean;
+  usersTotal?: number;
+  engineersTotal?: number;
   recentUploads: { fileName: string; rowCount: number; status: string; createdAt: string; uploadedBy: string }[];
   uploadRetentionNote: string;
 };
@@ -68,6 +74,8 @@ function number(value: number) {
   return value.toLocaleString("ru-RU");
 }
 
+// Первый знак для аватара берётся из общего модуля: правило одно на весь портал.
+
 function itemStatusLabel(status: HistoryItem["status"]) {
   if (status === "SUCCEEDED") return "Выполнено";
   if (status === "FAILED") return "Ошибка";
@@ -92,8 +100,28 @@ export default function HistoryPage() {
   const [loadingRecords, setLoadingRecords] = useState(true);
   const [error, setError] = useState("");
   const [recordsError, setRecordsError] = useState("");
+  const [fixtureMode, setFixtureMode] = useFixtureMode();
+
+  // Фикстуры break-ui живут в модули без сети: тот же компонент, те же функции
+  // форматирования, другой набор значений. Модуль грузится динамически, и в
+  // продакшне до этого места не доходит: useFixtureMode() без DEV всегда
+  // отдаёт "demo".
+  useEffect(() => {
+    if (fixtureMode === "demo") return;
+    const controller = new AbortController();
+    void import("./dev/worstCase").then(async ({ loadHistoryFixture }) => {
+      const fixture = await loadHistoryFixture(fixtureMode);
+      if (controller.signal.aborted || !fixture) return;
+      setSummary(fixture.summary as HistorySummary);
+      setRecords(fixture.records as HistoryItems);
+      setLoadingSummary(false);
+      setLoadingRecords(false);
+    });
+    return () => controller.abort();
+  }, [fixtureMode]);
 
   useEffect(() => {
+    if (fixtureMode !== "demo") return;
     const controller = new AbortController();
     setLoadingSummary(true);
     setError("");
@@ -111,9 +139,10 @@ export default function HistoryPage() {
         if (!controller.signal.aborted) setLoadingSummary(false);
       });
     return () => controller.abort();
-  }, [period]);
+  }, [period, fixtureMode]);
 
   useEffect(() => {
+    if (fixtureMode !== "demo") return;
     const controller = new AbortController();
     const params = new URLSearchParams({
       days: period,
@@ -137,11 +166,18 @@ export default function HistoryPage() {
         if (!controller.signal.aborted) setLoadingRecords(false);
       });
     return () => controller.abort();
-  }, [period, page, type, search]);
+  }, [period, page, type, search, fixtureMode]);
 
   const total = summary?.totals;
   const maxActivity = Math.max(1, ...(summary?.activity.flatMap((day) => [day.uploads, day.assignments, day.removals, day.comments]) ?? []));
-  const maxEngineerActivity = Math.max(1, ...(summary?.engineers.map((person) => person.assignments) ?? []));
+  // Делитель должен учитывать оба вида работ. Раньше максимум считался только по
+// назначениям, и инженер, снятый с большего числа площадок, давал полосу шире
+// 100%: полоса уезжала за дорожку, налезала на счётчик и растягивала страницу по
+// горизонтали.
+const maxEngineerActivity = Math.max(
+  1,
+  ...(summary?.engineers.map((person) => Math.max(person.assignments, person.removals)) ?? [])
+);
   const pageCount = Math.max(1, Math.ceil((records?.total ?? 0) / (records?.pageSize ?? 25)));
 
   return (
@@ -159,9 +195,9 @@ export default function HistoryPage() {
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}
 
       <div className="history-stat-grid">
-        <HistoryStat icon={ArrowUpRight} label="Работ назначено" value={total?.assignments} foot={`${number(total?.assignmentOperations ?? 0)} операций назначения`} tone="green" loading={loadingSummary} />
+        <HistoryStat icon={ArrowUpRight} label="Работ назначено" value={total?.assignments} foot={`${countRu(total?.assignmentOperations ?? 0, operationForms)} назначения`} tone="green" loading={loadingSummary} />
         <HistoryStat icon={ArrowDownToLine} label="Работ снято" value={total?.removals} foot="Инженеры сняты с площадок" tone="violet" loading={loadingSummary} />
-        <HistoryStat icon={MessageSquarePlus} label="Комментариев отправлено" value={total?.comments} foot={`${number(total?.commentOperations ?? 0)} операций комментариев`} tone="blue" loading={loadingSummary} />
+        <HistoryStat icon={MessageSquarePlus} label="Комментариев отправлено" value={total?.comments} foot={`${countRu(total?.commentOperations ?? 0, operationForms)} комментариев`} tone="blue" loading={loadingSummary} />
         <HistoryStat icon={Activity} label="С ошибкой" value={total?.failedItems} foot={`${number(total?.successfulItems ?? 0)} успешно · ${number(total?.pendingOperations ?? 0)} выполняется`} tone="amber" loading={loadingSummary} />
       </div>
 
@@ -207,6 +243,12 @@ export default function HistoryPage() {
                 </div>
               ))}
               <div className="history-engineer-legend"><span><i className="legend-assign" /> Назначено</span><span><i className="legend-remove" /> Снято</span></div>
+              {(summary.engineersTotal ?? 0) > summary.engineers.length && (
+                <p className="history-truncated-note">
+                  Показаны {number(summary.engineers.length)} из {countRu(summary.engineersTotal ?? 0, engineerForms)}.
+                  Порядок считается по обоим видам работ: снятия учитываются наравне с назначениями.
+                </p>
+              )}
             </div>
           ) : <div className="history-empty">Пока нет данных о назначенных инженерах.</div>}
         </section>
@@ -220,9 +262,15 @@ export default function HistoryPage() {
             <table className="history-users-table">
               <thead><tr><th>Пользователь</th><th>Загрузил XLSX</th><th>Операций</th><th>Назначено</th><th>Снято</th><th>Комментариев</th></tr></thead>
               <tbody>{summary.users.map((user) => (
-                <tr key={user.name}><td><span className="history-user-name"><span>{user.name.slice(0, 1).toLocaleUpperCase("ru")}</span>{user.name}</span></td><td>{number(user.uploads)}</td><td>{number(user.operations)}</td><td>{number(user.assignments)}</td><td>{number(user.removals)}</td><td>{number(user.comments)}</td></tr>
+                <tr key={user.name}><td><span className="history-user-name"><span>{avatarInitial(user.name)}</span>{user.name}</span></td><td>{number(user.uploads)}</td><td>{number(user.operations)}</td><td>{number(user.assignments)}</td><td>{number(user.removals)}</td><td>{number(user.comments)}</td></tr>
               ))}</tbody>
             </table>
+            {(summary.usersTotal ?? 0) > summary.users.length && (
+              <p className="history-truncated-note">
+                Показаны {number(summary.users.length)} из {countRu(summary.usersTotal ?? 0, participantForms)}.
+                Таблица без постраничной разбивки: дальше она уже не прокручивается.
+              </p>
+            )}
           </div>
         ) : <div className="history-empty">За этот период пользователей и загрузок нет.</div>}
         <p className="history-auth-note">До подключения авторизации загрузки и операции отображаются под именем «Локальный оператор».</p>
@@ -230,11 +278,20 @@ export default function HistoryPage() {
 
       <section className="panel history-panel history-records-panel">
         <div className="history-panel-heading">
-          <div><h2>Какие работы выполнялись</h2><p>{records ? `${number(records.total)} записей за выбранный период` : "Назначения, снятия и комментарии по каждой площадке"}</p></div>
+          <div><h2>Какие работы выполнялись</h2><p>{records ? `${countRu(records.total, recordForms)} за выбранный период` : "Назначения, снятия и комментарии по каждой площадке"}</p></div>
           <span className="history-panel-icon"><Clock3 size={15} /></span>
         </div>
         <div className="history-record-filters">
-          <label className="history-search"><Search size={14} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Площадка, адрес или инженер" /></label>
+          <label className="history-search"><Search size={14} /><input
+            value={search}
+            // Сервер отклоняет запрос длиннее 100 символов и отвечает 400
+            // («Проверьте параметры фильтра истории»), поэтому лимит заранее на
+            // поле: пользователь допечатывает адрес и получает ошибку вместо
+            // результата.
+            maxLength={100}
+            onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+            placeholder="Площадка, адрес или инженер"
+          /></label>
           <select value={type} onChange={(event) => { setType(event.target.value as HistoryType); setPage(1); }} aria-label="Тип операции">
             <option value="ALL">Все операции</option><option value="ASSIGN">Назначения</option><option value="REMOVE">Снятия</option><option value="COMMENT">Комментарии</option>
           </select>
@@ -274,7 +331,7 @@ export default function HistoryPage() {
           <div className="history-upload-list">{summary.recentUploads.map((upload) => (
             <div className="history-upload-row" key={`${upload.fileName}-${upload.createdAt}`}>
               <span className="xlsx-file-icon"><FileSpreadsheet size={15} /></span>
-              <span className="history-upload-file"><strong title={upload.fileName}>{upload.fileName}</strong><small>{number(upload.rowCount)} строк · {formatDate(upload.createdAt)} · {upload.uploadedBy}</small></span>
+              <span className="history-upload-file"><strong title={upload.fileName}>{upload.fileName}</strong><small>{countRu(upload.rowCount, rowForms)} · {formatDate(upload.createdAt)} · {upload.uploadedBy}</small></span>
               <span className={`import-audit-status import-audit-status-${upload.status.toLowerCase()}`}>{upload.status === "COMPLETE" ? "Завершена" : upload.status === "ASSIGNING" ? "В обработке" : "Загружена"}</span>
             </div>
           ))}</div>
@@ -282,6 +339,7 @@ export default function HistoryPage() {
       </section>
 
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Статистика и детализация по сохранённым операциям</span></footer>
+      <FixtureToggle mode={fixtureMode} onChange={setFixtureMode} />
     </section>
   );
 }

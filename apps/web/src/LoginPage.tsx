@@ -120,9 +120,9 @@ export default function LoginPage({
     }
   };
 
-  const passwordField = (name: string, autoComplete: string, placeholder: string) => (
+  const passwordField = (name: string, autoComplete: string, placeholder: string, enterKeyHint: "next" | "go" = "next") => (
     <span className="login-password-wrap">
-      <input name={name} type={passwordVisible ? "text" : "password"} autoComplete={autoComplete} placeholder={placeholder} required />
+      <input name={name} type={passwordVisible ? "text" : "password"} autoComplete={autoComplete} autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint={enterKeyHint} placeholder={placeholder} required />
       <button
         className="login-password-toggle"
         type="button"
@@ -171,11 +171,11 @@ export default function LoginPage({
             <form className="login-form" onSubmit={submitLogin}>
               <label className="login-field">
                 <span>Логин</span>
-                <input name="username" type="text" autoComplete="username" placeholder="Введите логин" required />
+                <input name="username" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" placeholder="Введите логин" required />
               </label>
               <label className="login-field">
                 <span>Пароль</span>
-                {passwordField("password", "current-password", "Введите пароль")}
+                {passwordField("password", "current-password", "Введите пароль", "go")}
               </label>
               <div className="login-form-options">
                 <label className="login-remember"><input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} /> <span>Запомнить меня</span></label>
@@ -191,11 +191,11 @@ export default function LoginPage({
             <form className="login-form" onSubmit={submitRegister}>
               <label className="login-field">
                 <span>Логин</span>
-                <input name="username" type="text" autoComplete="username" placeholder="Придумайте логин" minLength={3} required />
+                <input name="username" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" placeholder="Придумайте логин" minLength={3} required />
               </label>
               <label className="login-field">
                 <span>Имя пользователя</span>
-                <input name="displayName" type="text" autoComplete="name" placeholder="Как вас показывать в портале" />
+                <input name="displayName" type="text" autoComplete="name" autoCapitalize="words" enterKeyHint="next" placeholder="Как вас показывать в портале" />
               </label>
               <label className="login-field">
                 <span>Пароль</span>
@@ -207,7 +207,7 @@ export default function LoginPage({
               </label>
               <label className="login-field">
                 <span>Ключ регистрации</span>
-                {passwordField("registrationKey", "off", "Ключ от администратора")}
+                {passwordField("registrationKey", "off", "Ключ от администратора", "go")}
                 <small className="login-field-hint">Без правильного ключа регистрация не пройдёт.</small>
               </label>
               <button className="login-submit" type="submit" disabled={submitting}>

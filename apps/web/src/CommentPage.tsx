@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { countRu, siteForms } from "./plural";
 
 export type PlannedSite = {
   taskId: string;
@@ -372,7 +373,7 @@ export default function CommentPage({
       {preview && (
         <div className="panel xlsx-assignment-preview comment-preview-panel" ref={previewStepRef}>
           <div className="assignment-panel-heading">
-            <div><h2>3. Предпросмотр</h2><p>{preview.count} площадок · задачи перечитаны в YouGile</p></div>
+            <div><h2>3. Предпросмотр</h2><p>{countRu(preview.count, siteForms)} · задачи перечитаны в YouGile</p></div>
             <span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span>
           </div>
           <div className="preview-summary">Комментарий будет отправлен в чат каждой задачи. Ответственные не меняются, существующие сообщения сохраняются.</div>
@@ -417,7 +418,7 @@ export default function CommentPage({
             </div>
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
           </div>
-          {operationPending && <div className="operation-progress"><span style={{ width: `${operation ? Math.round(operation.completed / operation.total * 100) : 2}%` }} /></div>}
+          {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
           {operationError && <p className="assignment-error">{operationError}</p>}
           {failedItems.length > 0 && (
             <div className="operation-failures">

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, FileSpreadsheet, RefreshCw, Rows3 } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { countRu, rowForms, uploadForms } from "./plural";
+import FixtureToggle from "./dev/FixtureToggle";
+import { useFixtureMode } from "./dev/useFixtureMode";
 
 type ImportBatch = {
   id: string;
@@ -14,6 +17,9 @@ type ImportBatch = {
 type ImportDetails = ImportBatch & {
   sheetName: string | null;
   columns: string[];
+  rowsShown?: number;
+  rowsTotal?: number;
+  rowsTruncated?: boolean;
   rows: {
     rowNumber: number;
     siteId: string | null;
@@ -26,6 +32,11 @@ type ImportDetails = ImportBatch & {
 
 const preferredColumns = ["data", "day", "time", "id_site", "address", "comment", "user", "comment2", "klaster"];
 
+// Пустая ячейка и безымянный столбец. Раньше прочерк был захардкожен в трёх
+// местах, а столбец без имени давал пустой заголовок шириной 28px.
+const EMPTY_CELL = "—";
+const UNNAMED_COLUMN = "Без названия";
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось загрузить данные аудита.";
 }
@@ -37,11 +48,55 @@ function formatDate(value: string) {
     : "Дата неизвестна";
 }
 
-function cellText(value: unknown) {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "string") return value.trim() || "—";
+// Разряды через toLocaleString: без них счётчик строк в шапке перескакивал бы с
+// «999» на «1000» без пробела, а миллион выглядел бы как «1000000».
+function numberRu(value: number) {
+  return value.toLocaleString("ru-RU");
+}
+
+// ExcelJS отдаёт не только примитивы: гиперссылка приходит объектом
+// { text, hyperlink }, форматированный текст — { richText: [...] }, формула —
+// { formula, result }. JSON.stringify превращал их в простыню вида
+// {"text":"...","hyperlink":"https://..."} прямо в ячейке таблицы, поэтому
+// разбираем известные формы и показываем то, что человек видит в Excel.
+function cellText(value: unknown): string {
+  if (value === null || value === undefined) return EMPTY_CELL;
+  if (typeof value === "string") return value.trim() || EMPTY_CELL;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value);
+  if (value instanceof Date) return value.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" });
+  if (typeof value === "object") return objectCellText(value as Record<string, unknown>) || EMPTY_CELL;
+  return String(value);
+}
+
+function objectCellText(value: Record<string, unknown>): string {
+  // Гиперссылка: показываем подпись, а не адрес целиком.
+  if (typeof value.hyperlink === "string") {
+    const label = typeof value.text === "string" ? value.text.trim() : "";
+    return label || value.hyperlink;
+  }
+  // Форматированный текст: склеиваем фрагменты в строку.
+  if (Array.isArray(value.richText)) {
+    const joined = value.richText
+      .map((run) => (typeof run === "string" ? run : String((run as { text?: unknown })?.text ?? "")))
+      .join("")
+      .trim();
+    if (joined) return joined;
+  }
+  // Формула: важен результат, а не текст формулы.
+  if ("result" in value) {
+    return value.result === null || value.result === undefined
+      ? typeof value.formula === "string"
+        ? `=${value.formula}`
+        : EMPTY_CELL
+      : cellText(value.result);
+  }
+  // Ошибка Excel.
+  if (typeof value.error === "string") return value.error;
+  try {
+    return JSON.stringify(value) ?? EMPTY_CELL;
+  } catch {
+    return EMPTY_CELL;
+  }
 }
 
 function statusLabel(status: ImportBatch["status"]) {
@@ -66,6 +121,25 @@ export default function ImportAuditPage() {
   const detailsRequestId = useRef(0);
   const detailsStepRef = useRef<HTMLElement>(null);
   const pageSize = 8;
+  const [fixtureMode, setFixtureMode] = useFixtureMode();
+
+  // Фикстуры break-ui: тот же компонент и те же функции разбора ячеек, но
+  // значения приходят из модуля вместо сети. Модуль динамический, и в
+  // продакшне до этого места не доходит: useFixtureMode() без DEV всегда
+  // отдаёт "demo".
+  useEffect(() => {
+    if (fixtureMode === "demo") return;
+    const controller = new AbortController();
+    void import("./dev/worstCase").then(async ({ loadAuditFixture }) => {
+      const fixture = await loadAuditFixture(fixtureMode);
+      if (controller.signal.aborted || !fixture) return;
+      setItems(fixture.items as ImportBatch[]);
+      setDetails(fixture.details as ImportDetails);
+      setLoadingList(false);
+      setLoadingDetails(false);
+    });
+    return () => controller.abort();
+  }, [fixtureMode]);
   // Прокрутка к содержимому файла: список загрузок короткий, строки могут быть
   // длинными, и без прокрутки панель результатов остаётся за пределами экрана.
   useStepScroll(details?.id ?? null, detailsStepRef);
@@ -88,12 +162,19 @@ export default function ImportAuditPage() {
   }, []);
 
   useEffect(() => {
+    if (fixtureMode !== "demo") return;
     const controller = new AbortController();
     void loadBatches(controller.signal);
     return () => controller.abort();
-  }, [loadBatches]);
+  }, [loadBatches, fixtureMode]);
 
   const openBatch = async (batch: ImportBatch) => {
+    // В режиме фикстур содержимое уже на экране: выделение строки оставляем,
+    // а запрос не отправляем, иначе фикстура сменится настоящими данными.
+    if (fixtureMode !== "demo") {
+      setSelectedId(batch.id);
+      return;
+    }
     const requestId = ++detailsRequestId.current;
     setSelectedId(batch.id);
     setDetails(null);
@@ -139,7 +220,7 @@ export default function ImportAuditPage() {
 
       <section className="panel import-audit-list-panel">
         <div className="panel-heading">
-          <div><h2>Загруженные файлы</h2><p>{items.length ? `Храним последние ${items.length} загрузок` : "Имя файла, кто и когда его загрузил"}</p></div>
+          <div><h2>Загруженные файлы</h2><p>{items.length ? `В списке ${countRu(items.length, uploadForms)}` : "Имя файла, кто и когда его загрузил"}</p></div>
           <button className="text-button import-audit-refresh" disabled={loadingList} onClick={() => void loadBatches()}>
             <RefreshCw size={13} className={loadingList ? "audit-refreshing" : ""} /> Обновить
           </button>
@@ -162,7 +243,7 @@ export default function ImportAuditPage() {
                       <td><span className="import-audit-file"><FileSpreadsheet size={16} /><strong title={item.fileName}>{item.fileName}</strong></span></td>
                       <td>{item.uploadedBy}</td>
                       <td><span className="import-audit-date"><Clock3 size={13} />{formatDate(item.createdAt)}</span></td>
-                      <td>{item.rowCount.toLocaleString("ru-RU")}</td>
+                      <td>{numberRu(item.rowCount)}</td>
                       <td><span className={`import-audit-status import-audit-status-${item.status.toLowerCase()}`}>{item.status === "COMPLETE" && <CheckCircle2 size={12} />}{statusLabel(item.status)}</span></td>
                     </tr>
                   ))}
@@ -181,10 +262,20 @@ export default function ImportAuditPage() {
         <div className="panel-heading">
           <div>
             <h2>{details ? details.fileName : "Содержимое XLSX"}</h2>
-            <p>{details ? `${details.sheetName ? `Лист «${details.sheetName}» · ` : ""}${details.rowCount} строк · ${details.uploadedBy} · ${formatDate(details.createdAt)}` : "Выберите файл в верхнем блоке, чтобы просмотреть его строки"}</p>
+            <p>{details ? `${details.sheetName ? `Лист «${details.sheetName}» · ` : ""}${countRu(details.rowCount, rowForms)} · ${details.uploadedBy} · ${formatDate(details.createdAt)}` : "Выберите файл в верхнем блоке, чтобы просмотреть его строки"}</p>
           </div>
-          {details && <span className="import-details-row-count"><Rows3 size={14} /> {details.rows.length}</span>}
+          {details && (
+            <span className="import-details-row-count">
+              <Rows3 size={14} /> {details.rowsTruncated ? `${numberRu(details.rowsShown ?? details.rows.length)} из ${numberRu(details.rowsTotal ?? details.rowCount)}` : numberRu(details.rows.length)}
+            </span>
+          )}
         </div>
+        {details?.rowsTruncated && (
+          <p className="import-details-truncated">
+            Показаны первые {numberRu(details.rowsShown ?? 0)} строк. Полный файл целиком не отдаём: таблица на
+            несколько тысяч ячеек не прокручивается. Нужны все строки — выгрузите их в раздел «Проверка работ».
+          </p>
+        )}
         {error ? (
           <div className="import-audit-message import-audit-message-error"><AlertCircle size={16} />{error}</div>
         ) : loadingDetails ? (
@@ -192,7 +283,7 @@ export default function ImportAuditPage() {
         ) : details ? (
           <div className="import-details-table-wrap">
             <table className="import-details-table">
-              <thead><tr><th className="import-details-row-number">№</th>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+              <thead><tr><th className="import-details-row-number">№</th>{columns.map((column, index) => <th key={`${index}:${column}`} title={column || undefined}>{column || UNNAMED_COLUMN}</th>)}</tr></thead>
               <tbody>
                 {details.rows.map((row) => (
                   <tr key={row.rowNumber}>
@@ -208,6 +299,7 @@ export default function ImportAuditPage() {
         )}
       </section>
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>История загрузок XLSX</span></footer>
+      <FixtureToggle mode={fixtureMode} onChange={setFixtureMode} />
     </section>
   );
 }

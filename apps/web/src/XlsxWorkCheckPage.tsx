@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Clock3, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { countRu, rowForms } from "./plural";
 
 type ImportBatch = {
   id: string;
@@ -159,7 +160,7 @@ export default function XlsxWorkCheckPage() {
       <div className="eyebrow"><span className="eyebrow-line" /> ПРОВЕРКА РАБОТ ПО XLSX</div>
       <div className="sites-page-heading">
         <div><h1>Проверить работы</h1><p>Последние комментарии в задачах YouGile для площадок из выбранного XLSX.</p></div>
-        {checkedFile && <span className="sites-total">{items.length || checkedFile.rowCount} строк</span>}
+        {checkedFile && <span className="sites-total">{countRu(items.length || checkedFile.rowCount, rowForms)}</span>}
       </div>
 
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}
@@ -203,7 +204,7 @@ export default function XlsxWorkCheckPage() {
                       {batches.map((batch) => (
                         <button className="removal-history-item" key={batch.id} disabled={busy} onClick={() => void selectBatch(batch)}>
                           <span className="xlsx-file-icon"><FileSpreadsheet size={17} /></span>
-                          <span className="removal-history-file"><strong title={batch.fileName}>{batch.fileName}</strong><small>{batch.rowCount} строк · {formatDate(batch.createdAt)} · {batch.uploadedBy}</small></span>
+                          <span className="removal-history-file"><strong title={batch.fileName}>{batch.fileName}</strong><small>{countRu(batch.rowCount, rowForms)} · {formatDate(batch.createdAt)} · {batch.uploadedBy}</small></span>
                           <span className={`import-audit-status import-audit-status-${batch.status.toLowerCase()}`}>{batch.status === "COMPLETE" ? "Завершена" : batch.status === "ASSIGNING" ? "В обработке" : "Загружена"}</span>
                         </button>
                       ))}

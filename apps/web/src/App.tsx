@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
+  AlertCircle,
   ArrowDownToLine,
   ArrowRight,
   ArrowUpRight,
-  Bell,
   Check,
   ChevronDown,
   ClipboardCheck,
@@ -34,6 +34,8 @@ import { syncSectionUrl, useSectionUrl, type Section } from "./router.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
 import { useStepScroll } from "./useStepScroll.js";
+import { countRu, siteForms, taskForms } from "./plural.js";
+import { avatarInitial } from "./avatar.js";
 
 type Health = "loading" | "ok" | "error";
 type SiteLoadState = "loading" | "ready" | "error";
@@ -124,6 +126,11 @@ function App() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [section, navigate] = useSectionUrl();
   const [health, setHealth] = useState<Health>("loading");
+  // Портал умеет работать без YouGile: аудит, история и настройки читают базу.
+  // Но площадки, назначение, снятие и комментарии без токена невозможны, и
+  // раньше они падали с текстом про колонку плана — про настоящую причину
+  // пользователь узнавал только из лога сервера.
+  const [yougileConnected, setYougileConnected] = useState(true);
   const [sites, setSites] = useState<PlannedSite[]>([]);
   const [siteLoadState, setSiteLoadState] = useState<SiteLoadState>("loading");
   const [siteError, setSiteError] = useState("");
@@ -173,7 +180,10 @@ function App() {
         if (!response.ok) throw new Error("Backend недоступен");
         return response.json();
       })
-      .then((data: { status?: string }) => setHealth(data.status === "ok" ? "ok" : "error"))
+      .then((data: { status?: string; services?: { yougile?: string } }) => {
+        setYougileConnected(data.services?.yougile !== "not_configured");
+        setHealth(data.status === "ok" ? "ok" : "error");
+      })
       .catch(() => {
         if (!controller.signal.aborted) setHealth("error");
       });
@@ -298,12 +308,23 @@ function App() {
           <div className="topbar-actions">
             <div className={`service-status status-${health}`}><span className="status-dot" />{health === "ok" ? "API и сервисы доступны" : health === "loading" ? "Проверка API" : "API не подключён"}</div>
             <button className="icon-button search-button" aria-label="Поиск"><Search size={18} /></button>
-            <button className="icon-button notification-button" aria-label="Уведомления"><Bell size={18} /><i /></button>
-            <span className="topbar-avatar">{sessionUser.displayName.slice(0, 1).toLocaleUpperCase("ru")}</span>
+            <span className="topbar-avatar">{avatarInitial(sessionUser.displayName)}</span>
           </div>
         </header>
 
         <div className="page-content">
+          {!yougileConnected && health !== "loading" && (
+            <div className="yougile-offline-banner">
+              <AlertCircle size={16} />
+              <div>
+                <strong>Портал не подключён к YouGile</strong>
+                <span>
+                  На сервере не задан YOUGILE_API_TOKEN, поэтому площадки, назначение, снятие и комментарии
+                  работать не будут. Аудит загрузок, история и настройки доступны — они читают базу.
+                </span>
+              </div>
+            </div>
+          )}
           {activeSection === "Обзор" ? (
             <Overview onNavigate={chooseSection} health={health} sites={sites} siteLoadState={siteLoadState} siteError={siteError} />
           ) : activeSection === "Площадки" ? (
@@ -428,7 +449,7 @@ function Overview({
 
       <section className="bottom-grid">
         <div className="panel activity-panel planned-sites-preview">
-          <div className="panel-heading"><div><h2>Площадки в фильтрации</h2><p>{siteLoadState === "ready" ? `${sites.length.toLocaleString("ru-RU")} активных задач из YouGile` : "Актуальный список из YouGile"}</p></div><button className="text-button" onClick={() => onNavigate("Площадки")}>Все площадки <ArrowRight size={14} /></button></div>
+          <div className="panel-heading"><div><h2>Площадки в фильтрации</h2><p>{siteLoadState === "ready" ? `${countRu(sites.length, taskForms)} из YouGile` : "Актуальный список из YouGile"}</p></div><button className="text-button" onClick={() => onNavigate("Площадки")}>Все площадки <ArrowRight size={14} /></button></div>
           {siteLoadState === "loading" ? (
             <div className="sites-message">Загружаем список площадок…</div>
           ) : siteLoadState === "error" ? (
@@ -522,7 +543,7 @@ function SitesPage({ sites, loadState, error }: { sites: PlannedSite[]; loadStat
       <div className="eyebrow"><span className="eyebrow-line" /> ДАННЫЕ YOUGILE</div>
       <div className="sites-page-heading">
         <div><h1>Площадки в плане</h1><p>Активные задачи из колонки плана в YouGile.</p></div>
-        <span className="sites-total">{loadState === "ready" ? `${sites.length.toLocaleString("ru-RU")} площадок` : "Загрузка…"}</span>
+        <span className="sites-total">{loadState === "ready" ? countRu(sites.length, siteForms) : "Загрузка…"}</span>
       </div>
       <div className="panel sites-table-panel">
         <div className="sites-toolbar">
@@ -777,7 +798,7 @@ export function AssignmentPage({
 
           {preview && (
             <div className="panel assignment-preview-panel" ref={previewStepRef}>
-              <div className="assignment-panel-heading"><div><h2>3. Предпросмотр</h2><p>{preview.user.name} · {preview.items.length} площадок</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
+              <div className="assignment-panel-heading"><div><h2>3. Предпросмотр</h2><p>{preview.user.name} · {countRu(preview.items.length, siteForms)}</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
               <div className="preview-summary">Будет добавлен новый ответственный. Текущие инженеры останутся назначенными.</div>
               <div className="assignment-preview-list">
                 {preview.items.map((item) => (
@@ -813,7 +834,7 @@ export function AssignmentPage({
             <div><h2>{operation?.status === "SUCCEEDED" ? "Назначение завершено" : operation?.status === "PARTIAL" || operation?.status === "FAILED" ? "Результат операции" : "Выполняем назначение"}</h2><p>{operation?.message ?? "Задание добавлено в очередь YouGile."}</p></div>
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
           </div>
-          {operationPending && <div className="operation-progress"><span style={{ width: `${operation ? Math.round(operation.completed / operation.total * 100) : 2}%` }} /></div>}
+          {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
           {operationError && <p className="assignment-error">{operationError}</p>}
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
           {operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) && <button className="outline-button assignment-new-button" onClick={resetAssignment}><RefreshCw size={14} /> Новое назначение</button>}

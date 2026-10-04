@@ -9,15 +9,34 @@
   --muted: #828b9c;
   --line: #e9edf3;
   --blue: #4169e1;
+  /* Motion. Любой переход в портале берёт кривую и длительность отсюда,
+     а не пишет `ease`/`ease-in` вручную: встроенные кривые слишком вялые. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 120ms;
+  --dur-ui: 180ms;
+  --dur-modal: 240ms;
+  --dur-progress: 300ms;
+  --press-scale: .97;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 360px; min-height: 100vh; }
+
+/* Платформенный слой для телефонов. Ниже только то, что нужно устройству,
+   а не оформлению: подсветка нажатия, задержка тапа, выделение текста.
+   Подсветку отключаем — отклик на нажатие даёт общий :active в конце файла. */
+html { -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; overscroll-behavior: none; }
+button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] { touch-action: manipulation; }
+/* Текст кнопки при долгом нажатии выделять нельзя. На содержимое страницы
+   правило не распространяется: адреса и сообщения об ошибках копируются. */
+button, [role="button"] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+body { margin: 0; min-width: 360px; min-height: 100vh; min-height: 100dvh; }
 button, a { font: inherit; }
 button { color: inherit; }
 
-.login-page { display: grid; min-height: 100vh; grid-template-columns: minmax(380px, .95fr) minmax(430px, 1.05fr); background: #fff; }
-.login-brand-panel { position: relative; display: flex; min-height: 100vh; flex-direction: column; overflow: hidden; padding: 37px clamp(32px, 6vw, 88px) 25px; color: #fff; background: radial-gradient(ellipse at 16% 86%, #344a9d 0, transparent 38%), linear-gradient(145deg, #1b2851 0%, #26396f 57%, #314985 100%); }
+.login-page { display: grid; min-height: 100vh; min-height: 100dvh; grid-template-columns: minmax(380px, .95fr) minmax(430px, 1.05fr); background: #fff; }
+.login-brand-panel { position: relative; display: flex; min-height: 100vh; min-height: 100dvh; flex-direction: column; overflow: hidden; padding: 37px clamp(32px, 6vw, 88px) 25px; color: #fff; background: radial-gradient(ellipse at 16% 86%, #344a9d 0, transparent 38%), linear-gradient(145deg, #1b2851 0%, #26396f 57%, #314985 100%); }
 .login-brand { position: relative; z-index: 1; display: inline-flex; width: fit-content; align-items: center; gap: 11px; color: #fff; text-decoration: none; }
 .login-brand .brand-copy strong, .login-mobile-brand .brand-copy strong { font: 800 19px "Segoe UI", sans-serif; letter-spacing: -.8px; }
 .login-brand .brand-copy small, .login-mobile-brand .brand-copy small { margin-top: 5px; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
@@ -41,7 +60,7 @@ button { color: inherit; }
 .login-decoration { position: absolute; border: 1px solid #ffffff0b; border-radius: 50%; pointer-events: none; }
 .login-decoration-one { right: -245px; bottom: -360px; width: 650px; height: 650px; }
 .login-decoration-two { right: -180px; bottom: -295px; width: 520px; height: 520px; }
-.login-form-panel { display: grid; min-height: 100vh; place-items: center; padding: 40px 30px; background: #fff; }
+.login-form-panel { display: grid; min-height: 100vh; min-height: 100dvh; place-items: center; padding: 40px 30px; background: #fff; }
 .login-form-wrap { width: min(380px, 100%); }
 .login-mobile-brand { display: none; align-items: center; gap: 10px; margin-bottom: 34px; color: #28365e; }
 .login-mobile-brand .brand-copy small { color: #9099aa; }
@@ -60,35 +79,31 @@ button { color: inherit; }
 .login-password-wrap input { border: 0; box-shadow: none; }
 .login-password-wrap input:focus { box-shadow: none; }
 .login-password-toggle { display: grid; width: 38px; height: 39px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 0 7px 7px 0; color: #8b95a7; background: transparent; cursor: pointer; }
-.login-password-toggle:hover { color: #536bc7; }
 .login-form-options { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: -2px; }
 .login-remember { display: inline-flex; align-items: center; gap: 7px; color: #778296; font-size: 9px; cursor: pointer; }
 .login-remember input { width: 14px; height: 14px; margin: 0; accent-color: #536dd1; }
 .login-reset-unavailable { color: #a2a9b5; font-size: 8px; }
-.login-submit { display: flex; height: 42px; align-items: center; justify-content: center; gap: 9px; margin-top: 3px; border: 0; border-radius: 7px; color: #fff; background: linear-gradient(100deg, #4d68d0, #526fdb); box-shadow: 0 4px 10px #4965d026; font-size: 10px; font-weight: 650; cursor: pointer; transition: filter .15s ease, transform .15s ease; }
-.login-submit:hover { filter: brightness(1.04); transform: translateY(-1px); }
+.login-submit { display: flex; height: 42px; align-items: center; justify-content: center; gap: 9px; margin-top: 3px; border: 0; border-radius: 7px; color: #fff; background: linear-gradient(100deg, #4d68d0, #526fdb); box-shadow: 0 4px 10px #4965d026; font-size: 10px; font-weight: 650; cursor: pointer; transition: filter var(--dur-ui) ease, transform var(--dur-press) var(--ease-out); }
 .login-submit:disabled { opacity: .65; cursor: default; transform: none; filter: none; }
 .login-notice { margin: -4px 0 0; padding: 10px 11px; border: 1px solid #f0e4c9; border-radius: 7px; color: #927542; background: #fffaf0; font-size: 9px; line-height: 1.5; }
 .login-notice-error { border-color: #f2d2d2; color: #b04a4a; background: #fdf4f4; }
 /* Экран, пока API проверяет действующую сессию при загрузке страницы. */
-.session-check { display: grid; min-height: 100vh; place-content: center; justify-items: center; gap: 13px; color: var(--muted); background: #f5f7fb; }
+.session-check { display: grid; min-height: 100vh; min-height: 100dvh; place-content: center; justify-items: center; gap: 13px; color: var(--muted); background: #f5f7fb; }
 .session-check p { margin: 0; font-size: 11px; }
 .session-check-spinner { width: 26px; height: 26px; border: 2px solid #dbe2f0; border-top-color: var(--blue); border-radius: 50%; animation: session-check-spin .8s linear infinite; }
 @keyframes session-check-spin { to { transform: rotate(360deg); } }
 .login-preview { display: grid; justify-items: center; gap: 9px; margin-top: 23px; padding-top: 17px; border-top: 1px solid #edf0f4; }
 .login-preview > span { color: #9aa2b0; font-size: 8px; }
 .login-preview button { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; color: #536bc7; background: none; font-size: 9px; font-weight: 600; cursor: pointer; }
-.login-preview button:hover { color: #354fae; }
 .login-form-footer { margin: 23px 0 0; color: #a4abb7; font-size: 8px; line-height: 1.5; text-align: center; }
 /* Переключатель «Войти / Зарегистрироваться» под формой. */
 .login-mode-switch { display: flex; width: 100%; align-items: center; justify-content: center; gap: 5px; margin-top: 19px; padding: 0; border: 0; color: #8b95a7; background: none; font: 9px "Segoe UI", sans-serif; cursor: pointer; }
 .login-mode-switch strong { color: #536bc7; font-weight: 650; }
-.login-mode-switch:hover strong { color: #354fae; }
 .login-mode-switch:disabled { opacity: .6; cursor: default; }
 .login-field-hint { color: #9aa3b2; font-size: 8px; font-weight: 400; line-height: 1.4; }
 
-.app-shell { min-height: 100vh; }
-.sidebar { position: fixed; z-index: 5; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 252px; padding: 24px 15px 13px; background: #fff; border-right: 1px solid #edf0f5; }
+.app-shell { min-height: 100vh; min-height: 100dvh; }
+.sidebar { position: fixed; z-index: 5; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 252px; padding: 24px 15px 13px; padding-top: calc(24px + env(safe-area-inset-top, 0px)); padding-bottom: calc(13px + env(safe-area-inset-bottom, 0px)); padding-left: calc(15px + env(safe-area-inset-left, 0px)); background: #fff; border-right: 1px solid #edf0f5; }
 .brand { display: flex; align-items: center; gap: 11px; margin: 0 10px 32px; color: inherit; text-decoration: none; }
 .brand-mark { display: grid; grid-template-columns: repeat(2, 10px); grid-template-rows: repeat(2, 10px); gap: 3px; transform: rotate(-8deg); }
 .brand-mark span { border-radius: 3px; background: #4169e1; }
@@ -107,7 +122,6 @@ button { color: inherit; }
 .nav-caption { margin: 31px 10px 10px; color: #a0a8b5; font-size: 9px; font-weight: 700; letter-spacing: 1.05px; }
 .navigation { display: grid; gap: 4px; }
 .nav-link { display: flex; height: 41px; align-items: center; gap: 11px; padding: 0 11px; border: 0; border-radius: 7px; color: #717b8d; background: transparent; text-align: left; font-size: 12px; cursor: pointer; }
-.nav-link:hover { background: #f7f8fc; color: #3f5ac2; }
 .nav-link-active { color: #3e5ed2; background: #eff2ff; font-weight: 600; }
 .nav-link-active:before { position: absolute; left: 0; width: 3px; height: 25px; border-radius: 0 3px 3px 0; background: #4a67dd; content: ""; }
 .nav-count { display: grid; width: 20px; height: 20px; margin-left: auto; place-items: center; border-radius: 6px; color: #828da1; background: #f0f2f6; font-size: 9px; }
@@ -119,8 +133,8 @@ button { color: inherit; }
 .profile { display: flex; width: 100%; align-items: center; gap: 10px; margin-top: 14px; padding: 13px 4px 2px; border: 0; border-top: 1px solid #edf0f5; background: none; text-align: left; cursor: pointer; }
 .profile-avatar, .topbar-avatar { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(145deg, #90a5e9, #586db8); font-size: 10px; font-weight: 600; }
 
-.main-area { min-height: 100vh; margin-left: 252px; }
-.topbar { position: sticky; z-index: 3; top: 0; display: flex; height: 65px; align-items: center; justify-content: space-between; padding: 0 39px; border-bottom: 1px solid #e9edf3; background: rgba(255,255,255,.88); backdrop-filter: blur(14px); }
+.main-area { min-height: 100vh; min-height: 100dvh; margin-left: 252px; }
+.topbar { position: sticky; z-index: 3; top: 0; display: flex; height: 65px; height: calc(65px + env(safe-area-inset-top, 0px)); align-items: center; justify-content: space-between; padding: 0 39px; padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid #e9edf3; background: rgba(255,255,255,.88); backdrop-filter: blur(14px); }
 .breadcrumbs { display: flex; align-items: center; gap: 11px; color: #939bac; font-size: 11px; }
 .breadcrumbs strong { color: #3d4658; font-weight: 600; }
 .crumb-separator { color: #c8ced8; }
@@ -130,11 +144,9 @@ button { color: inherit; }
 .status-ok .status-dot { background: #40b88b; box-shadow: 0 0 0 3px #e7f6ef; }
 .status-error .status-dot { background: #e18d72; box-shadow: 0 0 0 3px #fbefeb; }
 .icon-button { position: relative; display: grid; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 7px; color: #727d8e; background: transparent; cursor: pointer; }
-.icon-button:hover { background: #f3f5fa; }
-.notification-button i { position: absolute; top: 5px; right: 5px; width: 5px; height: 5px; border: 1px solid #fff; border-radius: 50%; background: #ed8c78; }
 .topbar-avatar { width: 29px; height: 29px; font-size: 9px; }
 .mobile-menu { display: none; }
-.page-content { max-width: 1440px; margin: 0 auto; padding: 34px 40px 24px; }
+.page-content { max-width: 1440px; margin: 0 auto; padding: 34px 40px 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 .welcome-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 27px; }
 .eyebrow { display: flex; align-items: center; gap: 8px; color: #818ca0; font-size: 9px; font-weight: 700; letter-spacing: 1.15px; }
 .eyebrow-line { display: inline-block; width: 15px; height: 2px; border-radius: 2px; background: #6882e2; }
@@ -143,7 +155,6 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .wave { display: inline-block; padding-left: 2px; color: #7c95e8; font-size: 22px; }
 .welcome-subtitle { margin: 0; color: #8790a0; font-size: 12px; }
 .outline-button { display: flex; height: 36px; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #e4e8f0; border-radius: 7px; color: #596477; background: #fff; font-size: 10px; font-weight: 600; cursor: pointer; }
-.outline-button:hover { border-color: #bdc9f2; color: #405fce; }
 .setup-notice { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 13px 15px; border: 1px solid #f0dfc0; border-radius: 9px; background: #fffaf1; }
 .notice-icon { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: #bd8e3f; background: #f9efd9; }
 .setup-notice strong { color: #71582e; font-size: 11px; }
@@ -151,8 +162,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .notice-tag { margin-left: auto; color: #ae8950; font-size: 8px; font-weight: 700; letter-spacing: .8px; }
 .stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .stat-card { min-height: 122px; padding: 15px 16px 13px; border: 1px solid #eaedf3; border-radius: 9px; background: #fff; box-shadow: 0 2px 5px #26365905; }
-.stat-card-button { display: flex; width: 100%; flex-direction: column; align-items: stretch; padding-top: 11px; color: inherit; text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease; }
-.stat-card-button:hover { border-color: #ccd6f4; box-shadow: 0 5px 14px #2537610b; }
+.stat-card-button { display: flex; width: 100%; flex-direction: column; align-items: stretch; padding-top: 11px; color: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-ui) var(--ease-out), box-shadow var(--dur-ui) var(--ease-out), transform var(--dur-press) var(--ease-out); }
 .stat-top { display: flex; align-items: center; justify-content: center; gap: 9px; color: #778193; font-size: 10px; font-weight: 500; }
 .stat-icon { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 8px; }
 .stat-title { color: #778193; font-size: 10px; font-weight: 500; }
@@ -183,8 +193,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .secure-label { display: flex; align-items: center; gap: 6px; color: #7c8799; font-size: 9px; }
 .secure-label svg { color: #55a382; }
 .actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
-.action-card { min-height: 172px; padding: 15px 16px 14px; border: 1px solid #e9edf3; border-radius: 9px; background: #fff; text-align: left; cursor: pointer; transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
-.action-card:hover { transform: translateY(-2px); border-color: #d8dff2; box-shadow: 0 8px 20px #2537610b; }
+.action-card { min-height: 172px; padding: 15px 16px 14px; border: 1px solid #e9edf3; border-radius: 9px; background: #fff; text-align: left; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), box-shadow var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out); }
 .action-card-top { display: flex; align-items: center; justify-content: space-between; }
 .action-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; }
 .action-icon.blue { color: #4c6bd7; background: #eef1ff; }
@@ -247,8 +256,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .sites-pagination > div { display: flex; align-items: center; gap: 10px; }
 .sites-pagination button { height: 27px; padding: 0 9px; border: 1px solid #e6eaf1; border-radius: 6px; color: #586477; background: #fff; font-size: 9px; cursor: pointer; }
 .sites-pagination button:disabled { color: #b7bec9; background: #fafbfc; cursor: default; }
-.btn-primary { display: inline-flex; min-height: 37px; align-items: center; justify-content: center; gap: 8px; padding: 0 13px; border: 1px solid #405fd0; border-radius: 7px; color: #fff; background: #4c69d8; font-size: 10px; font-weight: 600; cursor: pointer; transition: background .15s ease, opacity .15s ease; }
-.btn-primary:hover:not(:disabled) { background: #3e5ac4; }
+.btn-primary { display: inline-flex; min-height: 37px; align-items: center; justify-content: center; gap: 8px; padding: 0 13px; border: 1px solid #405fd0; border-radius: 7px; color: #fff; background: #4c69d8; font-size: 10px; font-weight: 600; cursor: pointer; transition: background var(--dur-ui) ease, opacity var(--dur-ui) ease, transform var(--dur-press) var(--ease-out); }
 .btn-primary:disabled { opacity: .48; cursor: not-allowed; }
 .assignment-page .sites-page-heading { margin-bottom: 17px; }
 .assignment-security-notice { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; padding: 11px 13px; border: 1px solid #e8e0c7; border-radius: 8px; color: #806c41; background: #fffaf0; font-size: 9px; line-height: 1.5; }
@@ -263,7 +271,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .assignment-sites-list { max-height: 610px; overflow: auto; border-top: 1px solid #eff1f5; border-bottom: 1px solid #eff1f5; }
 .assignment-site-option { display: grid; min-height: 38px; grid-template-columns: 17px 40px minmax(0, 1fr) 52px; align-items: center; gap: 9px; padding: 0 7px; border-bottom: 1px solid #f2f4f7; cursor: pointer; }
 .assignment-site-option:last-child { border-bottom: 0; }
-.assignment-site-option:hover, .assignment-site-selected { background: #f6f8ff; }
+.assignment-site-selected { background: #f6f8ff; }
 .assignment-site-option input { width: 14px; height: 14px; margin: 0; accent-color: #526dd1; cursor: pointer; }
 .assignment-site-option input:disabled { cursor: not-allowed; }
 .assignment-site-option .site-title { font-size: 9px; }
@@ -294,7 +302,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .assignment-operation { display: grid; gap: 11px; margin-top: 15px; }
 .assignment-operation-done { border-color: #dcece3; }
 .operation-progress { height: 6px; overflow: hidden; border-radius: 5px; background: #edf0f5; }
-.operation-progress span { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: #5986dc; transition: width .3s ease; }
+.operation-progress span { display: block; width: 100%; height: 100%; border-radius: inherit; background: #5986dc; transform-origin: left center; transition: transform var(--dur-progress) var(--ease-out); }
 .operation-failures { max-height: 180px; overflow: auto; padding: 0 10px; border-left: 2px solid #d37c68; }
 .operation-failures p { margin: 5px 0; color: #a75c4e; font-size: 9px; }
 .assignment-new-button { justify-self: start; }
@@ -341,17 +349,17 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
-  .sidebar { width: 252px; transform: translateX(-100%); transition: transform .2s ease; }
+  .sidebar { width: 252px; transform: translateX(-100%); transition: transform var(--dur-modal) var(--ease-drawer); }
   .sidebar-open { transform: translateX(0); }
   .mobile-scrim { position: fixed; z-index: 4; inset: 0; border: 0; background: #17223b66; }
   .main-area { margin-left: 0; }
-  .topbar { height: 58px; padding: 0 17px; }
+  .topbar { height: 58px; height: calc(58px + env(safe-area-inset-top, 0px)); padding: 0 17px; padding-top: env(safe-area-inset-top, 0px); }
   .mobile-menu { display: grid; }
   .breadcrumbs { margin-right: auto; margin-left: 9px; }
   .topbar-actions { gap: 10px; }
   .service-status { max-width: 107px; font-size: 9px; }
-  .search-button, .notification-button { display: none; }
-  .page-content { padding: 25px 17px 20px; }
+  .search-button { display: none; }
+  .page-content { padding: 25px 17px 20px; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
   .welcome-row { align-items: flex-start; flex-direction: column; gap: 14px; }
   h1 { font-size: 22px; }
   .welcome-subtitle { max-width: 440px; line-height: 1.55; }
@@ -388,8 +396,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .xlsx-upload-icon { width: 46px; height: 46px; margin-bottom: 14px; }
 .xlsx-upload-panel h2 { margin: 0 0 7px; font: 700 15px "Segoe UI", sans-serif; }
 .xlsx-upload-panel > p { max-width: 470px; margin: 0 0 20px; color: #8992a2; font-size: 10px; line-height: 1.6; }
-.xlsx-dropzone { display: grid; width: 100%; min-height: 132px; justify-items: center; align-content: center; gap: 7px; border: 1px dashed #b9c6ef; border-radius: 9px; color: #526dc8; background: #fafbff; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
-.xlsx-dropzone:hover { border-color: #8298e4; background: #f4f6ff; }
+.xlsx-dropzone { display: grid; width: 100%; min-height: 132px; justify-items: center; align-content: center; gap: 7px; border: 1px dashed #b9c6ef; border-radius: 9px; color: #526dc8; background: #fafbff; cursor: pointer; transition: border-color var(--dur-ui) ease, background var(--dur-ui) ease, transform var(--dur-press) var(--ease-out); }
 .xlsx-dropzone strong { font-size: 10px; }
 .xlsx-dropzone span { color: #9aa2b0; font-size: 9px; }
 .xlsx-dropzone input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
@@ -397,14 +404,13 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .import-summary-panel, .imported-rows-panel, .xlsx-assignment-preview { margin-top: 13px; padding: 15px; }
 /* Цели автоматической прокрутки карточек: useStepScroll. Отступ равен высоте
    липкой шапки плюс зазор, иначе панель уезжает под неё. */
-.imported-rows-panel, .xlsx-assignment-preview, .assignment-preview-panel, .assignment-operation, .work-check-results, .import-audit-details-panel { scroll-margin-top: 78px; }
+.imported-rows-panel, .xlsx-assignment-preview, .assignment-preview-panel, .assignment-operation, .work-check-results, .import-audit-details-panel { scroll-margin-top: calc(78px + env(safe-area-inset-top, 0px)); }
 .import-file-heading { display: flex; align-items: center; gap: 10px; }
 .xlsx-file-icon { width: 35px; height: 35px; }
 .import-file-heading > div { display: grid; min-width: 0; flex: 1; gap: 4px; }
 .import-file-heading strong { overflow: hidden; color: #394457; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .import-file-heading small { color: #929aaa; font-size: 8px; }
 .text-button { flex: 0 0 auto; padding: 7px 9px; border: 1px solid #e5e9f0; border-radius: 6px; color: #647087; background: #fff; font-size: 8px; cursor: pointer; }
-.text-button:hover { border-color: #b8c5ed; color: #4a64c4; }
 .text-button:disabled { opacity: .5; cursor: not-allowed; }
 .import-counts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
 .import-counts > span { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #edf0f4; border-radius: 6px; color: #707b8f; background: #fafbfc; font-size: 8px; }
@@ -422,7 +428,6 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .import-row-list { max-height: 515px; overflow: auto; }
 .import-plan-row { min-height: 45px; border-bottom: 1px solid #f0f2f6; cursor: default; }
 .import-plan-row-ready { cursor: pointer; }
-.import-plan-row-ready:hover { background: #f8f9ff; }
 .import-plan-row-invalid { background: #fffdfb; }
 .import-row-id { display: flex; min-width: 0; align-items: center; gap: 9px; color: #8e98a9; font-size: 8px; }
 .import-row-id input { width: 14px; height: 14px; margin: 0; accent-color: #526dd1; }
@@ -478,10 +483,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .template-selector-panel, .template-editor-panel { padding: 17px; }
 .template-selector-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: #98a1b0; font-size: 8px; font-weight: 700; letter-spacing: .9px; }
 .template-selector-heading > span:last-child { color: #9da6b5; font-weight: 500; letter-spacing: 0; }
-.template-option { display: flex; width: 100%; min-height: 61px; align-items: center; gap: 10px; margin-top: 5px; padding: 9px; border: 1px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; cursor: pointer; transition: background .15s ease, border-color .15s ease; }
-.template-option:hover { background: #f8f9fc; }
+.template-option { display: flex; width: 100%; min-height: 61px; align-items: center; gap: 10px; margin-top: 5px; padding: 9px; border: 1px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; cursor: pointer; transition: background var(--dur-ui) ease, border-color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out); }
 .template-option-active { border-color: #dfe5fb; background: #f5f7ff; }
-.template-option-active:hover { background: #f2f4ff; }
 .template-option-icon { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: #7789d6; background: #edf0ff; }
 .template-option-copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
 .template-option-copy strong { color: #465168; font-size: 10px; font-weight: 650; }
@@ -534,9 +537,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .import-audit-table { min-width: 690px; }
 .import-audit-table th, .import-details-table th { position: sticky; z-index: 1; top: 0; padding: 9px 11px; border-bottom: 1px solid #e9edf3; color: #929bab; background: #fafbfc; font-size: 8px; font-weight: 650; white-space: nowrap; }
 .import-audit-table td { max-width: 250px; padding: 10px 11px; border-bottom: 1px solid #f0f2f5; color: #657086; font-size: 9px; white-space: nowrap; }
-.import-audit-table tbody tr { cursor: pointer; transition: background .12s ease; }
+.import-audit-table tbody tr { cursor: pointer; transition: background var(--dur-ui) ease; }
 .import-audit-table tbody tr:last-child td, .import-details-table tbody tr:last-child td { border-bottom: 0; }
-.import-audit-table tbody tr:hover td { background: #f9faff; }
 .import-audit-table tbody .import-audit-row-selected td { background: #f3f5ff; }
 .import-audit-file, .import-audit-date { display: inline-flex; min-width: 0; align-items: center; gap: 7px; }
 .import-audit-file svg { flex: 0 0 auto; color: #7185d5; }
@@ -548,14 +550,12 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 
 .removal-source-switch { display: flex; gap: 7px; margin: 18px 0 -18px; }
 .removal-source-switch button { display: inline-flex; min-height: 34px; align-items: center; gap: 7px; padding: 0 11px; border: 1px solid #e5e9f0; border-radius: 7px; color: #758095; background: #fff; font-size: 9px; cursor: pointer; }
-.removal-source-switch button:hover { border-color: #c8d1ef; color: #526bc6; }
 .removal-source-switch .removal-source-active { border-color: #cfd8f8; color: #526bc6; background: #f4f6ff; }
 .removal-upload-panel { margin-top: 31px; }
 .removal-history-panel { margin-top: 31px; padding: 16px; }
 .removal-history-panel .panel-heading { margin-bottom: 12px; }
 .removal-history-list { display: grid; gap: 6px; }
 .removal-history-item { display: flex; width: 100%; min-height: 56px; align-items: center; gap: 10px; padding: 8px; border: 1px solid #edf0f4; border-radius: 7px; background: #fff; text-align: left; cursor: pointer; }
-.removal-history-item:hover { border-color: #cbd5f2; background: #fafbff; }
 .removal-history-item:disabled { opacity: .6; cursor: progress; }
 .removal-history-file { display: grid; min-width: 0; flex: 1; gap: 4px; }
 .removal-history-file strong { overflow: hidden; color: #4a566c; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
@@ -568,15 +568,22 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .removal-preview-row-skip .xlsx-preview-current > small { color: #9aa2b0; }
 .removal-noop-note, .removal-result-note { margin: 0; color: #9a8053; font-size: 8px; line-height: 1.5; }
 .removal-result-note { margin-top: 10px; }
-.bulk-warning-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(35, 42, 58, .38); }
-.bulk-warning-dialog { display: grid; width: min(430px, 100%); gap: 14px; padding: 17px; border: 1px solid #e9edf3; border-radius: 9px; background: #fff; box-shadow: 0 14px 34px rgba(35, 42, 58, .18); }
-.bulk-warning-heading { display: flex; min-width: 0; align-items: center; gap: 11px; }
-.bulk-warning-icon { display: grid; flex: 0 0 auto; width: 34px; height: 34px; place-items: center; border-radius: 8px; color: #b5822f; background: #fdf5e7; }
-.bulk-warning-heading h2 { margin: 0 0 3px; font: 700 13px "Segoe UI", sans-serif; }
-.bulk-warning-heading p { overflow: hidden; margin: 0; color: #929aaa; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.bulk-warning-body { color: #5c6879; font-size: 9px; line-height: 1.6; }
-.bulk-warning-body strong { color: #39445a; }
-.bulk-warning-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.dialog-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 20px; padding-top: calc(20px + env(safe-area-inset-top, 0px)); padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: rgba(35, 42, 58, .38); opacity: 1; transition: opacity var(--dur-modal) var(--ease-out); }
+.dialog-box { display: grid; width: min(430px, 100%); gap: 14px; padding: 17px; border: 1px solid #e9edf3; border-radius: 9px; background: #fff; box-shadow: 0 14px 34px rgba(35, 42, 58, .18); transition: transform var(--dur-modal) var(--ease-out); }
+.dialog-heading { display: flex; min-width: 0; align-items: center; gap: 11px; }
+.dialog-icon { display: grid; flex: 0 0 auto; width: 34px; height: 34px; place-items: center; border-radius: 8px; color: #b5822f; background: #fdf5e7; }
+.dialog-heading h2 { margin: 0 0 3px; font: 700 13px "Segoe UI", sans-serif; }
+.dialog-heading p { overflow: hidden; margin: 0; color: #929aaa; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.dialog-body { color: #5c6879; font-size: 9px; line-height: 1.6; }
+.dialog-body strong { color: #39445a; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 9px; }
+/* Появление окна. `@starting-style` отдаёт стартовые значения узлу, который только
+   что появился в DOM, поэтому переход срабатывает без единой строки на JavaScript.
+   В покое transform не задан — иначе его пришлось бы обнулять при снятии анимации. */
+@starting-style {
+  .dialog-overlay { opacity: 0; }
+  .dialog-box { transform: translateY(8px) scale(.98); }
+}
 .work-check-results { margin-top: 16px; padding: 16px; }
 .work-check-results .panel-heading { margin-bottom: 12px; }
 .work-check-table-wrap { max-height: 680px; overflow: auto; border: 1px solid #edf0f4; border-radius: 7px; }
@@ -593,7 +600,6 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .history-heading p { margin: 0; color: #8790a0; font-size: 10px; line-height: 1.5; }
 .history-period { display: flex; flex: 0 0 auto; gap: 3px; padding: 3px; border: 1px solid #e9edf3; border-radius: 8px; background: #fff; }
 .history-period button { min-height: 28px; padding: 0 9px; border: 0; border-radius: 5px; color: #80899a; background: transparent; font-size: 8px; cursor: pointer; }
-.history-period button:hover { color: #526bc6; background: #f7f8fc; }
 .history-period .history-period-active { color: #4e66c1; background: #edf1ff; font-weight: 650; }
 .history-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 11px; }
 .history-stat-card { position: relative; display: grid; min-height: 124px; align-content: start; gap: 6px; padding: 15px; }
@@ -640,6 +646,14 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .history-engineer-legend { justify-content: flex-end; margin-top: 7px; }
 .history-retention-note { display: flex; align-items: flex-start; gap: 6px; margin: -3px 0 11px; color: #90764f; font-size: 8px; line-height: 1.45; }
 .history-retention-note svg { flex: 0 0 auto; margin-top: 1px; }
+/* Усечение списка: без этой строки «25 из 1300» выглядит как будто так и есть. */
+.history-truncated-note { margin: 9px 0 0; color: #8a93a6; font-size: 8px; line-height: 1.5; }
+/* Портал без YOUGILE_API_TOKEN: пять экранов не работают, и раньше каждый из
+   них сообщал про колонку плана. Одна плашка вверху называет настоящую причину. */
+.yougile-offline-banner { display: flex; gap: 10px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid #e8d9ae; border-radius: 8px; color: #7a6534; background: #fdf9ef; }
+.yougile-offline-banner svg { flex: 0 0 auto; margin-top: 1px; }
+.yougile-offline-banner strong { display: block; margin-bottom: 3px; color: #5f4d22; font-size: 10px; }
+.yougile-offline-banner span { display: block; font-size: 9px; line-height: 1.5; }
 .history-auth-note { margin: 9px 0 0; color: #9aa2b0; font-size: 7px; line-height: 1.45; }
 .history-table-wrap { width: 100%; overflow: auto; border: 1px solid #edf0f4; border-radius: 7px; }
 .history-users-table, .history-records-table, .admin-users-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
@@ -702,12 +716,20 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .import-audit-pagination { margin-top: 2px; }
 .import-audit-details-panel { min-height: 260px; }
 .import-details-row-count { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 6px 8px; border-radius: 6px; color: #66728a; background: #f2f4f9; font-size: 8px; }
+/* Содержимое XLSX приходит первыми 300 строками, поэтому под таблицей нужно
+   прямо сказать, что список неполный — иначе «300 из 1200» выглядит как сбой. */
+.import-details-truncated { margin: 10px 0 0; padding: 9px 11px; border-left: 2px solid #d9b45a; border-radius: 0 6px 6px 0; color: #7a6534; background: #fdf8ec; font-size: 9px; line-height: 1.5; }
 .import-details-table { min-width: 100%; }
 .import-details-table th, .import-details-table td { max-width: 260px; }
 .import-details-table th:first-child, .import-details-table td:first-child { position: sticky; left: 0; z-index: 2; width: 45px; min-width: 45px; text-align: center; }
 .import-details-table th:first-child { z-index: 3; background: #fafbfc; }
+/* Заголовку колонки нужна та же обрезка, что и ячейке. Без неё длинное имя
+   столбца выходит за max-width: 260px и наезжает на соседний заголовок:
+   у th стоял white-space: nowrap, но не overflow. */
+.import-details-table th { overflow: hidden; text-overflow: ellipsis; }
+/* У ячейки заголовка должен быть title, иначе обрезанное имя столбца не прочесть. */
+.import-details-table th[title] { cursor: help; }
 .import-details-table td:first-child { background: #fff; }
-.import-details-table tbody tr:hover td:first-child { background: #f9faff; }
 .import-details-table td { max-width: 260px; padding: 8px 10px; border-bottom: 1px solid #f0f2f5; color: #5d697e; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .import-details-row-number { color: #929bab !important; font-variant-numeric: tabular-nums; }
 .import-audit-message { display: flex; min-height: 100px; align-items: center; justify-content: center; gap: 8px; color: #8892a3; font-size: 9px; }
@@ -718,10 +740,14 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .import-audit-empty span { font-size: 8px; }
 .import-audit-empty-details { min-height: 180px; }
 
-@media (max-width: 760px) {
+/* Порог схлопывания — 810px, а не 760px: две колонки Grid требуют
+   minmax(380px, …) + minmax(430px, …) = 810px. При вьюпорте уже этого сетка
+   не помещается и страница получает горизонтальную прокрутку — так было
+   в окне шириной 761…809px, в частности в портретном iPad 768px. */
+@media (max-width: 810px) {
   .login-page { grid-template-columns: 1fr; }
   .login-brand-panel { display: none; }
-  .login-form-panel { min-height: 100vh; align-items: start; padding: 36px 22px; background: #f8f9fc; }
+  .login-form-panel { min-height: 100vh; min-height: 100dvh; align-items: start; padding: 36px 22px; background: #f8f9fc; }
   .login-form-wrap { width: min(410px, 100%); margin: auto; padding: 23px; border: 1px solid #edf0f4; border-radius: 12px; background: #fff; box-shadow: 0 10px 35px #24365c0a; }
   .login-mobile-brand { display: flex; }
   .login-lock-icon { margin-bottom: 18px; }
@@ -796,9 +822,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .admin-cell-note { display: block; margin-top: 2px; color: #929aaa; font-size: 7px; }
 .admin-row-actions { display: flex; flex-wrap: wrap; gap: 5px; }
 .admin-action-button { display: inline-flex; min-height: 26px; align-items: center; gap: 5px; padding: 0 8px; border: 1px solid #e6eaf1; border-radius: 5px; color: #66728a; background: #fff; font-size: 7px; cursor: pointer; }
-.admin-action-button:hover:not(:disabled) { border-color: #b8c5ed; color: #4a64c4; }
 .admin-action-button:disabled { opacity: .45; cursor: not-allowed; }
-.admin-action-danger:hover:not(:disabled) { border-color: #eabdb0; color: #ad5f4a; }
 .admin-loading { display: flex; min-height: 95px; align-items: center; justify-content: center; gap: 8px; color: #9aa2b0; font-size: 8px; }
 .admin-panel-note { display: flex; align-items: center; gap: 6px; color: #a0a7b3; font-size: 7px; }
 
@@ -827,3 +851,120 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .admin-users-panel { padding: 12px; }
   .modal-dialog { padding: 14px; }
 }
+
+/* ============================================================================
+   Наведения и нажатия
+   ========================================================================= */
+
+/* Эффекты наведения включаются только там, где курсор действительно наводится.
+   На тач-устройствах :hover залипает после тапа и выглядит как выбранный элемент,
+   поэтому там эти правила не применяются. */
+@media (hover: hover) and (pointer: fine) {
+  .login-password-toggle:hover { color: #536bc7; }
+  .fixture-toggle button:not(.fixture-toggle-active):hover { color: #2b3549; }
+  .login-submit:hover:not(:disabled) { filter: brightness(1.04); transform: translateY(-1px); }
+  .login-preview button:hover { color: #354fae; }
+  .nav-link:not(.nav-link-active):hover { background: #f7f8fc; color: #3f5ac2; }
+  .icon-button:hover { background: #f3f5fa; }
+  .outline-button:hover { border-color: #bdc9f2; color: #405fce; }
+  .stat-card-button:hover { border-color: #ccd6f4; box-shadow: 0 5px 14px #2537610b; }
+  .action-card:hover { transform: translateY(-2px); border-color: #d8dff2; box-shadow: 0 8px 20px #2537610b; }
+  .btn-primary:hover:not(:disabled) { background: #3e5ac4; }
+  .assignment-site-option:hover { background: #f6f8ff; }
+  .xlsx-dropzone:hover { border-color: #8298e4; background: #f4f6ff; }
+  .text-button:hover { border-color: #b8c5ed; color: #4a64c4; }
+  .import-plan-row-ready:hover { background: #f8f9ff; }
+  .template-option:hover { background: #f8f9fc; }
+  .template-option-active:hover { background: #f2f4ff; }
+  .import-audit-table tbody tr:not(.import-audit-row-selected):hover td { background: #f9faff; }
+  .removal-source-switch button:not(.removal-source-active):hover { border-color: #c8d1ef; color: #526bc6; }
+  .removal-history-item:hover { border-color: #cbd5f2; background: #fafbff; }
+  .history-period button:not(.history-period-active):hover { color: #526bc6; background: #f7f8fc; }
+  .import-details-table tbody tr:hover td:first-child { background: #f9faff; }
+  .login-mode-switch:hover:not(:disabled) strong { color: #354fae; }
+  .admin-action-button:hover:not(:disabled) { border-color: #b8c5ed; color: #4a64c4; }
+  .admin-action-danger:hover:not(:disabled) { border-color: #eabdb0; color: #ad5f4a; }
+}
+
+/* У этих кнопок не было своего перехода: добавляем переход цвета и отклик на нажатие.
+   Список закрыт только элементами без собственного `transition`, поэтому общих
+   правил для transition здесь быть не должно — они сбросят остальные переходы. */
+.icon-button, .nav-link, .outline-button, .text-button, .profile, .login-password-toggle,
+.login-preview button, .removal-source-switch button, .removal-history-item,
+.history-period button, .sites-pagination button, .history-pagination button {
+  transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
+}
+
+/* Отклик на нажатие: короткий масштаб вниз, чтобы было видно, что нажатие засчитано.
+   Только transform — он не вызывает перестроение раскладки. Правило стоит после
+   блока наведений, поэтому перебивает его transform. Строки данных и ячейки таблиц
+   сюда не входят: пользователь их читает, движение там только мешает.
+   `.nav-link` тоже пропущен: transform сделал бы его системой координат для
+   `.nav-link-active:before`, и синяя полоса при нажатии уехала бы вправо. */
+.btn-primary:active:not(:disabled), .outline-button:active, .text-button:active:not(:disabled),
+.icon-button:active, .login-submit:active:not(:disabled),
+.login-password-toggle:active, .login-preview button:active, .action-card:active,
+.stat-card-button:active, .template-option:active, .profile:active, .xlsx-dropzone:active,
+.removal-source-switch button:not(.removal-source-active):active,
+.removal-history-item:active:not(:disabled),
+.history-period button:not(.history-period-active):active,
+.sites-pagination button:active:not(:disabled), .history-pagination button:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+}
+
+/* Системная настройка «меньше движения». Движение и масштаб отключаем, переходы
+   цвета, рамки и тени оставляем — по ним видно, что состояние изменилось.
+   Спиннеры продолжают крутиться: это анимация, а не переход, и без них не
+   понятно, что идёт загрузка. */
+@media (prefers-reduced-motion: reduce) {
+  /* Полоса прогресса и боковое меню позиционируются через transform, его обнулять
+     нельзя. Вместо этого убираем transform из списка переходов — движение пропадает,
+     конечное состояние остаётся. */
+  .sidebar, .operation-progress span { transition-property: opacity; }
+  .action-card, .stat-card-button, .btn-primary, .outline-button, .text-button, .icon-button,
+  .nav-link, .login-submit, .login-password-toggle, .login-preview button, .template-option,
+  .profile, .xlsx-dropzone, .removal-source-switch button, .removal-history-item,
+  .history-period button, .sites-pagination button, .history-pagination button,
+  .dialog-box {
+    transform: none !important;
+    transition-property: opacity, background-color, border-color, color, box-shadow, filter;
+  }
+}
+
+/* ============================================================================
+   Телефон и планшет
+   ========================================================================= */
+
+/* iOS и Android зумят страницу, когда фокус попадает в поле с шрифтом меньше
+   16px, и не отзумивают назад — макет остаётся съехавшим. Поднять все поля
+   глобально нельзя: интерфейс намеренно плотный, поля 8–11px. Поэтому размер
+   поднимается только там, где указатель грубый: телефон и тач-планшет.
+   Специфичности (0,3,1) хватает, чтобы перебить классовые селекторы полей,
+   поэтому !important не нужен. Флажки, переключатели и скрытый input[type=file]
+   исключены: у первых размеры заданы явно и должны остаться 12–14px.
+   Селекторы собраны через :is(), а не перечислением: в списке у каждого селектора
+   своя специфичность, и одиночный `select` проигрывал бы `.field-label select`. */
+@media (pointer: coarse) {
+  :is(input, textarea, select):not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+    font-size: 16px;
+    min-height: 38px;
+  }
+}
+
+/* Внутренние прокручиваемые списки не должны тянуть страницу за собой на скролле
+   до конца. `contain` оставляет им собственную инерцию, а странице запрещает
+   ехать; `none` на html выше отключает pull-to-refresh — операцию посреди
+   запущенной задачи перезагрузить нельзя. */
+.assignment-sites-list, .assignment-preview-list, .operation-failures, .import-row-list,
+.comment-preview, .problem-sites-list, .xlsx-preview-list, .import-audit-table-wrap,
+.import-details-table-wrap, .work-check-table-wrap, .history-table-wrap {
+  overscroll-behavior: contain;
+}
+
+/* Переключатель наборов данных для break-ui. Служебный элемент поверх внизу по
+   центру: серый трек, белая подвижка, системный шрифт. Без анимации — переключение
+   мгновенное, содержимое не должно ездить. В продакшне элемент не рисуется
+   (import.meta.env.DEV), остаются только эти шесть строк. */
+.fixture-toggle { position: fixed; z-index: 60; bottom: 18px; left: 50%; display: flex; gap: 2px; padding: 3px; border: 1px solid #dfe4ec; border-radius: 8px; background: #eceff4; box-shadow: 0 6px 20px rgba(24, 34, 58, .16); transform: translateX(-50%); font-family: "Segoe UI", sans-serif; }
+.fixture-toggle button { padding: 5px 11px; border: 0; border-radius: 6px; color: #5d6780; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; }
+.fixture-toggle .fixture-toggle-active { color: #2b3549; background: #fff; box-shadow: 0 1px 2px rgba(24, 34, 58, .12); }

@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Clock3, FileSpreadsheet, RefreshCw, ShieldCh
 import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { countRu, rowForms } from "./plural";
 
 type ImportRow = {
   rowNumber: number;
@@ -296,7 +297,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
       <div className="eyebrow"><span className="eyebrow-line" /> СНЯТИЕ НАЗНАЧЕНИЙ ПО XLSX</div>
       <div className="sites-page-heading">
         <div><h1>Снять инженеров</h1><p>Будут сняты только инженеры из выбранных строк XLSX и только с указанных в них площадок.</p></div>
-        {planImport && <span className="sites-total">{selectedReadyRows.length.toLocaleString("ru-RU")} строк выбрано</span>}
+        {planImport && <span className="sites-total">{countRu(selectedReadyRows.length, rowForms)} выбрано</span>}
       </div>
 
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}
@@ -340,7 +341,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
                       {batches.map((batch) => (
                         <button className="removal-history-item" key={batch.id} disabled={busy} onClick={() => void selectBatch(batch)}>
                           <span className="xlsx-file-icon"><FileSpreadsheet size={17} /></span>
-                          <span className="removal-history-file"><strong title={batch.fileName}>{batch.fileName}</strong><small>{batch.rowCount} строк · {formatDate(batch.createdAt)} · {batch.uploadedBy}</small></span>
+                          <span className="removal-history-file"><strong title={batch.fileName}>{batch.fileName}</strong><small>{countRu(batch.rowCount, rowForms)} · {formatDate(batch.createdAt)} · {batch.uploadedBy}</small></span>
                           <span className={`import-audit-status import-audit-status-${batch.status.toLowerCase()}`}>{batch.status === "COMPLETE" ? "Завершена" : batch.status === "ASSIGNING" ? "В обработке" : "Загружена"}</span>
                         </button>
                       ))}
@@ -353,7 +354,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
           <div className="panel import-summary-panel">
             <div className="import-file-heading">
               <span className="xlsx-file-icon"><FileSpreadsheet size={19} /></span>
-              <div><strong>{planImport.fileName}</strong><small>{planImport.sheetName ? `Лист «${planImport.sheetName}» · ` : ""}строк в плане: {planImport.rowCount}</small></div>
+              <div><strong>{planImport.fileName}</strong><small>{planImport.sheetName ? `Лист «${planImport.sheetName}» · ` : ""}{countRu(planImport.rowCount, rowForms)} в плане</small></div>
               <button className="text-button" disabled={operationPending || busy} onClick={resetSelection}>Выбрать другой XLSX</button>
             </div>
             <div className="import-counts">
@@ -428,8 +429,8 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
             <div><h2>{operation?.status === "SUCCEEDED" ? "Снятие инженеров завершено" : operation?.status === "PARTIAL" || operation?.status === "FAILED" ? "Результат снятия инженеров" : "Снимаем инженеров по XLSX"}</h2><p>{operation?.message ?? "Операция добавлена в очередь."}</p></div>
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
           </div>
-          {operationPending && <div className="operation-progress"><span style={{ width: `${operation ? Math.round(operation.completed / operation.total * 100) : 2}%` }} /></div>}
-          {operation && skippedCount > 0 && <p className="removal-result-note">{skippedCount} строк без изменений: инженер уже не был назначен.</p>}
+          {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
+          {operation && skippedCount > 0 && <p className="removal-result-note">{countRu(skippedCount, rowForms)} без изменений: инженер уже не был назначен.</p>}
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
         </div>
       )}

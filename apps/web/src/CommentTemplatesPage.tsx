@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, CheckCircle2, Clock3, FileText, LoaderCircle, Save, Sparkles } from "lucide-react";
 import { apiFetch } from "./apiClient";
+import ConfirmDialog from "./ConfirmDialog";
 
 type TemplateType = "filter" | "balancers" | "bypasses" | "ehw";
 type CommentTemplate = {
@@ -31,6 +32,7 @@ export default function CommentTemplatesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [pendingSwitch, setPendingSwitch] = useState<CommentTemplate | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -60,13 +62,23 @@ export default function CommentTemplatesPage() {
     .split("${data}").join("02.10.2026-03.10.2026")
     .split("${time}").join("00:00-06:00"), [draft]);
 
-  const selectTemplate = (template: CommentTemplate) => {
-    if (changed && !window.confirm("Есть несохранённые изменения. Переключиться и отменить их?")) return;
+  const applyTemplate = (template: CommentTemplate) => {
     setSelectedType(template.type);
     setDraft(template.value);
     setSavedValue(template.value);
     setError("");
     setNotice("");
+    setPendingSwitch(null);
+  };
+
+  // Несохранённый текст нельзя потерять молча, но и window.confirm здесь неуместен:
+  // системный диалог выглядит чужеродно и обрывает анимации страницы.
+  const selectTemplate = (template: CommentTemplate) => {
+    if (changed) {
+      setPendingSwitch(template);
+      return;
+    }
+    applyTemplate(template);
   };
 
   const saveTemplate = async () => {
@@ -172,6 +184,17 @@ export default function CommentTemplatesPage() {
           )}
         </div>
       </div>
+      {pendingSwitch && (
+        <ConfirmDialog
+          title="Несохранённые изменения"
+          confirmLabel="Переключить и отменить"
+          onConfirm={() => applyTemplate(pendingSwitch)}
+          onCancel={() => setPendingSwitch(null)}
+        >
+          В шаблоне «{pendingSwitch.label}» есть изменения, которые не сохранены.
+          {" "}При переключении они пропадут. Сохраните их кнопкой выше, если они нужны.
+        </ConfirmDialog>
+      )}
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Шаблоны хранятся на сервере</span></footer>
     </section>
   );
