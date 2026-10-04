@@ -15,9 +15,41 @@ const scryptAsync = promisify(scrypt) as (
 
 const keyLength = 64;
 const saltBytes = 16;
-// scrypt дорогой: память ~16 МБ на попытку. Лимит нужен, чтобы злоумышленник
-// не мог отправлять подбор пароля параллельно и исчерпать память процесса.
-const concurrentHashes = new Set<Promise<unknown>>();
+
+// scrypt дорогой: ~16 МБ памяти на попытку. Предел на число одновременных
+// вычислений нужен, чтобы пачка параллельных запросов входа не расходовала память
+// процесса. При исчерпании предела вызов отклоняется, а не ставится в очередь:
+// иначе очередь только откладывает отказ, удерживая тела запросов в памяти.
+//
+// По умолчанию libuv держит 4 рабочих потока, поэтому фактический потолок ниже
+// этого предела и память процесса упирается примерно в 64 МБ. Замер: при
+// UV_THREADPOOL_SIZE=32 пятьдесят параллельных вызовов давали прирост RSS
+// до 472 МБ. Поэтому UV_THREADPOOL_SIZE в контейнере API не задаётся, а этот
+// предел остаётся на случай, если его всё же поднимут.
+const maxConcurrentHashes = 8;
+let runningHashes = 0;
+
+export class TooManyHashesError extends Error {
+  constructor() {
+    super("Превышен предел одновременных проверок пароля");
+    this.name = "TooManyHashesError";
+  }
+}
+
+/**
+ * Единственная точка, где считается scrypt. Слот берётся до запуска и
+ * отпускается на settled, поэтому окно считается по фактическим вычислениям,
+ * а не по времени ожидания в очереди libuv.
+ */
+async function deriveKey(password: string, salt: Buffer) {
+  if (runningHashes >= maxConcurrentHashes) throw new TooManyHashesError();
+  runningHashes += 1;
+  try {
+    return await scryptAsync(password.normalize("NFKC"), salt, keyLength);
+  } finally {
+    runningHashes -= 1;
+  }
+}
 
 export const sessionCookieName = "portal_session";
 
@@ -27,15 +59,10 @@ export const sessionDurations: Record<SessionDuration, number> = {
   long: 30 * 24 * 60 * 60 * 1000
 };
 
-export function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(saltBytes);
-  const promise = scryptAsync(password.normalize("NFKC"), salt, keyLength);
-  concurrentHashes.add(promise);
-  return promise
-    .then((derived) => `scrypt$${salt.toString("base64")}$${derived.toString("base64")}`)
-    .finally(() => {
-      concurrentHashes.delete(promise);
-    });
+  const derived = await deriveKey(password, salt);
+  return `scrypt$${salt.toString("base64")}$${derived.toString("base64")}`;
 }
 
 export async function verifyPassword(password: string, storedHash: string) {
@@ -46,9 +73,34 @@ export async function verifyPassword(password: string, storedHash: string) {
   const expected = Buffer.from(hashPart, "base64");
   if (expected.length !== keyLength) return false;
 
-  const derived = await scryptAsync(password.normalize("NFKC"), salt, keyLength);
+  const derived = await deriveKey(password, salt);
   // Длины равны по проверке выше, поэтому timingSafeEqual не бросит исключение.
   return timingSafeEqual(derived, expected);
+}
+
+let decoyHash: Promise<string> | null = null;
+
+/**
+ * Хеш-подмена для несуществующего логина.
+ *
+ * Это обязательно настоящий scrypt-хеш: verifyPassword сверяет длину второй
+ * части с keyLength и возвращает false раньше, чем посчитает scrypt. Заглушка
+ * вида "scrypt$...$AAAA" декодируется в 3 байта, проверка длины срабатывает,
+ * и время ответа для несуществующего логина оказывалось втрое меньше, чем для
+ * существующего, — по нему логины перебирались. С настоящим хешем оба случая
+ * стоят одинаково.
+ *
+ * Считается один раз при первой попытке и кэшируется. При отказе по пределу
+ * одновременных вычислений кэш сбрасывается, иначе отказ запомнился бы навсегда.
+ */
+export function decoyPasswordHash() {
+  if (!decoyHash) {
+    decoyHash = hashPassword(randomBytes(32).toString("base64url")).catch((error: unknown) => {
+      decoyHash = null;
+      throw error;
+    });
+  }
+  return decoyHash;
 }
 
 function hashToken(token: string) {

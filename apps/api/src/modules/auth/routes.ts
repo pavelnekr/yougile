@@ -1,17 +1,32 @@
 import type { FastifyInstance } from "fastify";
 import { PortalRole, Prisma, type PrismaClient } from "@prisma/client";
 import { loginSchema, registerSchema } from "./schema.js";
+import { clearRateLimit, rateLimitState, recordRateLimit, type RateLimit } from "./rate-limit.js";
 import {
   clearSessionCookie,
   createSession,
+  decoyPasswordHash,
   destroySession,
   hashPassword,
   isRegistrationKeyEnabled,
   isRegistrationKeyValid,
   resolveSession,
   setSessionCookie,
+  TooManyHashesError,
   verifyPassword
 } from "./service.js";
+
+// Пределы на неудачные попытки входа за 15 минут (окно общее, см. rate-limit.ts).
+// По логину предел строгий: это и есть перебор пароля. По адресу — втрое выше,
+// потому что за одним адресом могут сидеть несколько сотрудников офиса.
+const loginPerLoginLimit: RateLimit = {
+  limit: 10,
+  message: "Слишком много попыток входа для этого логина. Попробуйте через 15 минут."
+};
+const loginPerIpLimit: RateLimit = {
+  limit: 30,
+  message: "Слишком много попыток входа с этого адреса. Попробуйте позже."
+};
 
 // Cookie ставим с флагом secure только когда сам запрос пришёл по HTTPS.
 // Иначе локальная разработка по http://localhost не сможет сохранить сессию.
@@ -51,29 +66,74 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
       return reply.code(400).send({ error: "Введите логин и пароль." });
     }
 
+    // Счётчики ведём по логину и по адресу. Ключ логина в нижнем регистре, хотя
+    // поиск в базе регистрозависимый: иначе перебор можно было бы вести
+    // «Admin», «admin», «ADMIN» и утраивать себе лимит.
+    const loginKey = `login:${parsed.data.login.toLowerCase()}`;
+    const ipKey = `ip:${request.ip}`;
+
+    // Проверяем до обращения к базе и до scrypt, чтобы отказ не стоил ничего.
+    const limits: [string, RateLimit][] = [
+      [loginKey, loginPerLoginLimit],
+      [ipKey, loginPerIpLimit]
+    ];
+    for (const [key, limit] of limits) {
+      const blocked = rateLimitState(key, limit);
+      if (!blocked) continue;
+      request.log.warn({ login: parsed.data.login, ip: request.ip }, "Rejected portal login by rate limit");
+      return reply
+        .code(429)
+        .header("Retry-After", String(blocked.retryAfterSeconds))
+        .send({ error: limit.message });
+    }
+
     const user = await prisma.portalUser.findUnique({
       where: { login: parsed.data.login }
     });
 
     // Считаем пароль даже для несуществующего логина, чтобы по времени ответа
-    // нельзя было перебирать существующие учётные записи.
-    const passwordMatches = await verifyPassword(
-      parsed.data.password,
-      user?.passwordHash ?? "scrypt$AAAAAAAAAAAAAAAAAAAAAA==$AAAA"
-    );
+    // нельзя было перебирать существующие учётные записи. Подмена обязана быть
+    // настоящим scrypt-хешем, инача verifyPassword возвращает false раньше
+    // вычисления и время ответа выдаёт существующие логины (см. decoyPasswordHash).
+    let passwordMatches: boolean;
+    try {
+      passwordMatches = await verifyPassword(
+        parsed.data.password,
+        user?.passwordHash ?? (await decoyPasswordHash())
+      );
+    } catch (error) {
+      if (error instanceof TooManyHashesError) {
+        request.log.warn({ err: error, ip: request.ip }, "Portal login rejected: scrypt limit reached");
+        return reply.code(503).send({ error: "Сервер перегружен. Попробуйте через минуту." });
+      }
+      throw error;
+    }
+
+    // Неудача считается по обоим ключам: успешный вход ничего не учитывает.
+    const rejectCredentials = () => {
+      recordRateLimit(loginKey);
+      recordRateLimit(ipKey);
+      return reply.code(401).send({ error: "Неверный логин или пароль." });
+    };
 
     if (!user) {
       request.log.info({ login: parsed.data.login }, "Rejected portal login attempt");
-      return reply.code(401).send({ error: "Неверный логин или пароль." });
+      return rejectCredentials();
     }
     if (!passwordMatches) {
       request.log.info({ login: user.login }, "Rejected portal login attempt");
-      return reply.code(401).send({ error: "Неверный логин или пароль." });
+      return rejectCredentials();
     }
     if (!user.active) {
+      // Отключение — это решение администратора, а не подбор пароля, поэтому
+      // счётчик попыток здесь не растёт: иначе сотрудник с отключённой учётной
+      // записью получал бы «слишком много попыток» вместо внятного объяснения.
       request.log.info({ login: user.login }, "Rejected login for disabled account");
       return reply.code(403).send({ error: "Учётная запись отключена." });
     }
+
+    // Вход состоялся — попытки по этому логину снова разрешены.
+    clearRateLimit(loginKey);
 
     const rememberMe = parsed.data.rememberMe ?? false;
     const { token, expiresAt } = await createSession(

@@ -19,7 +19,21 @@ import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerAdminRoutes } from "./modules/admin/routes.js";
 import { requireSession } from "./modules/auth/service.js";
 
-const app = Fastify({ logger: true });
+// trustProxy ровно на один хоп: API не выставлен наружу (порт не публикуется в
+// docker-compose.prod.yml) и доступен только через nginx, который дописывает
+// реальный адрес клиента в конец X-Forwarded-For. Без этой настройки request.ip
+// у всех запросов совпадал бы с адресом контейнера nginx, и ограничение частоты
+// попыток входа блокировало бы всех сотрудников разом.
+//
+// hop === 0 — это ближайший адрес цепочки, то есть сам nginx. Дальше адреса не
+// доверяем: hop === 1 достаётся из X-Forwarded-For, который клиент может
+// подделать, отправив заголовок сам. Доверять только правому элементу цепочки
+// позволяет то, что nginx дописывает реальный адрес в конец, а не заменяет
+// заголовок.
+const app = Fastify({
+  logger: true,
+  trustProxy: (_address: string, hop: number) => hop === 0
+});
 const prisma = new PrismaClient();
 const yougile = new YougileClient();
 const redis = new Redis(config.REDIS_URL, {
