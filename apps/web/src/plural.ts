@@ -16,6 +16,11 @@ export const recordForms: PluralForms = ["запись", "записи", "зап
 export const taskForms: PluralForms = ["активная задача", "активные задачи", "активных задач"];
 export const engineerForms: PluralForms = ["инженер", "инженера", "инженеров"];
 export const participantForms: PluralForms = ["участник", "участника", "участников"];
+export const adminForms: PluralForms = ["администратор", "администратора", "администраторов"];
+// У прилагательных, употреблённых как существительные, вторая и третья формы
+// совпадают: и «2 активных», и «5 активных» — родительный множественного.
+export const activeForms: PluralForms = ["активный", "активных", "активных"];
+export const blockedForms: PluralForms = ["заблокированный", "заблокированных", "заблокированных"];
 
 function formatNumber(value: number): string {
   return value.toLocaleString("ru-RU");

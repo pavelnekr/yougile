@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import type { PortalUser } from "./LoginPage";
+import { activeForms, adminForms, blockedForms, countRu } from "./plural";
 
 type Period = "30" | "90" | "all";
 
@@ -383,7 +384,9 @@ export default function AdminUsersPage({ currentUser }: { currentUser: PortalUse
             <span className="history-stat-icon"><UsersRound size={16} /></span>
             <span className="history-stat-label">Учётных записей</span>
             <strong>{formatNumber(totals.users)}</strong>
-            <small>{totals.active} активных · {totals.blocked} заблокированных · {totals.admins} администраторов</small>
+            <small>
+              {countRu(totals.active, activeForms)} · {countRu(totals.blocked, blockedForms)} · {countRu(totals.admins, adminForms)}
+            </small>
           </div>
           <div className="panel history-stat-card history-stat-blue">
             <span className="history-stat-icon"><Activity size={16} /></span>
