@@ -1,14 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { OperationType, PrismaClient } from "@prisma/client";
-import { YougileClient } from "../../integrations/yougile/client.js";
+import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { AssignmentValidationError } from "../assignments/service.js";
 import { commentRequestBodySchema, previewComments } from "./service.js";
 
 export async function registerCommentRoutes(
   app: FastifyInstance,
-  prisma: PrismaClient,
-  yougile: YougileClient
+  prisma: PrismaClient
 ) {
   app.post("/api/comments/preview", async (request, reply) => {
     const parsed = commentRequestBodySchema.safeParse(request.body);
@@ -19,8 +18,12 @@ export async function registerCommentRoutes(
     }
 
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       return await previewComments(yougile, parsed.data);
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) {
         return reply.code(400).send({ error: error.message });
       }
@@ -38,6 +41,7 @@ export async function registerCommentRoutes(
     }
 
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       // Запись в YouGile разрешена только после предпросмотра, поэтому задачи
       // перечитываются заново и здесь, а не берутся из тела запроса.
       const preview = await previewComments(yougile, parsed.data);
@@ -81,6 +85,9 @@ export async function registerCommentRoutes(
 
       return reply.code(202).send({ operationId: operation.id });
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) {
         return reply.code(400).send({ error: error.message });
       }

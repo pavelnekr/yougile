@@ -1,7 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { PortalRole, Prisma, type PrismaClient } from "@prisma/client";
 import { hashPassword, requireRole } from "../auth/service.js";
-import { adminUsersQuerySchema, createUserSchema, passwordResetSchema, updateUserSchema } from "./schema.js";
+import { YougileApiError, YougileClient } from "../../integrations/yougile/client.js";
+import { encryptYougileToken, YougileTokenEncryptionKeyError } from "../../integrations/yougile/token-crypto.js";
+import { getAssignmentUsers } from "../users/service.js";
+import { getPlannedSites } from "../sites/service.js";
+import { adminUsersQuerySchema, createUserSchema, passwordResetSchema, updateUserSchema, yougileTokenSchema } from "./schema.js";
 import { listUsersWithStats, resolveStatsPeriod } from "./service.js";
 
 function publicAccount(user: { id: string; login: string; displayName: string; role: string; active: boolean }) {
@@ -154,5 +158,62 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
     );
 
     return { ok: true, revokedSessions };
+  });
+
+  app.put<{ Params: { id: string } }>("/api/admin/users/:id/yougile-token", { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = yougileTokenSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте токен YouGile." });
+    }
+
+    const target = await prisma.portalUser.findUnique({
+      where: { id: request.params.id },
+      select: { id: true, login: true }
+    });
+    if (!target) return reply.code(404).send({ error: "Учётная запись не найдена." });
+
+    try {
+      const encryptedToken = encryptYougileToken(parsed.data.token, target.id);
+      const yougile = new YougileClient(parsed.data.token);
+      await Promise.all([getAssignmentUsers(yougile), getPlannedSites(yougile)]);
+      await prisma.portalUser.update({
+        where: { id: target.id },
+        data: { yougileTokenEncrypted: encryptedToken }
+      });
+    } catch (error) {
+      if (error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)) {
+        return reply.code(400).send({ error: "Токен отклонён или ему не хватает прав для чтения сотрудников и плана в YouGile." });
+      }
+      if (error instanceof YougileTokenEncryptionKeyError) {
+        app.log.error({ actor: request.sessionUser?.login }, "YouGile token encryption key is not configured");
+        return reply.code(503).send({ error: "На сервере не настроен ключ шифрования токенов YouGile." });
+      }
+      app.log.error({ err: error, actor: request.sessionUser?.login }, "Could not validate or save YouGile token");
+      return reply.code(502).send({ error: "Не удалось проверить токен в YouGile. Токен не сохранён." });
+    }
+
+    app.log.warn(
+      { actor: request.sessionUser?.login, target: target.login },
+      "YouGile token updated by admin"
+    );
+    return { ok: true };
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/admin/users/:id/yougile-token", { preHandler: adminOnly }, async (request, reply) => {
+    const target = await prisma.portalUser.findUnique({
+      where: { id: request.params.id },
+      select: { id: true, login: true }
+    });
+    if (!target) return reply.code(404).send({ error: "Учётная запись не найдена." });
+
+    await prisma.portalUser.update({
+      where: { id: target.id },
+      data: { yougileTokenEncrypted: null }
+    });
+    app.log.warn(
+      { actor: request.sessionUser?.login, target: target.login },
+      "YouGile token removed by admin"
+    );
+    return { ok: true };
   });
 }

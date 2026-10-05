@@ -11,7 +11,7 @@ const envSchema = z.object({
   // API: регистрация просто отключается (см. isRegistrationKeyEnabled).
   REGISTRATION_KEY: z.string().default(""),
   YOUGILE_API_URL: z.string().url(),
-  YOUGILE_API_TOKEN: z.string().default(""),
+  YOUGILE_TOKEN_ENCRYPTION_KEY: z.string().regex(/^(?:[a-fA-F0-9]{64})?$/, "YOUGILE_TOKEN_ENCRYPTION_KEY must be 64 hexadecimal characters").default(""),
   YOUGILE_PLAN_COLUMN_ID: z.string().uuid().default("951ff78e-1fa5-4334-b34f-288f00609b69"),
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024)
 });

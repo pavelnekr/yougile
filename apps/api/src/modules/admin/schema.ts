@@ -49,5 +49,9 @@ export const passwordResetSchema = z.object({
     .max(256, "Пароль не должен быть длиннее 256 символов.")
 });
 
+export const yougileTokenSchema = z.object({
+  token: z.string().trim().min(1, "Введите токен YouGile.").max(4096, "Токен YouGile слишком длинный.")
+});
+
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;

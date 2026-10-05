@@ -22,7 +22,10 @@ cd yougile
 
 ```bash
 cp .env.example .env
-openssl rand -hex 32        # сгенерировать секреты
+openssl rand -hex 32        # JWT_SECRET
+openssl rand -hex 32        # YOUGILE_TOKEN_ENCRYPTION_KEY
+openssl rand -base64 24     # POSTGRES_PASSWORD
+chmod 600 .env
 nano .env
 ```
 Что заполнить:
@@ -31,11 +34,18 @@ nano .env
 |---|---|
 | `WEB_ORIGIN` | `https://portal.example.com` — публичный адрес, без слэша на конце |
 | `JWT_SECRET` | строка минимум 32 символа (`openssl rand -hex 32`) |
+| `YOUGILE_TOKEN_ENCRYPTION_KEY` | отдельный ключ шифрования токенов в БД: ровно 64 hex-символа (`openssl rand -hex 32`) |
 | `POSTGRES_PASSWORD` | длинный случайный пароль (`openssl rand -base64 24`) |
 | `YOUGILE_API_URL` | `https://yougile.ru/api-v2` |
-| `YOUGILE_API_TOKEN` | токен YouGile |
 | `REGISTRATION_KEY` | ключ самостоятельной регистрации в портале. Пустое значение не ломает старт, но регистрация отвечает 503, и учётные записи приходится заводить `npm run user:create --workspace @portal/api` (в контейнере — `node dist/scripts/create-user.js`) |
 | `WEB_PORT` | порт контейнера веба на хосте |
+
+После создания первого администратора добавьте токен YouGile каждого сотрудника
+в разделе «Учётные записи». Токен проверяется перед сохранением и шифруется
+ключом `YOUGILE_TOKEN_ENCRYPTION_KEY`; значение токена после сохранения не
+показывается. Храните этот ключ в резервной копии отдельно от Git и базы.
+Не меняйте его, пока в БД есть зашифрованные токены: без исходного ключа их
+нельзя расшифровать, а смена ключа приведёт к необходимости ввести токены заново.
 
 **`DATABASE_URL` и `REDIS_URL` в `.env` для прода не трогайте.** В них
 `localhost` — это для локальной разработки. Внутри контейнеров compose
@@ -61,6 +71,10 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 Миграции накатываются автоматически на каждом запуске, отдельной командой
 вызывать `prisma migrate` не нужно.
+
+Назначение и снятие инженеров выполняются по одной площадке за раз. Если
+YouGile отвечает HTTP 429, запрос повторяется через 60 секунд и продолжает
+повторяться с таким интервалом до успешного ответа.
 
 Проверить:
 

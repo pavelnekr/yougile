@@ -10,10 +10,12 @@ import {
   LoaderCircle,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   UserPlus,
   UsersRound
 } from "lucide-react";
 import { apiFetch } from "./apiClient";
+import Modal from "./Modal";
 import type { PortalUser } from "./LoginPage";
 import { activeForms, adminForms, blockedForms, countRu } from "./plural";
 
@@ -39,6 +41,7 @@ type AdminUser = {
   displayName: string;
   role: string;
   active: boolean;
+  yougileTokenConfigured: boolean;
   createdAt: string;
   activeSessions: number;
   lastSeenAt: string | null;
@@ -174,6 +177,94 @@ function PasswordDialog({
   );
 }
 
+function YougileTokenDialog({
+  user,
+  configured,
+  onClose,
+  onSubmit,
+  onRemove
+}: {
+  user: AdminUser;
+  configured: boolean;
+  onClose: () => void;
+  onSubmit: (token: string) => Promise<void>;
+  onRemove: () => Promise<void>;
+}) {
+  const [token, setToken] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (saving) return;
+    if (!token.trim()) {
+      setError("Введите токен YouGile.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit(token.trim());
+    } catch (reason) {
+      setError(errorMessage(reason));
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await onRemove();
+    } catch (reason) {
+      setError(errorMessage(reason));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal labelledBy="admin-yougile-token-title" onDismiss={saving ? () => undefined : onClose}>
+      <div className="modal-heading">
+        <span className="modal-icon"><KeyRound size={17} /></span>
+        <div>
+          <h2 id="admin-yougile-token-title">Токен YouGile</h2>
+          <p>{user.displayName} · {user.login}</p>
+        </div>
+      </div>
+      <div className="modal-body">
+        <label className="modal-field">
+          <span>Персональный токен сотрудника</span>
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={token}
+            onChange={(event) => { setToken(event.target.value); setError(""); }}
+            placeholder="Вставьте токен YouGile"
+            autoFocus
+          />
+        </label>
+        <p className="modal-note">
+          {configured
+            ? "Токен уже настроен, но его значение не отображается. Новый токен будет проверен и заменит текущий."
+            : "Токен будет проверен в YouGile и сохранён в базе портала в зашифрованном виде."}
+        </p>
+        {error && <p className="modal-error" role="alert">{error}</p>}
+      </div>
+      <div className="modal-actions">
+        {configured && (
+          <button type="button" className="admin-action-button admin-action-danger" onClick={() => void remove()} disabled={saving}>
+            <Trash2 size={13} /> Удалить
+          </button>
+        )}
+        <button type="button" className="text-button" onClick={onClose} disabled={saving}>Отмена</button>
+        <button type="button" className="btn-primary" onClick={() => void submit()} disabled={saving || !token.trim()}>
+          {saving ? "Проверяем…" : "Сохранить"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function CreateUserDialog({
   onClose,
   onSubmit
@@ -253,13 +344,20 @@ function CreateUserDialog({
   );
 }
 
-export default function AdminUsersPage({ currentUser }: { currentUser: PortalUser }) {
+export default function AdminUsersPage({
+  currentUser,
+  onCurrentUserTokenChanged
+}: {
+  currentUser: PortalUser;
+  onCurrentUserTokenChanged: (configured: boolean) => void;
+}) {
   const [period, setPeriod] = useState<Period>("30");
   const [items, setItems] = useState<AdminUser[]>([]);
   const [totals, setTotals] = useState<AdminTotals | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState("");
   const [passwordTarget, setPasswordTarget] = useState<AdminUser | null>(null);
+  const [yougileTokenTarget, setYougileTokenTarget] = useState<AdminUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -344,6 +442,34 @@ export default function AdminUsersPage({ currentUser }: { currentUser: PortalUse
 
     setNotice(`Учётная запись ${data.user?.login} создана.`);
     setCreateOpen(false);
+    await refresh();
+  };
+
+  const submitYougileToken = async (user: AdminUser, token: string) => {
+    const response = await apiFetch(`/api/admin/users/${encodeURIComponent(user.id)}/yougile-token`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token })
+    });
+    const data = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(data.error ?? "Не удалось сохранить токен YouGile.");
+
+    setNotice(`Токен YouGile для ${user.displayName} проверен и сохранён.`);
+    if (user.id === currentUser.id) onCurrentUserTokenChanged(true);
+    setYougileTokenTarget(null);
+    await refresh();
+  };
+
+  const removeYougileToken = async (user: AdminUser) => {
+    const response = await apiFetch(`/api/admin/users/${encodeURIComponent(user.id)}/yougile-token`, {
+      method: "DELETE"
+    });
+    const data = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(data.error ?? "Не удалось удалить токен YouGile.");
+
+    setNotice(`Токен YouGile для ${user.displayName} удалён.`);
+    if (user.id === currentUser.id) onCurrentUserTokenChanged(false);
+    setYougileTokenTarget(null);
     await refresh();
   };
 
@@ -496,6 +622,17 @@ export default function AdminUsersPage({ currentUser }: { currentUser: PortalUse
                             <KeyRound size={13} /> Пароль
                           </button>
                           <button
+                            className="admin-action-button"
+                            disabled={busy}
+                            onClick={() => setYougileTokenTarget(user)}
+                            title={user.yougileTokenConfigured ? "Заменить токен YouGile" : "Добавить токен YouGile"}
+                          >
+                            <KeyRound size={13} /> {user.yougileTokenConfigured ? "YouGile" : "Подключить"}
+                          </button>
+                          <small className="admin-cell-note">
+                            {user.yougileTokenConfigured ? "Токен настроен" : "Токена нет"}
+                          </small>
+                          <button
                             className={`admin-action-button ${user.active ? "admin-action-danger" : ""}`}
                             disabled={isSelf || busy}
                             title={isSelf ? "Себя заблокировать нельзя" : user.active ? "Заблокировать" : "Разблокировать"}
@@ -522,6 +659,15 @@ export default function AdminUsersPage({ currentUser }: { currentUser: PortalUse
 
       {passwordTarget && (
         <PasswordDialog user={passwordTarget} onClose={() => setPasswordTarget(null)} onSubmit={(password) => submitPassword(passwordTarget, password)} />
+      )}
+      {yougileTokenTarget && (
+        <YougileTokenDialog
+          user={yougileTokenTarget}
+          configured={yougileTokenTarget.yougileTokenConfigured}
+          onClose={() => setYougileTokenTarget(null)}
+          onSubmit={(token) => submitYougileToken(yougileTokenTarget, token)}
+          onRemove={() => removeYougileToken(yougileTokenTarget)}
+        />
       )}
       {createOpen && (
         <CreateUserDialog onClose={() => setCreateOpen(false)} onSubmit={submitCreate} />

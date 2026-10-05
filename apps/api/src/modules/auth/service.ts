@@ -144,7 +144,18 @@ export async function resolveSession(prisma: PrismaClient, request: FastifyReque
 
   const session = await prisma.portalSession.findUnique({
     where: { tokenHash: hashToken(token) },
-    include: { user: true }
+    include: {
+      user: {
+        select: {
+          id: true,
+          login: true,
+          displayName: true,
+          role: true,
+          active: true,
+          createdAt: true
+        }
+      }
+    }
   });
   if (!session) return null;
 

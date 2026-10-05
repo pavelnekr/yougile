@@ -126,11 +126,7 @@ function App() {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [section, navigate] = useSectionUrl();
   const [health, setHealth] = useState<Health>("loading");
-  // Портал умеет работать без YouGile: аудит, история и настройки читают базу.
-  // Но площадки, назначение, снятие и комментарии без токена невозможны, и
-  // раньше они падали с текстом про колонку плана — про настоящую причину
-  // пользователь узнавал только из лога сервера.
-  const [yougileConnected, setYougileConnected] = useState(true);
+  const yougileConnected = sessionUser?.yougileTokenConfigured ?? false;
   const [sites, setSites] = useState<PlannedSite[]>([]);
   const [siteLoadState, setSiteLoadState] = useState<SiteLoadState>("loading");
   const [siteError, setSiteError] = useState("");
@@ -180,8 +176,7 @@ function App() {
         if (!response.ok) throw new Error("Backend недоступен");
         return response.json();
       })
-      .then((data: { status?: string; services?: { yougile?: string } }) => {
-        setYougileConnected(data.services?.yougile !== "not_configured");
+      .then((data: { status?: string }) => {
         setHealth(data.status === "ok" ? "ok" : "error");
       })
       .catch(() => {
@@ -319,8 +314,8 @@ function App() {
               <div>
                 <strong>Портал не подключён к YouGile</strong>
                 <span>
-                  На сервере не задан YOUGILE_API_TOKEN, поэтому площадки, назначение, снятие и комментарии
-                  работать не будут. Аудит загрузок, история и настройки доступны — они читают базу.
+                  Для вашей учётной записи не настроен личный токен YouGile. Обратитесь к администратору,
+                  чтобы добавить токен в разделе «Учётные записи».
                 </span>
               </div>
             </div>
@@ -351,7 +346,12 @@ function App() {
             <HistoryPage />
           ) : activeSection === "Учётные записи" ? (
             // activeSection уже проверен на роль выше, поэтому сюда попадает только ADMIN.
-            <AdminUsersPage currentUser={sessionUser} />
+            <AdminUsersPage
+              currentUser={sessionUser}
+              onCurrentUserTokenChanged={(configured) => {
+                setSessionUser((user) => user ? { ...user, yougileTokenConfigured: configured } : user);
+              }}
+            />
           ) : (
             <SectionPage section={activeSection} health={health} />
           )}

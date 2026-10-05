@@ -9,7 +9,6 @@ import { closeOperationQueue } from "./jobs/queue.js";
 import { createOperationWorker } from "./jobs/worker.js";
 import { registerAssignmentRoutes } from "./modules/assignments/routes.js";
 import { registerCommentRoutes } from "./modules/comments/routes.js";
-import { YougileClient } from "./integrations/yougile/client.js";
 import { registerImportRoutes } from "./modules/imports/routes.js";
 import { registerSiteRoutes } from "./modules/sites/routes.js";
 import { registerHealthRoutes } from "./routes/health.js";
@@ -35,12 +34,11 @@ const app = Fastify({
   trustProxy: (_address: string, hop: number) => hop === 0
 });
 const prisma = new PrismaClient();
-const yougile = new YougileClient();
 const redis = new Redis(config.REDIS_URL, {
   maxRetriesPerRequest: 1,
   lazyConnect: true
 });
-const operationWorker = createOperationWorker(prisma, yougile);
+const operationWorker = createOperationWorker(prisma);
 
 await app.register(cors, {
   origin: config.WEB_ORIGIN,
@@ -58,11 +56,11 @@ app.addHook("preHandler", async (request, reply) => {
 
 await registerHealthRoutes(app, prisma, redis);
 await registerAuthRoutes(app, prisma);
-await registerSiteRoutes(app, yougile);
-await registerAssignmentRoutes(app, prisma, yougile);
-await registerCommentRoutes(app, prisma, yougile);
-await registerImportRoutes(app, prisma, yougile);
-await registerHistoryRoutes(app, prisma, yougile);
+await registerSiteRoutes(app, prisma);
+await registerAssignmentRoutes(app, prisma);
+await registerCommentRoutes(app, prisma);
+await registerImportRoutes(app, prisma);
+await registerHistoryRoutes(app, prisma);
 await registerSettingsRoutes(app, prisma);
 await registerAdminRoutes(app, prisma);
 

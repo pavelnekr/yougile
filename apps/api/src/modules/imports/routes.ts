@@ -7,6 +7,7 @@ import { z } from "zod";
 import { config } from "../../config.js";
 import { YougileClient, YougileApiError } from "../../integrations/yougile/client.js";
 import { getChatMessages, getMessageText, getMessageTimestamp } from "../../integrations/yougile/chat.js";
+import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
@@ -81,8 +82,7 @@ function readError(error: unknown) {
 
 export async function registerImportRoutes(
   app: FastifyInstance,
-  prisma: PrismaClient,
-  yougile: YougileClient
+  prisma: PrismaClient
 ) {
   await app.register(multipart, {
     limits: { fileSize: config.UPLOAD_MAX_BYTES, files: 1, fields: 0, parts: 1 }
@@ -170,6 +170,7 @@ export async function registerImportRoutes(
     if (!parsed.success) return reply.code(400).send({ error: "Выберите строки XLSX для проверки комментариев." });
 
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       const batch = await prisma.importBatch.findUnique({
         where: { id: request.params.id },
         include: {
@@ -229,6 +230,9 @@ export async function registerImportRoutes(
         })
       };
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       app.log.error({ err: error, importId: request.params.id }, "Could not check latest comments for XLSX rows");
       return reply.code(502).send({ error: "Не удалось проверить комментарии по выбранному XLSX." });
     }
@@ -236,6 +240,7 @@ export async function registerImportRoutes(
 
   app.post("/api/imports/preview", async (request, reply) => {
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const upload = await request.file();
       if (!upload) return reply.code(400).send({ error: "Выберите XLSX-файл плана." });
 
@@ -247,10 +252,8 @@ export async function registerImportRoutes(
 
       const buffer = await upload.toBuffer();
       const parsedPlan = await parsePlanWorkbook(buffer);
-      const [sites, users] = await Promise.all([
-        getPlannedSites(yougile),
-        getAssignmentUsers(yougile)
-      ]);
+      const sites = await getPlannedSites(yougile);
+      const users = await getAssignmentUsers(yougile);
       const taskBySiteId = new Map<string, typeof sites[number]>();
       for (const site of sites) {
         if (!taskBySiteId.has(site.siteNumber)) taskBySiteId.set(site.siteNumber, site);
@@ -361,6 +364,9 @@ export async function registerImportRoutes(
         }))
       };
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof Error && error.message.startsWith("Request file size limit")) {
         return reply.code(413).send({ error: `Файл превышает лимит ${Math.round(config.UPLOAD_MAX_BYTES / 1024 / 1024)} МБ.` });
       }
@@ -449,7 +455,8 @@ export async function registerImportRoutes(
 
   async function prepareImportAssignment(
     importId: string,
-    input: z.infer<typeof previewSchema>
+    input: z.infer<typeof previewSchema>,
+    yougile: YougileClient
   ): Promise<{ batchId: string; fileName: string; items: PreparedImportItem[]; employees: Awaited<ReturnType<typeof getAssignmentUsers>> }> {
     const batch = await prisma.importBatch.findUnique({
       where: { id: importId },
@@ -539,7 +546,8 @@ export async function registerImportRoutes(
     const parsed = previewSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите строки плана, где площадка и инженер найдены в YouGile." });
     try {
-      const prepared = await prepareImportAssignment(request.params.id, parsed.data);
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
+      const prepared = await prepareImportAssignment(request.params.id, parsed.data, yougile);
       return {
         importId: prepared.batchId,
         count: prepared.items.length,
@@ -553,6 +561,9 @@ export async function registerImportRoutes(
         }))
       };
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
       app.log.error({ err: error }, "Could not prepare XLSX assignment preview");
       return reply.code(502).send({ error: "Не удалось проверить выбранные задачи в YouGile." });
@@ -563,6 +574,7 @@ export async function registerImportRoutes(
     const parsed = importRemovalSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите уникальные строки XLSX для снятия инженеров." });
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const prepared = await prepareImportRemoval(yougile, prisma, request.params.id, parsed.data.rowNumbers);
       return {
         importId: prepared.batchId,
@@ -580,6 +592,9 @@ export async function registerImportRoutes(
         }))
       };
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
       app.log.error({ err: error, importId: request.params.id }, "Could not prepare XLSX engineer removal preview");
       return reply.code(502).send({ error: "Не удалось проверить назначения по выбранному XLSX." });
@@ -590,6 +605,7 @@ export async function registerImportRoutes(
     const parsed = importRemovalSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите проверенные строки XLSX для снятия инженеров." });
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const prepared = await prepareImportRemoval(yougile, prisma, request.params.id, parsed.data.rowNumbers);
       const operation = await prisma.operation.create({
         data: {
@@ -628,6 +644,9 @@ export async function registerImportRoutes(
 
       return reply.code(202).send({ operationId: operation.id });
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
       app.log.error({ err: error, importId: request.params.id }, "Could not enqueue XLSX engineer removal");
       return reply.code(502).send({ error: "Не удалось запустить снятие инженеров. Изменения не применены." });
@@ -639,7 +658,8 @@ export async function registerImportRoutes(
     if (!parsed.success) return reply.code(400).send({ error: "Выберите проверенные строки плана и введите шаблон комментария." });
 
     try {
-      const prepared = await prepareImportAssignment(request.params.id, parsed.data);
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
+      const prepared = await prepareImportAssignment(request.params.id, parsed.data, yougile);
       const operation = await prisma.$transaction(async (transaction) => {
         const batchStatus = await transaction.importBatch.updateMany({
           where: { id: prepared.batchId, status: ImportBatchStatus.PREVIEW },
@@ -697,6 +717,9 @@ export async function registerImportRoutes(
 
       return reply.code(202).send({ operationId: operation.id });
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
       app.log.error({ err: error }, "Could not enqueue XLSX assignment operation");
       return reply.code(502).send({ error: "Не удалось запустить назначение из XLSX. Изменения не применены." });

@@ -25,6 +25,7 @@ export type AdminUserRow = {
   displayName: string;
   role: string;
   active: boolean;
+  yougileTokenConfigured: boolean;
   createdAt: string;
   activeSessions: number;
   lastSeenAt: string | null;
@@ -159,6 +160,7 @@ export async function listUsersWithStats(prisma: PrismaClient, period: StatsPeri
       displayName: user.displayName,
       role: user.role,
       active: user.active,
+      yougileTokenConfigured: Boolean(user.yougileTokenEncrypted),
       createdAt: user.createdAt.toISOString(),
       activeSessions: user.sessions.length,
       lastSeenAt: lastSeenAt?.toISOString() ?? null,

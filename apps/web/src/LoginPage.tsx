@@ -7,6 +7,7 @@ export type PortalUser = {
   login: string;
   displayName: string;
   role: string;
+  yougileTokenConfigured: boolean;
 };
 
 type Mode = "login" | "register";

@@ -37,10 +37,8 @@ export async function prepareImportRemoval(
     throw new AssignmentValidationError("Часть строк не относится к выбранному файлу XLSX.");
   }
 
-  const [employees, plannedSites] = await Promise.all([
-    getAssignmentUsers(client),
-    getPlannedSites(client)
-  ]);
+  const employees = await getAssignmentUsers(client);
+  const plannedSites = await getPlannedSites(client);
   const usersById = new Map(employees.map((user) => [user.id, user]));
   const taskById = new Map(plannedSites.map((site) => [site.taskId, site]));
   const siteIds = new Set<string>();
@@ -120,12 +118,8 @@ export async function processRemovalOperation(
   });
 
   const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
-  let cursor = 0;
-  const workerCount = Math.min(3, operation.items.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (cursor < operation.items.length) {
-      const item = operation.items[cursor++];
-      if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
+  for (const item of operation.items) {
+    if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
 
       const taskIdValue = item.beforeData && typeof item.beforeData === "object" &&
         !Array.isArray(item.beforeData) && "taskId" in item.beforeData
@@ -187,16 +181,15 @@ export async function processRemovalOperation(
         }
       });
 
-      await prisma.operation.update({
-        where: { id: operationId },
-        data: {
-          completed: { increment: 1 },
-          ...(status === OperationItemStatus.FAILED ? { failed: { increment: 1 } } : {}),
-          message: "Снятие инженеров выполняется."
-        }
-      });
-    }
-  }));
+    await prisma.operation.update({
+      where: { id: operationId },
+      data: {
+        completed: { increment: 1 },
+        ...(status === OperationItemStatus.FAILED ? { failed: { increment: 1 } } : {}),
+        message: "Снятие инженеров выполняется."
+      }
+    });
+  }
 
   const results = await prisma.operationItem.findMany({ where: { operationId } });
   const failed = results.filter((item) => item.status === OperationItemStatus.FAILED).length;

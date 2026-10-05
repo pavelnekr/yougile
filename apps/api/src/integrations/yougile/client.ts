@@ -10,24 +10,40 @@ export class YougileApiError extends Error {
   }
 }
 
+export type YougileClientOptions = {
+  retryOnRateLimit?: boolean;
+};
+
 export class YougileClient {
+  constructor(
+    private readonly token: string,
+    private readonly options: YougileClientOptions = {}
+  ) {}
+
   async request(path: string, init: RequestInit = {}): Promise<unknown> {
-    if (!config.YOUGILE_API_TOKEN) {
-      throw new Error("YOUGILE_API_TOKEN is not configured");
+    if (!this.token) {
+      throw new Error("YouGile API token is missing");
     }
 
     const baseUrl = `${config.YOUGILE_API_URL.replace(/\/+$/, "")}/`;
     const relativePath = path.replace(/^\/+/, "");
     const headers = new Headers(init.headers);
-    headers.set("Authorization", `Bearer ${config.YOUGILE_API_TOKEN}`);
+    headers.set("Authorization", `Bearer ${this.token}`);
     headers.set("Accept", "application/json");
-    const response = await fetch(new URL(relativePath, baseUrl), {
-      ...init,
-      headers,
-      signal: init.signal ?? AbortSignal.timeout(15_000)
-    });
 
-    const responseText = await response.text();
+    let response: Response;
+    let responseText: string;
+    while (true) {
+      response = await fetch(new URL(relativePath, baseUrl), {
+        ...init,
+        headers,
+        signal: init.signal ?? AbortSignal.timeout(15_000)
+      });
+      responseText = await response.text();
+      if (response.status !== 429 || !this.options.retryOnRateLimit) break;
+      await new Promise((resolve) => setTimeout(resolve, 60_000));
+    }
+
     if (!response.ok) {
       throw new YougileApiError(
         `YouGile request failed with HTTP ${response.status}`,

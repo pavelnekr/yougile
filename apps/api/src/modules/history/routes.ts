@@ -1,7 +1,7 @@
 import { OperationItemStatus, OperationStatus, OperationType, PrismaClient } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { YougileClient } from "../../integrations/yougile/client.js";
+import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { getAssignmentUsers } from "../users/service.js";
 
 const historyQuerySchema = z.object({
@@ -71,7 +71,7 @@ function bucketLabel(key: string, days: "30" | "90" | "all") {
     : date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
-export async function registerHistoryRoutes(app: FastifyInstance, prisma: PrismaClient, yougile: YougileClient) {
+export async function registerHistoryRoutes(app: FastifyInstance, prisma: PrismaClient) {
   app.get("/api/history/work-types", async (_request, reply) => {
     const monthStart = new Date();
     monthStart.setDate(1);
@@ -157,10 +157,13 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
       let engineerNamesAvailable = true;
       let usersById = new Map<string, string>();
       try {
+        const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
         usersById = new Map((await getAssignmentUsers(yougile)).map((user) => [user.id, user.name]));
       } catch (error) {
         engineerNamesAvailable = false;
-        app.log.warn({ err: error }, "Could not resolve historical engineer names");
+        if (!(error instanceof UserYougileCredentialError)) {
+          app.log.warn({ err: error }, "Could not resolve historical engineer names");
+        }
       }
 
       const activity = new Map<string, { uploads: number; assignments: number; removals: number; comments: number }>();
@@ -328,9 +331,12 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
       ]);
       let engineerNames = new Map<string, string>();
       try {
+        const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
         engineerNames = new Map((await getAssignmentUsers(yougile)).map((user) => [user.id, user.name]));
       } catch (error) {
-        app.log.warn({ err: error }, "Could not resolve engineer names for history items");
+        if (!(error instanceof UserYougileCredentialError)) {
+          app.log.warn({ err: error }, "Could not resolve engineer names for history items");
+        }
       }
 
       return {

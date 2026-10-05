@@ -2,18 +2,25 @@ import { Worker } from "bullmq";
 import { PrismaClient } from "@prisma/client";
 import { Redis } from "ioredis";
 import { config } from "../config.js";
-import { YougileClient } from "../integrations/yougile/client.js";
+import { getUserYougileClient } from "../integrations/yougile/user-client.js";
 import { processAssignmentOperation } from "../modules/assignments/service.js";
 import { processRemovalOperation } from "../modules/assignments/removal.js";
 import { processCommentOperation } from "../modules/comments/service.js";
 import type { OperationJob } from "./queue.js";
 
-export function createOperationWorker(prisma: PrismaClient, yougile: YougileClient) {
+export function createOperationWorker(prisma: PrismaClient) {
   const connection = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null });
   const worker = new Worker<OperationJob>(
     "portal-operations",
     async (job) => {
       try {
+        const operation = await prisma.operation.findUnique({
+          where: { id: job.data.operationId },
+          select: { createdById: true, type: true }
+        });
+        const yougile = await getUserYougileClient(prisma, operation?.createdById ?? undefined, {
+          retryOnRateLimit: operation?.type === "ASSIGN" || operation?.type === "REMOVE"
+        });
         if (job.name === "remove-engineers") {
           await processRemovalOperation(prisma, yougile, job.data);
         } else if (job.name === "post-comments") {

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { OperationType, PrismaClient } from "@prisma/client";
-import { YougileClient } from "../../integrations/yougile/client.js";
+import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
@@ -17,14 +17,17 @@ const visibleOperationTypes: OperationType[] = [
 
 export async function registerAssignmentRoutes(
   app: FastifyInstance,
-  prisma: PrismaClient,
-  yougile: YougileClient
+  prisma: PrismaClient
 ) {
-  app.get("/api/users", async (_request, reply) => {
+  app.get("/api/users", async (request, reply) => {
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const items = await getAssignmentUsers(yougile);
       return { items, count: items.length };
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       app.log.error({ err: error }, "Could not load YouGile users");
       return reply.code(502).send({ error: "Не удалось загрузить сотрудников из YouGile." });
     }
@@ -37,8 +40,12 @@ export async function registerAssignmentRoutes(
     }
 
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       return await previewAssignments(yougile, parsed.data);
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) {
         return reply.code(400).send({ error: error.message });
       }
@@ -80,6 +87,7 @@ export async function registerAssignmentRoutes(
     }
 
     try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const preview = await previewAssignments(yougile, parsed.data);
       const operation = await prisma.operation.create({
         data: {
@@ -120,6 +128,9 @@ export async function registerAssignmentRoutes(
 
       return reply.code(202).send({ operationId: operation.id });
     } catch (error) {
+      if (error instanceof UserYougileCredentialError) {
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       if (error instanceof AssignmentValidationError) {
         return reply.code(400).send({ error: error.message });
       }

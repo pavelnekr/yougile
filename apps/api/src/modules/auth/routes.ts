@@ -40,12 +40,14 @@ function publicUser(user: {
   login: string;
   displayName: string;
   role: string;
+  yougileTokenEncrypted?: string | null;
 }) {
   return {
     id: user.id,
     login: user.login,
     displayName: user.displayName,
-    role: user.role
+    role: user.role,
+    yougileTokenConfigured: Boolean(user.yougileTokenEncrypted)
   };
 }
 
@@ -57,7 +59,14 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
   app.get("/api/auth/session", async (request, reply) => {
     const session = await resolveSession(prisma, request);
     if (!session) return reply.code(401).send({ error: "Активной сессии нет." });
-    return { user: publicUser(session.user), expiresAt: session.expiresAt.toISOString() };
+    const yougileCredential = await prisma.portalUser.findUnique({
+      where: { id: session.user.id },
+      select: { yougileTokenEncrypted: true }
+    });
+    return {
+      user: publicUser({ ...session.user, yougileTokenEncrypted: yougileCredential?.yougileTokenEncrypted }),
+      expiresAt: session.expiresAt.toISOString()
+    };
   });
 
   app.post("/api/auth/login", async (request, reply) => {

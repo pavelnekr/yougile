@@ -84,22 +84,18 @@ export async function previewAssignments(
   }
 
   const items = [];
-  for (let index = 0; index < input.taskIds.length; index += 5) {
-    const batch = input.taskIds.slice(index, index + 5);
-    const batchItems = await Promise.all(batch.map(async (taskId) => {
-      const task = await readTask(client, taskId);
-      const plannedSite = validatePlanTask(task, siteByTaskId);
-      const currentUserIds = task.assigned ?? [];
-      return {
-        taskId,
-        siteNumber: plannedSite.siteNumber,
-        title: task.title,
-        currentUserIds,
-        alreadyAssigned: currentUserIds.includes(user.id),
-        valid: true
-      };
-    }));
-    items.push(...batchItems);
+  for (const taskId of input.taskIds) {
+    const task = await readTask(client, taskId);
+    const plannedSite = validatePlanTask(task, siteByTaskId);
+    const currentUserIds = task.assigned ?? [];
+    items.push({
+      taskId,
+      siteNumber: plannedSite.siteNumber,
+      title: task.title,
+      currentUserIds,
+      alreadyAssigned: currentUserIds.includes(user.id),
+      valid: true
+    });
   }
 
   return { user, items };
@@ -149,12 +145,8 @@ export async function processAssignmentOperation(
   });
 
   const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
-  let cursor = 0;
-  const workerCount = Math.min(3, operation.items.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (cursor < operation.items.length) {
-      const item = operation.items[cursor++];
-      if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
+  for (const item of operation.items) {
+    if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
 
       const taskIdValue = item.beforeData && typeof item.beforeData === "object" && "taskId" in item.beforeData
         ? item.beforeData.taskId
@@ -226,18 +218,17 @@ export async function processAssignmentOperation(
         }
       });
 
-      await prisma.operation.update({
-        where: { id: operationId },
-        data: {
-          completed: { increment: 1 },
-          ...(status === OperationItemStatus.FAILED
-            ? { failed: { increment: 1 } }
-            : {}),
-          message: "Операция выполняется."
-        }
-      });
-    }
-  }));
+    await prisma.operation.update({
+      where: { id: operationId },
+      data: {
+        completed: { increment: 1 },
+        ...(status === OperationItemStatus.FAILED
+          ? { failed: { increment: 1 } }
+          : {}),
+        message: "Операция выполняется."
+      }
+    });
+  }
 
   const results = await prisma.operationItem.findMany({ where: { operationId } });
   const failed = results.filter((item) => item.status === OperationItemStatus.FAILED).length;

@@ -54,17 +54,18 @@ enum ImportRowStatus {
 }
 
 model PortalUser {
-  id           String          @id @default(cuid())
-  login        String          @unique
-  passwordHash String
-  displayName  String
-  role         PortalRole      @default(OPERATOR)
-  active       Boolean         @default(true)
-  operations   Operation[]     @relation("CreatedOperations")
-  imports      ImportBatch[]
-  sessions     PortalSession[]
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id                    String          @id @default(cuid())
+  login                 String          @unique
+  passwordHash          String
+  displayName           String
+  role                  PortalRole      @default(OPERATOR)
+  active                Boolean         @default(true)
+  yougileTokenEncrypted String?
+  operations            Operation[]     @relation("CreatedOperations")
+  imports               ImportBatch[]
+  sessions              PortalSession[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 }
 
 // Сессия входа: сам токен живёт только в httpOnly-cookie, в базе хранится его SHA-256.
@@ -83,31 +84,31 @@ model PortalSession {
 }
 
 model YougileUser {
-  id         String     @id
-  name       String
-  email      String?
-  active     Boolean    @default(true)
-  siteTasks  SiteTask[]
-  syncedAt   DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id        String     @id
+  name      String
+  email     String?
+  active    Boolean    @default(true)
+  siteTasks SiteTask[]
+  syncedAt  DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
 model SiteTask {
-  id                 String           @id @default(cuid())
-  siteId             String           @unique
-  yougileTaskId      String?
-  yougileUserId      String?
-  yougileUser        YougileUser?     @relation(fields: [yougileUserId], references: [id], onDelete: SetNull)
-  address            String?
-  cluster            String?
-  scheduledAt        String?
-  workRequired       String?
-  comment            String?
-  assignedUserIds    Json?
-  rawData            Json
-  importedAt         DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  operationItems     OperationItem[]
+  id              String          @id @default(cuid())
+  siteId          String          @unique
+  yougileTaskId   String?
+  yougileUserId   String?
+  yougileUser     YougileUser?    @relation(fields: [yougileUserId], references: [id], onDelete: SetNull)
+  address         String?
+  cluster         String?
+  scheduledAt     String?
+  workRequired    String?
+  comment         String?
+  assignedUserIds Json?
+  rawData         Json
+  importedAt      DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  operationItems  OperationItem[]
 
   @@index([yougileTaskId])
   @@index([yougileUserId])
@@ -135,23 +136,23 @@ model Operation {
 }
 
 model OperationItem {
-  id             String             @id @default(cuid())
-  operationId    String
-  operation      Operation          @relation(fields: [operationId], references: [id], onDelete: Cascade)
-  importRowId    String?
-  importRow      ImportRow?         @relation(fields: [importRowId], references: [id], onDelete: SetNull)
-  siteTaskId     String?
-  siteTask       SiteTask?          @relation(fields: [siteTaskId], references: [id], onDelete: SetNull)
-  siteId         String
-  status         OperationItemStatus @default(PENDING)
+  id              String              @id @default(cuid())
+  operationId     String
+  operation       Operation           @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  importRowId     String?
+  importRow       ImportRow?          @relation(fields: [importRowId], references: [id], onDelete: SetNull)
+  siteTaskId      String?
+  siteTask        SiteTask?           @relation(fields: [siteTaskId], references: [id], onDelete: SetNull)
+  siteId          String
+  status          OperationItemStatus @default(PENDING)
   requestedUserId String?
-  beforeData     Json?
-  afterData      Json?
-  errorCode      String?
-  errorMessage   String?
-  attempts       Int                @default(0)
-  completedAt    DateTime?
-  createdAt      DateTime           @default(now())
+  beforeData      Json?
+  afterData       Json?
+  errorCode       String?
+  errorMessage    String?
+  attempts        Int                 @default(0)
+  completedAt     DateTime?
+  createdAt       DateTime            @default(now())
 
   @@unique([operationId, siteId])
   @@index([operationId, status])
@@ -164,25 +165,25 @@ model AppSetting {
 }
 
 model ImportBatch {
-  id          String     @id @default(cuid())
+  id          String            @id @default(cuid())
   fileName    String
   checksum    String
-  rowCount    Int        @default(0)
+  rowCount    Int               @default(0)
   createdById String?
-  createdBy   PortalUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   PortalUser?       @relation(fields: [createdById], references: [id], onDelete: SetNull)
   status      ImportBatchStatus @default(PREVIEW)
   rows        ImportRow[]
   metadata    Json?
-  createdAt   DateTime   @default(now())
+  createdAt   DateTime          @default(now())
 
   @@index([checksum])
   @@index([createdAt])
 }
 
 model ImportRow {
-  id             String         @id @default(cuid())
+  id             String          @id @default(cuid())
   importBatchId  String
-  importBatch    ImportBatch    @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  importBatch    ImportBatch     @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
   rowNumber      Int
   siteId         String?
   address        String?
@@ -192,7 +193,7 @@ model ImportRow {
   status         ImportRowStatus
   rawData        Json
   operationItems OperationItem[]
-  createdAt      DateTime       @default(now())
+  createdAt      DateTime        @default(now())
 
   @@unique([importBatchId, rowNumber])
   @@index([importBatchId, status])
