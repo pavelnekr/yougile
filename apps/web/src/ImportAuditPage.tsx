@@ -5,6 +5,7 @@ import { apiFetch } from "./apiClient";
 import { countRu, rowForms, uploadForms } from "./plural";
 import FixtureToggle from "./dev/FixtureToggle";
 import { useFixtureMode } from "./dev/useFixtureMode";
+import { PORTAL_VERSION } from "./version";
 
 type ImportBatch = {
   id: string;
@@ -298,7 +299,7 @@ export default function ImportAuditPage() {
           <div className="import-audit-empty import-audit-empty-details"><Rows3 size={22} /><strong>Таблица появится здесь</strong><span>Выберите XLSX-файл в списке выше.</span></div>
         )}
       </section>
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>История загрузок XLSX</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>История загрузок XLSX</span></footer>
       <FixtureToggle mode={fixtureMode} onChange={setFixtureMode} />
     </section>
   );

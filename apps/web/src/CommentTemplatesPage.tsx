@@ -3,6 +3,7 @@ import { Check, CheckCircle2, Clock3, FileText, LoaderCircle, Plus, Save, Sparkl
 import { apiFetch } from "./apiClient";
 import ConfirmDialog from "./ConfirmDialog";
 import Modal from "./Modal";
+import { PORTAL_VERSION } from "./version";
 
 type CommentTemplate = {
   type: string;
@@ -300,7 +301,7 @@ export default function CommentTemplatesPage() {
           </div>
         </Modal>
       )}
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Шаблоны хранятся на сервере</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Шаблоны хранятся на сервере</span></footer>
     </section>
   );
 }

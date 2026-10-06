@@ -12,6 +12,7 @@ import { apiFetch } from "./apiClient";
 import { findActiveOperation } from "./activeOperations";
 import OperationSites from "./OperationSites";
 import { countRu, siteForms } from "./plural";
+import { PORTAL_VERSION } from "./version";
 
 export type PlannedSite = {
   taskId: string;
@@ -461,7 +462,7 @@ export default function CommentPage({
       )}
 
       <footer className="page-footer">
-        <span>YouGile Operations Portal <span className="footer-version">v0.1</span></span>
+        <span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span>
         <span><MessageSquarePlus size={14} /> Каждая отправка журналируется в истории операций</span>
       </footer>
     </section>

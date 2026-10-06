@@ -18,6 +18,7 @@ import { apiFetch } from "./apiClient";
 import Modal from "./Modal";
 import type { PortalUser } from "./LoginPage";
 import { activeForms, adminForms, blockedForms, countRu } from "./plural";
+import { PORTAL_VERSION } from "./version";
 
 type Period = "30" | "90" | "all";
 
@@ -673,7 +674,7 @@ export default function AdminUsersPage({
         <CreateUserDialog onClose={() => setCreateOpen(false)} onSubmit={submitCreate} />
       )}
 
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Раздел доступен администраторам</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Раздел доступен администраторам</span></footer>
     </section>
   );
 }

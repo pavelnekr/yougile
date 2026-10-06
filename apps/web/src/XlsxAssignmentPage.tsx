@@ -14,6 +14,7 @@ import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { findActiveOperation } from "./activeOperations";
 import { countRu, rowForms, siteForms } from "./plural";
+import { PORTAL_VERSION } from "./version";
 
 type ImportRow = {
   rowNumber: number;
@@ -358,7 +359,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
 
       {error && <div className="assignment-error">{error}</div>}
 
-      {!planImport ? (
+      {!planImport && !operationId ? (
         <div className="panel xlsx-upload-panel">
           <div className="xlsx-upload-icon"><FileSpreadsheet size={23} /></div>
           <h2>Загрузите XLSX-план</h2>
@@ -374,7 +375,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
             }} />
           </label>
         </div>
-      ) : (
+      ) : planImport ? (
         <>
           <div className="panel import-summary-panel">
             <div className="import-file-heading">
@@ -525,7 +526,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
             </div>
           )}
         </>
-      )}
+      ) : null}
 
       {operationId && (
         <div className={`panel assignment-operation ${operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) ? "assignment-operation-done" : ""}`} ref={operationStepRef}>
@@ -538,7 +539,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
         </div>
       )}
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Источник назначений — выбранные строки XLSX</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Источник назначений — выбранные строки XLSX</span></footer>
 
       {bulkWarning && (
         <BulkWarningDialog

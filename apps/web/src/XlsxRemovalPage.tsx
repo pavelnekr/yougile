@@ -6,6 +6,7 @@ import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { findActiveOperation } from "./activeOperations";
 import { countRu, rowForms } from "./plural";
+import { PORTAL_VERSION } from "./version";
 
 type ImportRow = {
   rowNumber: number;
@@ -331,7 +332,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
 
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}
 
-      {!planImport ? (
+      {!planImport && !operationId ? (
         <>
           <div className="removal-source-switch" role="tablist" aria-label="Источник XLSX">
             <button className={source === "upload" ? "removal-source-active" : ""} role="tab" aria-selected={source === "upload"} onClick={() => { setSource("upload"); resetSelection(); }}>
@@ -378,7 +379,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
             </section>
           )}
         </>
-      ) : (
+      ) : planImport ? (
         <>
           <div className="panel import-summary-panel">
             <div className="import-file-heading">
@@ -450,7 +451,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
             </div>
           )}
         </>
-      )}
+      ) : null}
 
       {operationId && (
         <div className={`panel assignment-operation ${terminal ? "assignment-operation-done" : ""}`} ref={operationStepRef}>
@@ -464,7 +465,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
         </div>
       )}
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Источник снятия — выбранный XLSX из загрузки или аудита</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Источник снятия — выбранный XLSX из загрузки или аудита</span></footer>
 
       {bulkWarning && (
         <BulkWarningDialog

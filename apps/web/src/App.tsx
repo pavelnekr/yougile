@@ -39,6 +39,7 @@ import { useStepScroll } from "./useStepScroll.js";
 import { countRu, siteForms, taskForms } from "./plural.js";
 import { avatarInitial } from "./avatar.js";
 import ActiveOperationsPanel from "./ActiveOperationsPanel.js";
+import { PORTAL_VERSION } from "./version";
 
 type Health = "loading" | "ok" | "error";
 type SiteLoadState = "loading" | "ready" | "error";
@@ -479,7 +480,7 @@ function Overview({
         </div>
       </section>
 
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Портал управления операциями</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
     </>
   );
 }
@@ -584,7 +585,7 @@ function SitesPage({ sites, loadState, error }: { sites: PlannedSite[]; loadStat
           </>
         )}
       </div>
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Обновление списка при открытии страницы · кэш API 30 секунд</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Обновление списка при открытии страницы · кэш API 30 секунд</span></footer>
     </section>
   );
 }
@@ -849,7 +850,7 @@ export function AssignmentPage({
           {operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) && <button className="outline-button assignment-new-button" onClick={resetAssignment}><RefreshCw size={14} /> Новое назначение</button>}
         </div>
       )}
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Операции журналируются · обрабатываются последовательно</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Операции журналируются · обрабатываются последовательно</span></footer>
     </section>
   );
 }
@@ -899,7 +900,7 @@ function SectionPage({ section, health }: { section: Exclude<Section, "Обзо�
           <div className="migration-step"><span>3</span> Приёмка на тестовых данных <span className="migration-state">В ПЛАНЕ</span></div>
         </div>
       </div>
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span><ShieldCheck size={14} /> План предусматривает подтверждение перед записью</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span><ShieldCheck size={14} /> План предусматривает подтверждение перед записью</span></footer>
     </section>
   );
 }

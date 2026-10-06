@@ -15,6 +15,7 @@ import { countRu, engineerForms, operationForms, participantForms, recordForms, 
 import { avatarInitial } from "./avatar";
 import FixtureToggle from "./dev/FixtureToggle";
 import { useFixtureMode } from "./dev/useFixtureMode";
+import { PORTAL_VERSION } from "./version";
 
 type Period = "30" | "90" | "all";
 type HistoryType = "ALL" | "ASSIGN" | "REMOVE" | "COMMENT";
@@ -338,7 +339,7 @@ const maxEngineerActivity = Math.max(
         ) : <div className="history-empty">Загруженных XLSX за этот период нет.</div>}
       </section>
 
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Статистика и детализация по сохранённым операциям</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Статистика и детализация по сохранённым операциям</span></footer>
       <FixtureToggle mode={fixtureMode} onChange={setFixtureMode} />
     </section>
   );

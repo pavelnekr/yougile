@@ -3,6 +3,7 @@ import { AlertCircle, Clock3, FileSpreadsheet, RefreshCw, Upload } from "lucide-
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { countRu, rowForms } from "./plural";
+import { PORTAL_VERSION } from "./version";
 
 type ImportBatch = {
   id: string;
@@ -239,7 +240,7 @@ export default function XlsxWorkCheckPage() {
           ) : null}
         </section>
       )}
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Источник проверки — выбранный XLSX</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Источник проверки — выбранный XLSX</span></footer>
     </section>
   );
 }

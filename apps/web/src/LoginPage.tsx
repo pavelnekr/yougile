@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
 import { apiFetch } from "./apiClient";
+import { PORTAL_VERSION } from "./version";
 
 export type PortalUser = {
   id: string;
@@ -148,7 +149,7 @@ export default function LoginPage({
           <p>Назначения, аудит и история операций YouGile — в одном рабочем пространстве.</p>
           <div className="login-security-note"><ShieldCheck size={17} /><span><strong>Доступ к порталу</strong><small>Используйте учётную запись рабочего пространства.</small></span></div>
         </div>
-        <span className="login-brand-footer">YOUGILE OPERATIONS PORTAL <span>·</span> v0.1</span>
+        <span className="login-brand-footer">YOUGILE OPERATIONS PORTAL <span>·</span> {PORTAL_VERSION}</span>
         <span className="login-decoration login-decoration-one" />
         <span className="login-decoration login-decoration-two" />
       </section>
