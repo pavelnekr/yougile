@@ -214,7 +214,11 @@ export async function processAssignmentOperation(
           afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, commentPosted: false };
         }
 
-        if (engineerAssigned) {
+        // Пауза перед отправкой комментария: 2 секунды после записи назначения.
+        // При повторном запуске (инженер уже на площадке) назначения не пишутся,
+        // но комментарии всё равно должны идти в том же темпе — иначе повторная
+        // операция выстреливает серией запросов за минуту, и «очередь» нарушится.
+        if (engineerAssigned || commentText) {
           await new Promise((resolve) => setTimeout(resolve, assignmentActionDelayMs));
         }
 
