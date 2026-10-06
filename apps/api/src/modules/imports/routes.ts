@@ -9,6 +9,7 @@ import { YougileClient, YougileApiError } from "../../integrations/yougile/clien
 import { getChatMessages, getMessageText, getMessageTimestamp } from "../../integrations/yougile/chat.js";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
+import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { annotateLog } from "../logs/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
@@ -189,30 +190,31 @@ export async function registerImportRoutes(
 
       const uniqueTaskIds = [...new Set(batch.rows.flatMap((row) => row.yougileTaskId ? [row.yougileTaskId] : []))];
       const latestByTaskId = new Map<string, { text: string | null; error: string | null }>();
-      for (let index = 0; index < uniqueTaskIds.length; index += 5) {
-        const taskIds = uniqueTaskIds.slice(index, index + 5);
-        const messages = await Promise.all(taskIds.map(async (taskId) => {
-          try {
-            const response = await yougile.request(`chats/${encodeURIComponent(taskId)}/messages?limit=100&offset=0`);
-            const candidates = getChatMessages(response)
-              .filter((message): message is Record<string, unknown> => Boolean(message) && typeof message === "object" && !Array.isArray(message))
-              .map((message) => ({ text: getMessageText(message), timestamp: getMessageTimestamp(message) }))
-              .filter((message) => message.text !== null);
-            candidates.sort((left, right) => (right.timestamp ?? -Infinity) - (left.timestamp ?? -Infinity));
-            return [taskId, { text: candidates[0]?.text ?? null, error: null }] as const;
-          } catch (error) {
-            app.log.error({ err: error, taskId }, "Could not load latest YouGile chat message");
-            return [taskId, {
-              text: null,
-              error: error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)
-                ? "Нет доступа к чату задачи."
-                : error instanceof YougileApiError && error.statusCode === 404
-                  ? "Чат задачи не найден."
-                  : "Не удалось загрузить комментарий из YouGile."
-            }] as const;
-          }
-        }));
-        for (const [taskId, result] of messages) latestByTaskId.set(taskId, result);
+      // Чтение чатов строго по очереди, с паузой 2 секунды между площадками —
+      // как записи операций: YouGile не получает пачку параллельных запросов.
+      // Запрос синхронный, поэтому проверка занимает ~2 секунды на площадку.
+      for (const taskId of uniqueTaskIds) {
+        try {
+          const response = await yougile.request(`chats/${encodeURIComponent(taskId)}/messages?limit=100&offset=0`);
+          const candidates = getChatMessages(response)
+            .filter((message): message is Record<string, unknown> => Boolean(message) && typeof message === "object" && !Array.isArray(message))
+            .map((message) => ({ text: getMessageText(message), timestamp: getMessageTimestamp(message) }))
+            .filter((message) => message.text !== null);
+          candidates.sort((left, right) => (right.timestamp ?? -Infinity) - (left.timestamp ?? -Infinity));
+          latestByTaskId.set(taskId, { text: candidates[0]?.text ?? null, error: null });
+        } catch (error) {
+          app.log.error({ err: error, taskId }, "Could not load latest YouGile chat message");
+          latestByTaskId.set(taskId, {
+            text: null,
+            error: error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)
+              ? "Нет доступа к чату задачи."
+              : error instanceof YougileApiError && error.statusCode === 404
+                ? "Чат задачи не найден."
+                : "Не удалось загрузить комментарий из YouGile."
+          });
+        }
+        // Пауза 2 секунды перед чтением чата следующей площадки.
+        await delayBetweenYougileActions();
       }
 
       return {

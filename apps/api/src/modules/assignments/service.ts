@@ -4,6 +4,7 @@ import { config } from "../../config.js";
 import { YougileApiError, YougileClient } from "../../integrations/yougile/client.js";
 import { postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
+import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { getPlannedSites, type PlannedSite } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 
@@ -35,11 +36,6 @@ const previewInputSchema = z.object({
 export type AssignmentPreviewInput = z.infer<typeof previewInputSchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
 
-// Пауза между действиями над задачей: после назначения инженера перед отправкой
-// комментария и перед повторной попыткой записи при HTTP 400. 2 секунды выбраны
-// оператором как компромисс между скоростью операции и консистентностью YouGile.
-const assignmentActionDelayMs = 2_000;
-
 export class AssignmentValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -70,7 +66,7 @@ async function assignTaskUsers(client: YougileClient, taskId: string, userIds: s
     await request();
   } catch (error) {
     if (!(error instanceof YougileApiError) || error.statusCode !== 400) throw error;
-    await new Promise((resolve) => setTimeout(resolve, assignmentActionDelayMs));
+    await delayBetweenYougileActions();
     await request();
   }
 }
@@ -214,18 +210,21 @@ export async function processAssignmentOperation(
           afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, commentPosted: false };
         }
 
-        // Пауза перед отправкой комментария: 2 секунды после записи назначения.
-        // При повторном запуске (инженер уже на площадке) назначения не пишутся,
-        // но комментарии всё равно должны идти в том же темпе — иначе повторная
-        // операция выстреливает серией запросов за минуту, и «очередь» нарушится.
-        if (engineerAssigned || commentText) {
-          await new Promise((resolve) => setTimeout(resolve, assignmentActionDelayMs));
+        // Пауза 2 секунды после каждой записи в YouGile: после назначения перед
+        // комментарием (YouGile должен успеть применить назначение) и после
+        // комментария перед следующей площадкой. При повторном запуске, когда
+        // инженер уже на площадке, назначать нечего — комментарий всё равно идёт
+        // с той же паузой, иначе повторная операция выстреливает серией запросов
+        // за минуту и «очередь» нарушается.
+        if (engineerAssigned) {
+          await delayBetweenYougileActions();
         }
 
         if (commentText) {
           phase = "comment";
           await postChatMessage(client, task.id, commentText);
           afterData = { ...afterData, commentPosted: true };
+          await delayBetweenYougileActions();
         }
       } catch (error) {
         status = OperationItemStatus.FAILED;

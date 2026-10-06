@@ -2,6 +2,7 @@ import { ImportRowStatus, OperationItemStatus, OperationStatus, OperationType, P
 import { z } from "zod";
 import { YougileClient } from "../../integrations/yougile/client.js";
 import type { OperationJob } from "../../jobs/queue.js";
+import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, maxSitesPerOperation, readTask, tooManySitesError, validatePlanTask } from "./service.js";
@@ -156,6 +157,9 @@ export async function processRemovalOperation(
           });
           status = OperationItemStatus.SUCCEEDED;
           afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, removed: true };
+          // Пауза 2 секунды перед снятием инженера со следующей площадки —
+          // записи идут строго по очереди, как и в остальных операциях.
+          await delayBetweenYougileActions();
         }
       } catch (error) {
         status = OperationItemStatus.FAILED;

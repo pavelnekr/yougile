@@ -3,6 +3,7 @@ import { z } from "zod";
 import { YougileApiError, YougileClient } from "../../integrations/yougile/client.js";
 import { readLatestChatMessage, postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
+import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, readTask, validatePlanTask } from "../assignments/service.js";
@@ -146,64 +147,65 @@ export async function processCommentOperation(
   });
 
   const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
-  let cursor = 0;
-  const workerCount = Math.min(3, operation.items.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (cursor < operation.items.length) {
-      const item = operation.items[cursor++];
-      if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
+  // Комментарии отправляются строго по очереди, с паузой 2 секунды между
+  // площадками, как и остальные записи в YouGile. Параллельная отправка
+  // (раньше — 3 воркера) давала трекеру пачку запросов разом и ломала
+  // порядок сообщений в чатах.
+  for (const item of operation.items) {
+    if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
 
-      const taskId = jsonString(item.beforeData, "taskId");
-      let status: OperationItemStatus = OperationItemStatus.FAILED;
-      let beforeData: object | undefined;
-      let afterData: object | undefined;
-      let errorMessage: string | undefined;
+    const taskId = jsonString(item.beforeData, "taskId");
+    let status: OperationItemStatus = OperationItemStatus.FAILED;
+    let beforeData: object | undefined;
+    let afterData: object | undefined;
+    let errorMessage: string | undefined;
 
-      try {
-        if (!taskId) throw new Error("В операции отсутствует идентификатор задачи.");
+    try {
+      if (!taskId) throw new Error("В операции отсутствует идентификатор задачи.");
 
-        const task = await readTask(client, taskId);
-        const plannedSite = validatePlanTask(task, siteByTaskId);
-        if (plannedSite.siteNumber !== item.siteId) {
-          throw new Error("Номер площадки изменился после предпросмотра.");
-        }
-
-        beforeData = { taskId: task.id, title: task.title, commentText: comment };
-        await postChatMessage(client, task.id, comment);
-        status = OperationItemStatus.SUCCEEDED;
-        afterData = { taskId: task.id, title: task.title, commentPosted: true };
-      } catch (error) {
-        status = OperationItemStatus.FAILED;
-        errorMessage = commentFailureMessage(error);
-        console.error("Comment item failed", {
-          operationId,
-          siteId: item.siteId,
-          error: error instanceof Error ? error.message : "Unknown error"
-        });
+      const task = await readTask(client, taskId);
+      const plannedSite = validatePlanTask(task, siteByTaskId);
+      if (plannedSite.siteNumber !== item.siteId) {
+        throw new Error("Номер площадки изменился после предпросмотра.");
       }
 
-      await prisma.operationItem.update({
-        where: { id: item.id },
-        data: {
-          status,
-          attempts: { increment: 1 },
-          beforeData,
-          afterData,
-          errorMessage,
-          completedAt: new Date()
-        }
-      });
-
-      await prisma.operation.update({
-        where: { id: operationId },
-        data: {
-          completed: { increment: 1 },
-          ...(status === OperationItemStatus.FAILED ? { failed: { increment: 1 } } : {}),
-          message: "Комментарии отправляются в YouGile."
-        }
+      beforeData = { taskId: task.id, title: task.title, commentText: comment };
+      await postChatMessage(client, task.id, comment);
+      status = OperationItemStatus.SUCCEEDED;
+      afterData = { taskId: task.id, title: task.title, commentPosted: true };
+      // Пауза 2 секунды перед отправкой комментария на следующую площадку.
+      await delayBetweenYougileActions();
+    } catch (error) {
+      status = OperationItemStatus.FAILED;
+      errorMessage = commentFailureMessage(error);
+      console.error("Comment item failed", {
+        operationId,
+        siteId: item.siteId,
+        error: error instanceof Error ? error.message : "Unknown error"
       });
     }
-  }));
+
+    await prisma.operationItem.update({
+      where: { id: item.id },
+      data: {
+        status,
+        attempts: { increment: 1 },
+        beforeData,
+        afterData,
+        errorMessage,
+        completedAt: new Date()
+      }
+    });
+
+    await prisma.operation.update({
+      where: { id: operationId },
+      data: {
+        completed: { increment: 1 },
+        ...(status === OperationItemStatus.FAILED ? { failed: { increment: 1 } } : {}),
+        message: "Комментарии отправляются в YouGile."
+      }
+    });
+  }
 
   const results = await prisma.operationItem.findMany({ where: { operationId } });
   const failed = results.filter((item) => item.status === OperationItemStatus.FAILED).length;
