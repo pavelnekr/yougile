@@ -180,6 +180,14 @@ export default function CommentPage({
   const visibleSites = filteredSites.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const validComment = comment.trim().length > 0 && comment.length <= 10_000;
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
+  // Площадки активной операции комментария. Отмечаются в списке выбора, чтобы после
+  // возврата на страницу (в том числе из обзора) было видно, какие площадки сейчас
+  // в работе, и повторно их не выбирать. Для COMMENT-операции siteId элементов — это
+  // номер площадки (см. POST /api/comments и /api/operations/:id).
+  const operationSiteNumbers = useMemo(() => {
+    if (!operationPending || !operation) return new Set<string>();
+    return new Set(operation.items.map((item) => item.siteId));
+  }, [operationPending, operation]);
   const limitReached = selectedTaskIds.length >= maxSites;
   const failedItems = operation?.items.filter((item) => item.status === "FAILED") ?? [];
   const siteLabels = useMemo(() => {
@@ -287,7 +295,9 @@ export default function CommentPage({
           <div className="assignment-panel-heading">
             <div>
               <h2>1. Выберите площадки</h2>
-              <p>Список активных задач загружен из колонки плана YouGile.</p>
+              <p>{operationSiteNumbers.size > 0
+                ? `Площадки текущей операции (${countRu(operationSiteNumbers.size, siteForms)}) отмечены в списке и сейчас недоступны для выбора.`
+                : "Список активных задач загружен из колонки плана YouGile."}</p>
             </div>
             {selectedTaskIds.length > 0 && <button className="text-button" disabled={operationPending} onClick={resetForm}>Сбросить</button>}
           </div>
@@ -310,16 +320,20 @@ export default function CommentPage({
                     <div className="assignment-sites-list">
                       {visibleSites.map((site) => {
                         const checked = selectedTaskIds.includes(site.taskId);
+                        const inOperation = operationSiteNumbers.has(site.siteNumber);
                         return (
-                          <label className={`assignment-site-option ${checked ? "assignment-site-selected" : ""}`} key={site.taskId}>
+                          <label className={`assignment-site-option ${checked ? "assignment-site-selected" : ""} ${inOperation ? "assignment-site-in-operation" : ""}`} key={site.taskId}>
                             <input
                               type="checkbox"
-                              checked={checked}
-                              disabled={operationPending || (!checked && limitReached)}
+                              checked={inOperation || checked}
+                              disabled={operationPending || inOperation || (!checked && limitReached)}
                               onChange={(event) => updateSelection(site.taskId, event.target.checked)}
                             />
                             <span className="site-number">{site.siteNumber}</span>
-                            <span className="site-title" title={site.title}>{site.title}</span>
+                            <span className="assignment-site-copy">
+                              <span className="site-title" title={site.title}>{site.title}</span>
+                              {inOperation && <span className="site-in-operation-badge">в работе</span>}
+                            </span>
                             <span className="site-assignees">{site.assignedCount} назн.</span>
                           </label>
                         );
