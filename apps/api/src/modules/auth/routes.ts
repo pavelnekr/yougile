@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { PortalRole, Prisma, type PrismaClient } from "@prisma/client";
 import { loginSchema, registerSchema } from "./schema.js";
 import { clearRateLimit, rateLimitState, recordRateLimit, type RateLimit } from "./rate-limit.js";
+import { annotateLog } from "../logs/service.js";
 import {
   clearSessionCookie,
   createSession,
@@ -154,6 +155,9 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     setSessionCookie(reply, token, expiresAt, isSecureRequest(request));
 
     request.log.info({ login: user.login, rememberMe }, "Portal session started");
+    // Без этой строки журнал показал бы лишь «POST /api/auth/login → 200»:
+    // сессия в ответе есть, а вот каким логином вошли — нет.
+    annotateLog(request, { message: "Вход в портал выполнен", entityId: user.id });
     return { user: publicUser(user), expiresAt: expiresAt.toISOString(), rememberMe };
   });
 
@@ -202,6 +206,7 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     setSessionCookie(reply, token, expiresAt, isSecureRequest(request));
 
     request.log.info({ login: user.login, role: user.role }, "Portal account registered");
+    annotateLog(request, { message: "Регистрация завершена", entityId: user.id });
     return reply.code(201).send({ user: publicUser(user), expiresAt: expiresAt.toISOString() });
   });
 
@@ -215,8 +220,14 @@ await app.register(async (authRoutes) => {
   });
 
   authRoutes.post("/api/auth/logout", async (request, reply) => {
+    // Путь /api/auth/ исключён из глобальной проверки сессии, поэтому здесь
+    // request.sessionUser пуст. Без явного чтения в журнале осталась бы запись
+    // о выходе без имени того, кто вышел, а это одно из действий сотрудника.
+    const session = await resolveSession(prisma, request);
+    if (session) request.sessionUser = session.user;
     await destroySession(prisma, request);
     clearSessionCookie(reply, isSecureRequest(request));
+    annotateLog(request, { message: "Выход из портала" });
     return { ok: true };
   });
 });

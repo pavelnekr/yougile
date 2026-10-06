@@ -9,6 +9,7 @@ import { YougileClient, YougileApiError } from "../../integrations/yougile/clien
 import { getChatMessages, getMessageText, getMessageTimestamp } from "../../integrations/yougile/chat.js";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
+import { annotateLog } from "../logs/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
   AssignmentValidationError,
@@ -339,6 +340,14 @@ export async function registerImportRoutes(
           await transaction.importBatch.deleteMany({ where: { id: { in: expiredBatchIds } } });
         }
         return createdBatch;
+      });
+
+      const readyCount = rows.filter((row) => row.status === ImportRowStatus.READY).length;
+      // multipart не попадает в request.body, поэтому без этой строки в журнале
+      // остался бы один «POST /api/imports/preview» без имени файла и чисел.
+      annotateLog(request, {
+        message: `Загружен файл «${batch.fileName}»: строк в файле ${rows.length}, к назначению ${readyCount}`,
+        entityId: batch.id
       });
 
       return {

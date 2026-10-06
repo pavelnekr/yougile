@@ -53,6 +53,14 @@ enum ImportRowStatus {
   DUPLICATE_SITE
 }
 
+// Уровни журнала действий. Три уровня вместо произвольных, чтобы фильтр в
+// интерфейсе работал по заранее известному набору и не плодил мусорные значения.
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
 model PortalUser {
   id                    String          @id @default(cuid())
   login                 String          @unique
@@ -198,4 +206,37 @@ model ImportRow {
   @@unique([importBatchId, rowNumber])
   @@index([importBatchId, status])
   @@index([siteId])
+}
+
+// Журнал действий для одноимённого раздела портала.
+//
+// Отдельная таблица вместо чтения stdout: строки должны быть фильтруемыми по
+// уровню, действию и исполнителю, а сам журнал обязан переживать перезапуск
+// процесса. Пишут его два места — хуки Fastify на уровне HTTP (все запросы и
+// ошибки) и воркер очереди (фоновые операции, которых в HTTP-потоке нет).
+//
+// actorLogin и actorRole намеренно денормализованы и без внешнего ключа:
+// учётную запись удаляют, а в журнале должна остаться история, кто действовал.
+model PortalLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  level      LogLevel @default(INFO)
+  action     String
+  message    String
+  actorId    String?
+  actorLogin String?
+  actorRole  String?
+  ip         String?
+  method     String?
+  path       String?
+  status     Int?
+  durationMs Int?
+  request    Json?
+  error      String?
+  entityId   String?
+
+  @@index([createdAt])
+  @@index([level, createdAt])
+  @@index([actorLogin, createdAt])
+  @@index([action])
 }
