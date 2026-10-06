@@ -6,7 +6,7 @@ import { ImportBatchStatus, ImportRowStatus, OperationStatus, OperationType, Pri
 import { z } from "zod";
 import { config } from "../../config.js";
 import { YougileClient, YougileApiError } from "../../integrations/yougile/client.js";
-import { getChatMessages, getMessageText, getMessageTimestamp } from "../../integrations/yougile/chat.js";
+import { readLatestChatMessage } from "../../integrations/yougile/chat.js";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
@@ -195,13 +195,11 @@ export async function registerImportRoutes(
       // Запрос синхронный, поэтому проверка занимает ~2 секунды на площадку.
       for (const taskId of uniqueTaskIds) {
         try {
-          const response = await yougile.request(`chats/${encodeURIComponent(taskId)}/messages?limit=100&offset=0`);
-          const candidates = getChatMessages(response)
-            .filter((message): message is Record<string, unknown> => Boolean(message) && typeof message === "object" && !Array.isArray(message))
-            .map((message) => ({ text: getMessageText(message), timestamp: getMessageTimestamp(message) }))
-            .filter((message) => message.text !== null);
-          candidates.sort((left, right) => (right.timestamp ?? -Infinity) - (left.timestamp ?? -Infinity));
-          latestByTaskId.set(taskId, { text: candidates[0]?.text ?? null, error: null });
+          // readLatestChatMessage доходит до последней страницы чата: YouGile
+          // отдаёт сообщения старыми вперёд, и при длинном чате последний
+          // комментарий лежит за пределами первой сотни.
+          const latest = await readLatestChatMessage(yougile, taskId);
+          latestByTaskId.set(taskId, { text: latest?.text ?? null, error: null });
         } catch (error) {
           app.log.error({ err: error, taskId }, "Could not load latest YouGile chat message");
           latestByTaskId.set(taskId, {

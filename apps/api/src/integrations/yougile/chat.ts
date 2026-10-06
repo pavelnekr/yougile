@@ -5,6 +5,34 @@ export type ChatMessage = {
   timestamp: number | null;
 };
 
+// Размер страницы сообщений чата. YouGile отдаёт сообщения старыми вперёд,
+// поэтому «последний комментарий» нельзя выбирать из первой страницы: при
+// длинном чате свежие сообщения лежат на последней странице, а первой сотни
+// в ответе нет.
+const chatMessagesPageSize = 100;
+// Защитный предел числа страниц: у корректного API цикл завершается раньше —
+// последняя страница короче pageSize. Предел не даёт запросу крутиться вечно,
+// если API вдруг игнорирует limit/offset и возвращает одну и ту же страницу.
+const maxChatMessagePages = 100;
+
+/** Все сообщения чата задачи (текст и метка времени), полученные постранично. */
+async function readAllChatMessages(client: YougileClient, taskId: string): Promise<ChatMessage[]> {
+  const messages: ChatMessage[] = [];
+  for (let page = 0; page < maxChatMessagePages; page++) {
+    const offset = page * chatMessagesPageSize;
+    const raw = await client.request(`chats/${encodeURIComponent(taskId)}/messages?limit=${chatMessagesPageSize}&offset=${offset}`);
+    const candidates = getChatMessages(raw)
+      .filter((message): message is Record<string, unknown> => Boolean(message) && typeof message === "object" && !Array.isArray(message))
+      .map((message) => ({ text: getMessageText(message), timestamp: getMessageTimestamp(message) }))
+      .filter((message): message is ChatMessage => message.text !== null);
+    if (candidates.length === 0) break;
+    messages.push(...candidates);
+    // Страница короче запрошенного размера — это последняя страница чата.
+    if (candidates.length < chatMessagesPageSize) break;
+  }
+  return messages;
+}
+
 /**
  * YouGile отдаёт список сообщений по-разному в зависимости от версии ответа,
  * поэтому массив ищется по нескольким известным ключам.
@@ -46,18 +74,24 @@ export function getMessageText(value: unknown) {
   return null;
 }
 
-/** Последнее сообщение чата задачи: нужно для контекста перед отправкой комментария. */
-export function pickLatestChatMessage(value: unknown): ChatMessage | null {
-  const candidates = getChatMessages(value)
-    .filter((message): message is Record<string, unknown> => Boolean(message) && typeof message === "object" && !Array.isArray(message))
-    .map((message) => ({ text: getMessageText(message), timestamp: getMessageTimestamp(message) }))
-    .filter((message): message is ChatMessage => message.text !== null);
-  candidates.sort((left, right) => (right.timestamp ?? -Infinity) - (left.timestamp ?? -Infinity));
-  return candidates[0] ?? null;
+/** Сообщение с самой поздней меткой времени; если меток нет — первое в порядке ответа. */
+function pickLatestChatMessage(messages: ChatMessage[]): ChatMessage | null {
+  let latest: ChatMessage | null = null;
+  for (const message of messages) {
+    if (!latest) {
+      latest = message;
+      continue;
+    }
+    const candidate = message.timestamp ?? -Infinity;
+    const current = latest.timestamp ?? -Infinity;
+    if (candidate > current) latest = message;
+  }
+  return latest;
 }
 
+/** Последнее сообщение чата задачи: нужно для контекста перед отправкой комментария. */
 export async function readLatestChatMessage(client: YougileClient, taskId: string): Promise<ChatMessage | null> {
-  return pickLatestChatMessage(await client.request(`chats/${encodeURIComponent(taskId)}/messages?limit=100&offset=0`));
+  return pickLatestChatMessage(await readAllChatMessages(client, taskId));
 }
 
 export async function postChatMessage(client: YougileClient, taskId: string, text: string) {
