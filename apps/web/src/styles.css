@@ -620,6 +620,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .work-check-table td:first-child { width: 150px; color: #526bc6; font-weight: 650; white-space: nowrap; }
 .work-check-table tbody tr:last-child td { border-bottom: 0; }
 .work-check-empty-comment { color: #9aa2b0 !important; font-style: italic; }
+.work-check-loading { padding: 20px 4px 16px; }
+.work-check-progress-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 8px; color: #8892a3; font-size: 9px; }
 
 .history-page { display: grid; gap: 14px; }
 .history-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 1px 0 4px; }

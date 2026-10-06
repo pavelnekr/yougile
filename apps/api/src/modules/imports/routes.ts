@@ -41,8 +41,49 @@ const previewSchema = z.object({
 const applySchema = previewSchema;
 const workCheckSchema = z.object({
   rowNumbers: z.array(z.number().int().positive()).min(1)
-    .refine((rows) => new Set(rows).size === rows.length, "Выбраны повторяющиеся строки XLSX.")
+    .refine((rows) => new Set(rows).size === rows.length, "Выбраны повторяющиеся строки XLSX."),
+  // Идентификатор проверки от фронтенда: по нему тот опрашивает живой прогресс,
+  // пока синхронный POST /work-check обрабатывает площадки в фоне.
+  checkId: z.string().trim().min(1).max(64).optional()
 });
+
+// Живой прогресс «Проверки работ». Запрос синхронный и идёт примерно 2 секунды
+// на площадку, поэтому фронтенду нужен отдельный источник правды, чтобы показать
+// полосу и оценку оставшегося времени. Прогресс хранится в памяти процесса и не
+// переживает рестарт API — для полосы ожидания это допустимо.
+type WorkCheckProgressEntry = {
+  checkId: string;
+  total: number;
+  processed: number;
+  startedAt: number;
+  finishedAt: number | null;
+};
+const workCheckProgress = new Map<string, WorkCheckProgressEntry>();
+const workCheckProgressTtlMs = 5 * 60 * 1000;
+
+function sweepWorkCheckProgress() {
+  const now = Date.now();
+  for (const [checkId, entry] of workCheckProgress) {
+    if (entry.finishedAt !== null && now - entry.finishedAt > workCheckProgressTtlMs) {
+      workCheckProgress.delete(checkId);
+    }
+  }
+}
+
+/** Оценка времени до конца проверки по темпу уже обработанных площадок. */
+function estimateWorkCheckRemainingMs(entry: WorkCheckProgressEntry): number | null {
+  if (entry.finishedAt !== null) return 0;
+  if (entry.total === 0 || entry.processed === 0) return null;
+  const perSiteMs = (Date.now() - entry.startedAt) / entry.processed;
+  // Нижняя граница: на каждую оставшуюся площадку уходит минимум сам запрос
+  // (плюс пауза 2 секунды перед следующей), поэтому в начале проверки темп ещё
+  // не успевает сложиться, и результат без границы был бы обманчиво маленьким.
+  const remainingMs = Math.max(
+    (entry.total - entry.processed) * perSiteMs,
+    (entry.total - entry.processed) * 1000
+  );
+  return Math.round(remainingMs);
+}
 
 type PreparedImportItem = {
   rowNumber: number;
@@ -190,6 +231,16 @@ export async function registerImportRoutes(
 
       const uniqueTaskIds = [...new Set(batch.rows.flatMap((row) => row.yougileTaskId ? [row.yougileTaskId] : []))];
       const latestByTaskId = new Map<string, { text: string | null; error: string | null }>();
+      if (parsed.data.checkId) {
+        sweepWorkCheckProgress();
+        workCheckProgress.set(parsed.data.checkId, {
+          checkId: parsed.data.checkId,
+          total: uniqueTaskIds.length,
+          processed: 0,
+          startedAt: Date.now(),
+          finishedAt: null
+        });
+      }
       // Чтение чатов строго по очереди, с паузой 2 секунды между площадками —
       // как записи операций: YouGile не получает пачку параллельных запросов.
       // Запрос синхронный, поэтому проверка занимает ~2 секунды на площадку.
@@ -211,9 +262,13 @@ export async function registerImportRoutes(
                 : "Не удалось загрузить комментарий из YouGile."
           });
         }
+        const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
+        if (progressEntry) progressEntry.processed += 1;
         // Пауза 2 секунды перед чтением чата следующей площадки.
         await delayBetweenYougileActions();
       }
+      const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
+      if (progressEntry) progressEntry.finishedAt = Date.now();
 
       return {
         importId: batch.id,
@@ -237,6 +292,23 @@ export async function registerImportRoutes(
       app.log.error({ err: error, importId: request.params.id }, "Could not check latest comments for XLSX rows");
       return reply.code(502).send({ error: "Не удалось проверить комментарии по выбранному XLSX." });
     }
+  });
+
+  app.get<{ Querystring: { checkId?: string } }>("/api/imports/work-check/progress", async (request) => {
+    const checkId = request.query.checkId;
+    const entry = checkId ? workCheckProgress.get(checkId) : undefined;
+    if (!entry) {
+      // Проверка ещё не зарегистрировалась (запрос только стартовал) или не
+      // существует — фронтенд показывает «подготавливаем» и продолжает опрос.
+      return { total: 0, processed: 0, startedAt: null, finishedAt: null, remainingMs: null };
+    }
+    return {
+      total: entry.total,
+      processed: entry.processed,
+      startedAt: entry.startedAt,
+      finishedAt: entry.finishedAt,
+      remainingMs: estimateWorkCheckRemainingMs(entry)
+    };
   });
 
   app.post("/api/imports/preview", async (request, reply) => {

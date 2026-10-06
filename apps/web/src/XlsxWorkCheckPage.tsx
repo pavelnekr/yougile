@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Clock3, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
-import { countRu, rowForms } from "./plural";
+import { countRu, rowForms, siteForms } from "./plural";
 import { PORTAL_VERSION } from "./version";
 
 type ImportBatch = {
@@ -18,6 +18,13 @@ type WorkCheckItem = {
   siteId: string | null;
   comment: string | null;
   message: string;
+};
+type WorkCheckProgress = {
+  total: number;
+  processed: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  remainingMs: number | null;
 };
 type CheckedFile = {
   id: string;
@@ -36,6 +43,12 @@ function formatDate(value: string) {
     : "Дата неизвестна";
 }
 
+function formatRemaining(ms: number): string {
+  const seconds = Math.max(Math.ceil(ms / 1000), 1);
+  if (seconds < 60) return `≈ ${seconds} сек`;
+  return `≈ ${Math.round(seconds / 60)} мин`;
+}
+
 export default function XlsxWorkCheckPage() {
   const [source, setSource] = useState<"upload" | "history">("upload");
   const [batches, setBatches] = useState<ImportBatch[]>([]);
@@ -45,6 +58,7 @@ export default function XlsxWorkCheckPage() {
   const [items, setItems] = useState<WorkCheckItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [progress, setProgress] = useState<WorkCheckProgress | null>(null);
   const resultsStepRef = useRef<HTMLElement>(null);
   useStepScroll(checkedFile ? "results" : null, resultsStepRef);
 
@@ -74,16 +88,40 @@ export default function XlsxWorkCheckPage() {
     setCheckedFile(file);
     setItems([]);
     setError("");
+    setProgress(null);
     if (rowNumbers.length === 0) {
       setError("В выбранном XLSX нет строк для проверки.");
       return;
     }
+
+    // Синхронный POST не отдаёт промежуточные состояния (он идёт ~2 секунды на
+    // площадку), поэтому живой прогресс опрашиваем отдельным лёгким запросом,
+    // пока основной крутится в фоне.
+    const checkId = `wc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    let finished = false;
     setBusy(true);
+    const pollProgress = async () => {
+      while (!finished) {
+        try {
+          const response = await apiFetch(`/api/imports/work-check/progress?checkId=${encodeURIComponent(checkId)}`);
+          if (response.ok) {
+            const data = await response.json() as WorkCheckProgress;
+            if (data.total > 0) setProgress(data);
+            if (data.finishedAt !== null) break;
+          }
+        } catch {
+          // Сбой опроса не должен ронять проверку: итог придёт из основного запроса.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    };
+    void pollProgress();
+
     try {
       const response = await apiFetch(`/api/imports/${encodeURIComponent(file.id)}/work-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rowNumbers })
+        body: JSON.stringify({ rowNumbers, checkId })
       });
       const data = await response.json() as { items?: WorkCheckItem[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось получить последние комментарии.");
@@ -92,7 +130,9 @@ export default function XlsxWorkCheckPage() {
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
+      finished = true;
       setBusy(false);
+      setProgress(null);
     }
   };
 
@@ -100,6 +140,7 @@ export default function XlsxWorkCheckPage() {
     setCheckedFile(null);
     setItems([]);
     setError("");
+    setProgress(null);
   };
 
   const uploadWorkbook = async (file: File) => {
@@ -155,6 +196,15 @@ export default function XlsxWorkCheckPage() {
       setBusy(false);
     }
   };
+
+  const completedRatio = progress && progress.total > 0 ? Math.min(progress.processed / progress.total, 1) : 0;
+  const remainingLabel = !progress || progress.total === 0
+    ? ""
+    : progress.processed >= progress.total
+      ? "Собираем результаты…"
+      : progress.remainingMs !== null
+        ? formatRemaining(progress.remainingMs)
+        : "";
 
   return (
     <section className="section-view assignment-page work-check-page">
@@ -220,7 +270,17 @@ export default function XlsxWorkCheckPage() {
             <button className="text-button" disabled={busy} onClick={reset}>Выбрать другой XLSX</button>
           </div>
           {busy ? (
-            <div className="import-audit-message"><RefreshCw size={15} className="audit-refreshing" /> Получаем последние комментарии из YouGile…</div>
+            progress && progress.total > 0 ? (
+              <div className="work-check-loading" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={Math.min(progress.processed, progress.total)}>
+                <div className="operation-progress"><span style={{ transform: `scaleX(${completedRatio})` }} /></div>
+                <div className="work-check-progress-meta">
+                  <span>Проверено {countRu(progress.processed, siteForms)} из {progress.total}</span>
+                  <span>{remainingLabel}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="import-audit-message"><RefreshCw size={15} className="audit-refreshing" /> Получаем последние комментарии из YouGile…</div>
+            )
           ) : items.length > 0 ? (
             <div className="work-check-table-wrap">
               <table className="work-check-table">
