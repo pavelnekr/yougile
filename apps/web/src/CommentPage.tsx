@@ -180,14 +180,6 @@ export default function CommentPage({
   const visibleSites = filteredSites.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const validComment = comment.trim().length > 0 && comment.length <= 10_000;
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
-  // Площадки активной операции комментария. Отмечаются в списке выбора, чтобы после
-  // возврата на страницу (в том числе из обзора) было видно, какие площадки сейчас
-  // в работе, и повторно их не выбирать. Для COMMENT-операции siteId элементов — это
-  // номер площадки (см. POST /api/comments и /api/operations/:id).
-  const operationSiteNumbers = useMemo(() => {
-    if (!operationPending || !operation) return new Set<string>();
-    return new Set(operation.items.map((item) => item.siteId));
-  }, [operationPending, operation]);
   const limitReached = selectedTaskIds.length >= maxSites;
   const failedItems = operation?.items.filter((item) => item.status === "FAILED") ?? [];
   const siteLabels = useMemo(() => {
@@ -285,164 +277,163 @@ export default function CommentPage({
           <h1>Написать комментарий</h1>
           <p>Выберите одну или несколько площадок и напишите комментарий — он отправится в чат задачи YouGile.</p>
         </div>
-        <span className="sites-total">{selectedTaskIds.length.toLocaleString("ru-RU")} выбрано</span>
+        {!operationId && <span className="sites-total">{selectedTaskIds.length.toLocaleString("ru-RU")} выбрано</span>}
       </div>
 
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}
 
-      <div className="assignment-layout">
-        <div className="panel assignment-sites-panel">
-          <div className="assignment-panel-heading">
-            <div>
-              <h2>1. Выберите площадки</h2>
-              <p>{operationSiteNumbers.size > 0
-                ? `Площадки текущей операции (${countRu(operationSiteNumbers.size, siteForms)}) отмечены в списке и сейчас недоступны для выбора.`
-                : "Список активных задач загружен из колонки плана YouGile."}</p>
-            </div>
-            {selectedTaskIds.length > 0 && <button className="text-button" disabled={operationPending} onClick={resetForm}>Сбросить</button>}
-          </div>
-          <label className="sites-search assignment-search">
-            <Search size={15} />
-            <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Поиск по номеру или адресу" />
-          </label>
-
-          {loadState === "loading" ? <div className="assignment-loading">Загружаем план…</div>
-            : loadState === "error" ? <div className="sites-page-message sites-message-error">{siteError}</div>
-              : filteredSites.length === 0 ? <div className="sites-page-message">{query ? "По вашему запросу площадок не найдено." : "В колонке плана пока нет площадок."}</div>
-                : (
-                  <>
-                    <div className="comment-select-all">
-                      <button className="text-button" disabled={operationPending || limitReached} onClick={selectAllVisible}>
-                        Выбрать все на странице
-                      </button>
-                      <span>Страница {currentPage} из {pageCount} · найдено {filteredSites.length.toLocaleString("ru-RU")}</span>
-                    </div>
-                    <div className="assignment-sites-list">
-                      {visibleSites.map((site) => {
-                        const checked = selectedTaskIds.includes(site.taskId);
-                        const inOperation = operationSiteNumbers.has(site.siteNumber);
-                        return (
-                          <label className={`assignment-site-option ${checked ? "assignment-site-selected" : ""} ${inOperation ? "assignment-site-in-operation" : ""}`} key={site.taskId}>
-                            <input
-                              type="checkbox"
-                              checked={inOperation || checked}
-                              disabled={operationPending || inOperation || (!checked && limitReached)}
-                              onChange={(event) => updateSelection(site.taskId, event.target.checked)}
-                            />
-                            <span className="site-number">{site.siteNumber}</span>
-                            <span className="assignment-site-copy">
-                              <span className="site-title" title={site.title}>{site.title}</span>
-                              {inOperation && <span className="site-in-operation-badge">в работе</span>}
-                            </span>
-                            <span className="site-assignees">{site.assignedCount} назн.</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div className="sites-pagination assignment-pagination">
-                      <span>Показано {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredSites.length)} из {filteredSites.length.toLocaleString("ru-RU")}</span>
-                      <div><button disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Назад</button><span>{currentPage} / {pageCount}</span><button disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>Вперёд</button></div>
-                    </div>
-                  </>
-                )}
-        </div>
-
-        <div className="assignment-controls">
-          <div className="panel comment-text-panel">
+      {!operationId && (
+        <>
+        <div className="assignment-layout">
+          <div className="panel assignment-sites-panel">
             <div className="assignment-panel-heading">
-              <div><h2>2. Текст комментария</h2><p>Один и тот же текст уйдёт во все выбранные чаты.</p></div>
-            </div>
-            <div className="saved-template-picker">
-              <label className="field-label" htmlFor="comment-page-template">
-                <span>Шаблон из настроек</span>
-                <select
-                  id="comment-page-template"
-                  value={selectedTemplate}
-                  disabled={templatesLoading || operationPending}
-                  onChange={(event) => setSelectedTemplate(event.target.value)}
-                >
-                  <option value="">{templatesLoading ? "Загружаем шаблоны…" : "Без шаблона"}</option>
-                  {commentTemplates.map((template) => (
-                    <option key={template.type} value={template.type}>
-                      {template.label}{template.value.trim() ? "" : " · пустой"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="text-button"
-                disabled={!selectedTemplate || templatesLoading || operationPending || !commentTemplates.find((template) => template.type === selectedTemplate)?.value.trim()}
-                onClick={() => {
-                  const template = commentTemplates.find((item) => item.type === selectedTemplate);
-                  if (!template) return;
-                  setComment(template.value);
-                  setPreview(null);
-                }}
-              >
-                Вставить
-              </button>
-            </div>
-            {templatesError && <p className="saved-template-error">{templatesError} Текст можно написать вручную.</p>}
-            <label className="field-label import-comment-field">
-              <span>Комментарий</span>
-              <textarea
-                value={comment}
-                maxLength={10_000}
-                rows={6}
-                disabled={operationPending}
-                onChange={(event) => { setComment(event.target.value); setPreview(null); }}
-                placeholder="Например: Плановые работы на площадке, подрядчик выезжает в 10:00"
-              />
-            </label>
-            <span className="comment-character-count">{comment.length.toLocaleString("ru-RU")} / 10 000</span>
-            {selectedTemplate && <p className="comment-template-hint">Переменные <code>{"${data}"}</code> и <code>{"${time}"}</code> подставляются только при назначении по XLSX. Здесь они останутся как есть — отредактируйте текст вручную.</p>}
-
-            <button
-              className="btn-primary assignment-preview-button"
-              disabled={busy || operationPending || selectedTaskIds.length === 0 || !validComment || loadState !== "ready"}
-              onClick={() => void requestPreview()}
-            >
-              {busy ? "Проверяем…" : <><ShieldCheck size={16} /> Проверить площадки</>}
-            </button>
-            {selectedTaskIds.length > 0 && !validComment && <span className="comment-form-hint">Введите текст комментария, чтобы продолжить.</span>}
-            {limitReached && <span className="comment-form-hint">Достигнут технический предел в {maxSites.toLocaleString("ru-RU")} площадок за раз. Отправьте комментарии частями.</span>}
-          </div>
-        </div>
-      </div>
-
-      {preview && (
-        <div className="panel xlsx-assignment-preview comment-preview-panel" ref={previewStepRef}>
-          <div className="assignment-panel-heading">
-            <div><h2>3. Предпросмотр</h2><p>{countRu(preview.count, siteForms)} · задачи перечитаны в YouGile</p></div>
-            <span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span>
-          </div>
-          <div className="preview-summary">Комментарий будет отправлен в чат каждой задачи. Ответственные не меняются, существующие сообщения сохраняются.</div>
-          <blockquote className="comment-preview"><strong>Комментарий:</strong> {preview.comment}</blockquote>
-          <div className="xlsx-preview-list">
-            {preview.items.map((item) => (
-              <div className="xlsx-preview-row comment-preview-row" key={item.taskId}>
-                <span className="site-number">{item.siteNumber}</span>
-                <span className="xlsx-preview-address" title={item.title}>
-                  {item.title}
-                  <small>{item.currentEngineers.length > 0
-                    ? `Ответственные: ${item.currentEngineers.map((user) => user.name).join(", ")}`
-                    : "Ответственных нет"}</small>
-                </span>
-                <span className={`xlsx-preview-engineer comment-last-message ${item.lastCommentError ? "comment-last-message-error" : ""}`}>
-                  {item.lastCommentError
-                    ? item.lastCommentError
-                    : item.lastComment
-                      ? item.lastComment
-                      : "Комментариев пока нет"}
-                  <small>{item.lastComment ? `Последний · ${formatDate(item.lastCommentAt)}` : ""}</small>
-                </span>
+              <div>
+                <h2>1. Выберите площадки</h2>
+                <p>Список активных задач загружен из колонки плана YouGile.</p>
               </div>
-            ))}
+              {selectedTaskIds.length > 0 && <button className="text-button" disabled={operationPending} onClick={resetForm}>Сбросить</button>}
+            </div>
+            <label className="sites-search assignment-search">
+              <Search size={15} />
+              <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Поиск по номеру или адресу" />
+            </label>
+  
+            {loadState === "loading" ? <div className="assignment-loading">Загружаем план…</div>
+              : loadState === "error" ? <div className="sites-page-message sites-message-error">{siteError}</div>
+                : filteredSites.length === 0 ? <div className="sites-page-message">{query ? "По вашему запросу площадок не найдено." : "В колонке плана пока нет площадок."}</div>
+                  : (
+                    <>
+                      <div className="comment-select-all">
+                        <button className="text-button" disabled={operationPending || limitReached} onClick={selectAllVisible}>
+                          Выбрать все на странице
+                        </button>
+                        <span>Страница {currentPage} из {pageCount} · найдено {filteredSites.length.toLocaleString("ru-RU")}</span>
+                      </div>
+                      <div className="assignment-sites-list">
+                        {visibleSites.map((site) => {
+                          const checked = selectedTaskIds.includes(site.taskId);
+                          return (
+                            <label className={`assignment-site-option ${checked ? "assignment-site-selected" : ""}`} key={site.taskId}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={operationPending || (!checked && limitReached)}
+                                onChange={(event) => updateSelection(site.taskId, event.target.checked)}
+                              />
+                              <span className="site-number">{site.siteNumber}</span>
+                              <span className="site-title" title={site.title}>{site.title}</span>
+                              <span className="site-assignees">{site.assignedCount} назн.</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="sites-pagination assignment-pagination">
+                        <span>Показано {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredSites.length)} из {filteredSites.length.toLocaleString("ru-RU")}</span>
+                        <div><button disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Назад</button><span>{currentPage} / {pageCount}</span><button disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>Вперёд</button></div>
+                      </div>
+                    </>
+                  )}
           </div>
-          <button className="btn-primary assignment-confirm-button" disabled={busy || operationPending || !validComment} onClick={() => void sendComments()}>
-            <CheckCircle2 size={16} /> {busy ? "Запускаем…" : "Подтвердить и отправить комментарии"}
-          </button>
+  
+          <div className="assignment-controls">
+            <div className="panel comment-text-panel">
+              <div className="assignment-panel-heading">
+                <div><h2>2. Текст комментария</h2><p>Один и тот же текст уйдёт во все выбранные чаты.</p></div>
+              </div>
+              <div className="saved-template-picker">
+                <label className="field-label" htmlFor="comment-page-template">
+                  <span>Шаблон из настроек</span>
+                  <select
+                    id="comment-page-template"
+                    value={selectedTemplate}
+                    disabled={templatesLoading || operationPending}
+                    onChange={(event) => setSelectedTemplate(event.target.value)}
+                  >
+                    <option value="">{templatesLoading ? "Загружаем шаблоны…" : "Без шаблона"}</option>
+                    {commentTemplates.map((template) => (
+                      <option key={template.type} value={template.type}>
+                        {template.label}{template.value.trim() ? "" : " · пустой"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="text-button"
+                  disabled={!selectedTemplate || templatesLoading || operationPending || !commentTemplates.find((template) => template.type === selectedTemplate)?.value.trim()}
+                  onClick={() => {
+                    const template = commentTemplates.find((item) => item.type === selectedTemplate);
+                    if (!template) return;
+                    setComment(template.value);
+                    setPreview(null);
+                  }}
+                >
+                  Вставить
+                </button>
+              </div>
+              {templatesError && <p className="saved-template-error">{templatesError} Текст можно написать вручную.</p>}
+              <label className="field-label import-comment-field">
+                <span>Комментарий</span>
+                <textarea
+                  value={comment}
+                  maxLength={10_000}
+                  rows={6}
+                  disabled={operationPending}
+                  onChange={(event) => { setComment(event.target.value); setPreview(null); }}
+                  placeholder="Например: Плановые работы на площадке, подрядчик выезжает в 10:00"
+                />
+              </label>
+              <span className="comment-character-count">{comment.length.toLocaleString("ru-RU")} / 10 000</span>
+              {selectedTemplate && <p className="comment-template-hint">Переменные <code>{"${data}"}</code> и <code>{"${time}"}</code> подставляются только при назначении по XLSX. Здесь они останутся как есть — отредактируйте текст вручную.</p>}
+  
+              <button
+                className="btn-primary assignment-preview-button"
+                disabled={busy || operationPending || selectedTaskIds.length === 0 || !validComment || loadState !== "ready"}
+                onClick={() => void requestPreview()}
+              >
+                {busy ? "Проверяем…" : <><ShieldCheck size={16} /> Проверить площадки</>}
+              </button>
+              {selectedTaskIds.length > 0 && !validComment && <span className="comment-form-hint">Введите текст комментария, чтобы продолжить.</span>}
+              {limitReached && <span className="comment-form-hint">Достигнут технический предел в {maxSites.toLocaleString("ru-RU")} площадок за раз. Отправьте комментарии частями.</span>}
+            </div>
+          </div>
         </div>
+  
+        {preview && (
+          <div className="panel xlsx-assignment-preview comment-preview-panel" ref={previewStepRef}>
+            <div className="assignment-panel-heading">
+              <div><h2>3. Предпросмотр</h2><p>{countRu(preview.count, siteForms)} · задачи перечитаны в YouGile</p></div>
+              <span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span>
+            </div>
+            <div className="preview-summary">Комментарий будет отправлен в чат каждой задачи. Ответственные не меняются, существующие сообщения сохраняются.</div>
+            <blockquote className="comment-preview"><strong>Комментарий:</strong> {preview.comment}</blockquote>
+            <div className="xlsx-preview-list">
+              {preview.items.map((item) => (
+                <div className="xlsx-preview-row comment-preview-row" key={item.taskId}>
+                  <span className="site-number">{item.siteNumber}</span>
+                  <span className="xlsx-preview-address" title={item.title}>
+                    {item.title}
+                    <small>{item.currentEngineers.length > 0
+                      ? `Ответственные: ${item.currentEngineers.map((user) => user.name).join(", ")}`
+                      : "Ответственных нет"}</small>
+                  </span>
+                  <span className={`xlsx-preview-engineer comment-last-message ${item.lastCommentError ? "comment-last-message-error" : ""}`}>
+                    {item.lastCommentError
+                      ? item.lastCommentError
+                      : item.lastComment
+                        ? item.lastComment
+                        : "Комментариев пока нет"}
+                    <small>{item.lastComment ? `Последний · ${formatDate(item.lastCommentAt)}` : ""}</small>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button className="btn-primary assignment-confirm-button" disabled={busy || operationPending || !validComment} onClick={() => void sendComments()}>
+              <CheckCircle2 size={16} /> {busy ? "Запускаем…" : "Подтвердить и отправить комментарии"}
+            </button>
+          </div>
+        )}
+  
+        </>
       )}
 
       {operationId && (
