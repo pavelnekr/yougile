@@ -35,7 +35,10 @@ const previewInputSchema = z.object({
 export type AssignmentPreviewInput = z.infer<typeof previewInputSchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
 
-const assignmentActionDelayMs = 10_000;
+// Пауза между действиями над задачей: после назначения инженера перед отправкой
+// комментария и перед повторной попыткой записи при HTTP 400. 2 секунды выбраны
+// оператором как компромисс между скоростью операции и консистентностью YouGile.
+const assignmentActionDelayMs = 2_000;
 
 export class AssignmentValidationError extends Error {
   constructor(message: string) {
