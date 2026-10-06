@@ -144,7 +144,7 @@ export async function processAssignmentOperation(
 ) {
   const operation = await prisma.operation.findUnique({
     where: { id: operationId },
-    include: { items: { orderBy: { createdAt: "asc" } } }
+    include: { items: { orderBy: { sortOrder: "asc" } } }
   });
   if (!operation || operation.type !== OperationType.ASSIGN) {
     throw new Error(`Assignment operation ${operationId} was not found`);

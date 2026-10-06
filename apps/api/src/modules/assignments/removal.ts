@@ -105,7 +105,7 @@ export async function processRemovalOperation(
 ) {
   const operation = await prisma.operation.findUnique({
     where: { id: operationId },
-    include: { items: { orderBy: { createdAt: "asc" } } }
+    include: { items: { orderBy: { sortOrder: "asc" } } }
   });
   if (!operation || operation.type !== OperationType.REMOVE) {
     throw new Error(`Removal operation ${operationId} was not found`);

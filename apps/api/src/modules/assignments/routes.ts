@@ -57,7 +57,7 @@ export async function registerAssignmentRoutes(
   app.get<{ Params: { id: string } }>("/api/operations/:id", async (request, reply) => {
     const operation = await prisma.operation.findUnique({
       where: { id: request.params.id },
-      include: { items: { orderBy: { createdAt: "asc" } } }
+      include: { items: { orderBy: { sortOrder: "asc" } } }
     });
     if (!operation) return reply.code(404).send({ error: "Операция не найдена." });
     if (!visibleOperationTypes.includes(operation.type)) {
@@ -98,8 +98,9 @@ export async function registerAssignmentRoutes(
           total: preview.items.length,
           metadata: { targetUserId: preview.user.id, targetUserName: preview.user.name },
           items: {
-            create: preview.items.map((item) => ({
+            create: preview.items.map((item, index) => ({
               siteId: item.siteNumber,
+              sortOrder: index,
               requestedUserId: preview.user.id,
               beforeData: {
                 taskId: item.taskId,

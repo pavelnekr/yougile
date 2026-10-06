@@ -153,6 +153,11 @@ model OperationItem {
   siteTask        SiteTask?           @relation(fields: [siteTaskId], references: [id], onDelete: SetNull)
   siteId          String
   status          OperationItemStatus @default(PENDING)
+  // Порядок строки в операции: индекс площадки в предпросмотре (порядок XLSX
+  // или порядок выбора). createdAt у батч-созданных строк одинаковый (now() —
+  // время начала транзакции), поэтому сортировать по нему нельзя — порядок
+  // вырождается и «плывёт» после обновления строк воркером.
+  sortOrder       Int                 @default(0)
   requestedUserId String?
   beforeData      Json?
   afterData       Json?
@@ -164,6 +169,7 @@ model OperationItem {
 
   @@unique([operationId, siteId])
   @@index([operationId, status])
+  @@index([operationId, sortOrder])
 }
 
 model AppSetting {

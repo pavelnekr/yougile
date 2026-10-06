@@ -625,9 +625,10 @@ export async function registerImportRoutes(
           total: prepared.items.length,
           metadata: { sourceBatchId: prepared.batchId, fileName: prepared.fileName },
           items: {
-            create: prepared.items.map((item) => ({
+            create: prepared.items.map((item, index) => ({
               importRowId: item.importRowId,
               siteId: item.siteId,
+              sortOrder: index,
               requestedUserId: item.userId,
               beforeData: {
                 taskId: item.taskId,
@@ -692,9 +693,10 @@ export async function registerImportRoutes(
               commentTemplate: parsed.data.commentTemplate
             },
             items: {
-              create: prepared.items.map((item) => ({
+              create: prepared.items.map((item, index) => ({
                 importRowId: item.importRowId,
                 siteId: item.siteId,
+                sortOrder: index,
                 requestedUserId: item.userId,
                 beforeData: {
                   taskId: item.taskId,

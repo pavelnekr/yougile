@@ -57,8 +57,9 @@ export async function registerCommentRoutes(
             commentTemplate: parsed.data.commentTemplate
           },
           items: {
-            create: preview.items.map((item) => ({
+            create: preview.items.map((item, index) => ({
               siteId: item.siteNumber,
+              sortOrder: index,
               beforeData: {
                 taskId: item.taskId,
                 title: item.title,

@@ -130,7 +130,7 @@ export async function processCommentOperation(
 ) {
   const operation = await prisma.operation.findUnique({
     where: { id: operationId },
-    include: { items: { orderBy: { createdAt: "asc" } } }
+    include: { items: { orderBy: { sortOrder: "asc" } } }
   });
   if (!operation || operation.type !== OperationType.COMMENT) {
     throw new Error(`Comment operation ${operationId} was not found`);
