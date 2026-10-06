@@ -72,7 +72,7 @@ type WorkTypeStatistic = {
   month: string;
   total: number;
   unclassified: number;
-  items: { type: "filter" | "balancers" | "bypasses" | "ehw"; label: string; count: number }[];
+  items: { type: "filter" | "balancers" | "bypasses" | "ehw" | "other"; label: string; count: number }[];
 };
 
 // adminOnly — пункт показывается только роли ADMIN. Проверка роли есть и в API

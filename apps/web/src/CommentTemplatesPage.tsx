@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, CheckCircle2, Clock3, FileText, LoaderCircle, Save, Sparkles } from "lucide-react";
+import { Check, CheckCircle2, Clock3, FileText, LoaderCircle, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import ConfirmDialog from "./ConfirmDialog";
+import Modal from "./Modal";
 
-type TemplateType = "filter" | "balancers" | "bypasses" | "ehw";
 type CommentTemplate = {
-  type: TemplateType;
+  type: string;
   label: string;
   description: string;
+  workType: string;
+  isCustom: boolean;
   value: string;
   updatedAt: string | null;
 };
@@ -25,14 +27,21 @@ function formatUpdatedAt(value: string | null) {
 
 export default function CommentTemplatesPage() {
   const [templates, setTemplates] = useState<CommentTemplate[]>([]);
-  const [selectedType, setSelectedType] = useState<TemplateType>("filter");
+  const [selectedType, setSelectedType] = useState("filter");
   const [draft, setDraft] = useState("");
   const [savedValue, setSavedValue] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [pendingSwitch, setPendingSwitch] = useState<CommentTemplate | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CommentTemplate | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [createError, setCreateError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -106,17 +115,76 @@ export default function CommentTemplatesPage() {
     }
   };
 
+  const createTemplate = async () => {
+    if (creating || !newLabel.trim() || newLabel.trim().length > 80 || newValue.length > 10_000) return;
+    setCreating(true);
+    setCreateError("");
+    try {
+      const response = await apiFetch("/api/settings/comment-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newLabel, value: newValue })
+      });
+      const data = await response.json() as { template?: CommentTemplate; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось создать шаблон.");
+      if (!data.template) throw new Error("Сервер не вернул созданный шаблон.");
+      setTemplates((current) => [...current, data.template!]);
+      setSelectedType(data.template.type);
+      setDraft(data.template.value);
+      setSavedValue(data.template.value);
+      setShowCreate(false);
+      setNewLabel("");
+      setNewValue("");
+      setNotice("Дополнительный шаблон создан.");
+      setError("");
+    } catch (reason) {
+      setCreateError(errorMessage(reason));
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const deleteTemplate = async (template: CommentTemplate) => {
+    if (deleting) return;
+    setDeleting(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await apiFetch(`/api/settings/comment-templates/${encodeURIComponent(template.type)}`, {
+        method: "DELETE"
+      });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? "Не удалось удалить шаблон.");
+      }
+      const remaining = templates.filter((item) => item.type !== template.type);
+      const next = remaining.find((item) => item.type === "filter") ?? remaining[0];
+      setTemplates(remaining);
+      if (selectedType === template.type && next) applyTemplate(next);
+      setNotice("Дополнительный шаблон удалён.");
+      setPendingDelete(null);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <section className="section-view comment-templates-page">
       <div className="eyebrow"><span className="eyebrow-line" /> НАСТРОЙКИ РАБОЧИХ ПРОЦЕССОВ</div>
       <div className="section-hero">
         <span className="section-hero-icon"><FileText size={22} /></span>
-        <div><h1>Шаблоны комментариев</h1><p>Создайте отдельный текст для каждого типа работ и используйте его при назначении по XLSX.</p></div>
+        <div><h1>Шаблоны комментариев</h1><p>Редактируйте стандартные шаблоны и добавляйте свои для назначения по XLSX и отправки комментариев.</p></div>
       </div>
 
       <div className="template-editor-layout">
         <aside className="panel template-selector-panel" aria-label="Типы работ">
-          <div className="template-selector-heading"><span>ТИП РАБОТ</span><span>4 шаблона</span></div>
+          <div className="template-selector-heading"><span>ШАБЛОНЫ</span>
+            <button className="text-button template-add-button" onClick={() => { setShowCreate(true); setCreateError(""); }}>
+              <Plus size={13} /> Добавить
+            </button>
+          </div>
           {loading ? (
             <div className="template-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем шаблоны…</div>
           ) : templates.map((template) => (
@@ -133,7 +201,7 @@ export default function CommentTemplatesPage() {
               </span>
             </button>
           ))}
-          <div className="template-selector-tip"><Sparkles size={15} /><span>У каждого типа работ свой текст. Изменения одного шаблона не затрагивают остальные.</span></div>
+          <div className="template-selector-tip"><Sparkles size={15} /><span>Дополнительные шаблоны доступны при назначении и отправке комментариев. В статистике XLSX они учитываются как «Другое».</span></div>
         </aside>
 
         <div className="panel template-editor-panel">
@@ -177,6 +245,9 @@ export default function CommentTemplatesPage() {
                   {saving ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
                   {saving ? "Сохраняем…" : "Сохранить шаблон"}
                 </button>
+                {selected.isCustom && <button className="text-button template-delete-button" disabled={saving || deleting} onClick={() => setPendingDelete(selected)}>
+                  <Trash2 size={14} /> Удалить
+                </button>}
               </div>
             </>
           ) : (
@@ -194,6 +265,40 @@ export default function CommentTemplatesPage() {
           В шаблоне «{pendingSwitch.label}» есть изменения, которые не сохранены.
           {" "}При переключении они пропадут. Сохраните их кнопкой выше, если они нужны.
         </ConfirmDialog>
+      )}
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Удалить дополнительный шаблон?"
+          confirmLabel={deleting ? "Удаляем…" : "Удалить шаблон"}
+          onConfirm={() => void deleteTemplate(pendingDelete)}
+          onCancel={() => { if (!deleting) setPendingDelete(null); }}
+        >
+          Шаблон «{pendingDelete.label}» будет удалён и исчезнет из списков выбора комментариев.
+          {pendingDelete.type === selectedType && changed ? " Несохранённые изменения также будут потеряны." : ""}
+        </ConfirmDialog>
+      )}
+      {showCreate && (
+        <Modal labelledBy="create-template-title" onDismiss={() => { if (!creating) setShowCreate(false); }}>
+          <div className="dialog-heading"><span className="dialog-icon"><FileText size={17} /></span><div><h2 id="create-template-title">Новый шаблон</h2></div></div>
+          <div className="dialog-body template-create-form">
+            <label className="field-label" htmlFor="new-template-name"><span>Название</span>
+              <input id="new-template-name" value={newLabel} maxLength={80} disabled={creating}
+                onChange={(event) => setNewLabel(event.target.value)} placeholder="Например, Замена оборудования" />
+            </label>
+            <label className="field-label" htmlFor="new-template-text"><span>Текст шаблона</span>
+              <textarea id="new-template-text" value={newValue} maxLength={10_000} disabled={creating}
+                onChange={(event) => setNewValue(event.target.value)} placeholder="Текст комментария, можно использовать ${data} и ${time}" />
+            </label>
+            <div className="template-editor-meta"><span>В XLSX-шаблоны подставляются данные из плана</span><span>{newValue.length.toLocaleString("ru-RU")} / 10 000</span></div>
+            {createError && <div className="template-feedback template-feedback-error" role="alert">{createError}</div>}
+          </div>
+          <div className="dialog-actions">
+            <button className="text-button" disabled={creating} onClick={() => setShowCreate(false)}>Отмена</button>
+            <button className="btn-primary" disabled={creating || !newLabel.trim() || newValue.length > 10_000} onClick={() => void createTemplate()}>
+              {creating ? "Создаём…" : "Создать шаблон"}
+            </button>
+          </div>
+        </Modal>
       )}
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">v0.1</span></span><span>Шаблоны хранятся на сервере</span></footer>
     </section>

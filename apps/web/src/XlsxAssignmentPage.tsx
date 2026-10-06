@@ -23,8 +23,10 @@ type ImportRow = {
   status: "READY" | "SITE_NOT_FOUND" | "ENGINEER_NOT_FOUND" | "INVALID_ROW" | "DUPLICATE_SITE";
 };
 type CommentTemplateOption = {
-  type: "filter" | "balancers" | "bypasses" | "ehw";
+  type: string;
   label: string;
+  workType: string;
+  isCustom: boolean;
   value: string;
 };
 type PlanImport = {
@@ -85,6 +87,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   const [comment, setComment] = useState("");
   const [commentTemplates, setCommentTemplates] = useState<CommentTemplateOption[]>([]);
   const [selectedCommentTemplate, setSelectedCommentTemplate] = useState("");
+  const selectedTemplate = commentTemplates.find((template) => template.type === selectedCommentTemplate);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templatesError, setTemplatesError] = useState("");
   const [operation, setOperation] = useState<Operation | null>(null);
@@ -221,7 +224,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rowNumbers: selectedReadyRows.map((row) => row.rowNumber),
-          workType: selectedCommentTemplate,
+          workType: selectedTemplate?.workType,
           commentTemplate: comment.trim()
         })
       });
@@ -245,7 +248,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rowNumbers: selectedReadyRows.map((row) => row.rowNumber),
-          workType: selectedCommentTemplate,
+          workType: selectedTemplate?.workType,
           commentTemplate: comment.trim()
         })
       });
@@ -389,28 +392,27 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
             <div className="assignment-panel-heading"><div><h2>2. Шаблон комментария</h2><p>Для каждой выбранной строки шаблон будет сформирован по значениям XLSX.</p></div></div>
             <div className="saved-template-picker">
               <label className="field-label" htmlFor="saved-comment-template">
-                <span>Тип работ / шаблон</span>
+                <span>Категория работ / шаблон</span>
                 <select
                   id="saved-comment-template"
                   value={selectedCommentTemplate}
                   disabled={templatesLoading || operationPending}
                   onChange={(event) => setSelectedCommentTemplate(event.target.value)}
                 >
-                  <option value="">{templatesLoading ? "Загружаем шаблоны…" : "Выберите тип работ"}</option>
+                  <option value="">{templatesLoading ? "Загружаем шаблоны…" : "Выберите категорию и шаблон"}</option>
                   {commentTemplates.map((template) => (
                     <option key={template.type} value={template.type}>
-                      {template.label}{template.value.trim() ? "" : " · пустой"}
+                      {template.label}{template.isCustom ? " · Другое" : ""}{template.value.trim() ? "" : " · пустой"}
                     </option>
                   ))}
                 </select>
               </label>
               <button
                 className="text-button"
-                disabled={!selectedCommentTemplate || templatesLoading || operationPending || !commentTemplates.find((template) => template.type === selectedCommentTemplate)?.value.trim()}
+                disabled={!selectedCommentTemplate || templatesLoading || operationPending || !selectedTemplate?.value.trim()}
                 onClick={() => {
-                  const template = commentTemplates.find((item) => item.type === selectedCommentTemplate);
-                  if (!template) return;
-                  setComment(template.value);
+                  if (!selectedTemplate) return;
+                  setComment(selectedTemplate.value);
                   setPreview(null);
                 }}
               >

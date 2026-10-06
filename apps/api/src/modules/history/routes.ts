@@ -30,7 +30,8 @@ const workTypeDefinitions = [
   { type: "filter", label: "Фильтры" },
   { type: "balancers", label: "Балансеры" },
   { type: "bypasses", label: "Байпасы" },
-  { type: "ehw", label: "EHW" }
+  { type: "ehw", label: "EHW" },
+  { type: "other", label: "Другое" }
 ] as const;
 
 function displayName(name: string | null | undefined) {

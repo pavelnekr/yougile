@@ -185,6 +185,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .work-type-balancers { background: #53a982; }
 .work-type-bypasses { background: #977dc9; }
 .work-type-ehw { background: #dc9a5d; }
+.work-type-other { background: #8a99aa; }
 .work-type-stat-unclassified { color: #a27e55; font-size: 7px; }
 .work-type-stat-error { overflow: hidden; color: #ad5f4a; text-overflow: ellipsis; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 15px; margin: 32px 0 14px; }
@@ -483,6 +484,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .template-selector-panel, .template-editor-panel { padding: 17px; }
 .template-selector-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; color: #98a1b0; font-size: 8px; font-weight: 700; letter-spacing: .9px; }
 .template-selector-heading > span:last-child { color: #9da6b5; font-weight: 500; letter-spacing: 0; }
+.template-add-button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 5px; font-size: 8px; letter-spacing: 0; }
 .template-option { display: flex; width: 100%; min-height: 61px; align-items: center; gap: 10px; margin-top: 5px; padding: 9px; border: 1px solid transparent; border-radius: 8px; color: inherit; background: transparent; text-align: left; cursor: pointer; transition: background var(--dur-ui) ease, border-color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out); }
 .template-option-active { border-color: #dfe5fb; background: #f5f7ff; }
 .template-option-icon { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: #7789d6; background: #edf0ff; }
@@ -523,6 +525,10 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .template-last-saved { display: inline-flex; align-items: center; gap: 5px; color: #9aa2b0; font-size: 8px; }
 .template-save-button { display: inline-flex; min-height: 35px; align-items: center; gap: 7px; padding: 0 12px; font-size: 9px; }
 .template-save-button:disabled { opacity: .55; cursor: not-allowed; }
+.template-delete-button { display: inline-flex; align-items: center; gap: 5px; color: #ad6556; }
+.template-create-form { display: grid; gap: 12px; }
+.template-create-form .field-label { margin: 0; }
+.template-create-form textarea { min-height: 110px; resize: vertical; }
 .template-loading { display: flex; align-items: center; gap: 8px; padding: 16px 9px; color: #8b95a5; font-size: 9px; }
 .template-spinner { animation: template-spin 1s linear infinite; }
 @keyframes template-spin { to { transform: rotate(360deg); } }

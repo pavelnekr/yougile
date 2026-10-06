@@ -35,6 +35,8 @@ const previewInputSchema = z.object({
 export type AssignmentPreviewInput = z.infer<typeof previewInputSchema>;
 export type TaskDetails = z.infer<typeof taskDetailsSchema>;
 
+const assignmentActionDelayMs = 10_000;
+
 export class AssignmentValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -52,6 +54,22 @@ function toTaskDetails(value: unknown, taskId: string): TaskDetails {
 
 export async function readTask(client: YougileClient, taskId: string): Promise<TaskDetails> {
   return toTaskDetails(await client.request(`tasks/${encodeURIComponent(taskId)}`), taskId);
+}
+
+async function assignTaskUsers(client: YougileClient, taskId: string, userIds: string[]) {
+  const request = () => client.request(`tasks/${encodeURIComponent(taskId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assigned: userIds })
+  });
+
+  try {
+    await request();
+  } catch (error) {
+    if (!(error instanceof YougileApiError) || error.statusCode !== 400) throw error;
+    await new Promise((resolve) => setTimeout(resolve, assignmentActionDelayMs));
+    await request();
+  }
 }
 
 export function validatePlanTask(task: TaskDetails, siteByTaskId: Map<string, PlannedSite>): PlannedSite {
@@ -108,6 +126,10 @@ function assignmentFailureMessage(error: unknown, phase: "assignment" | "comment
     if (error.statusCode === 404) return phase === "comment"
       ? "Задача найдена, но чат задачи недоступен для комментария."
       : "Задача больше не найдена в YouGile.";
+    if (error.statusCode === 400 && error.apiMessage) {
+      const detail = error.apiMessage.replace(/[.!?]+$/, "");
+      return `YouGile отклонил ${action} (HTTP 400): ${detail}.`;
+    }
     return `YouGile отклонил ${action} (HTTP ${error.statusCode}).`;
   }
   return phase === "comment"
@@ -177,18 +199,20 @@ export async function processAssignmentOperation(
 
         const assigned = task.assigned ?? [];
         beforeData = { taskId: task.id, title: task.title, assignedUserIds: assigned, commentText };
+        let engineerAssigned = false;
         if (assigned.includes(userId)) {
           status = commentText ? OperationItemStatus.SUCCEEDED : OperationItemStatus.SKIPPED;
           afterData = { taskId: task.id, title: task.title, assignedUserIds: assigned, commentPosted: false };
         } else {
           const nextAssigned = [...new Set([...assigned, userId])];
-          await client.request(`tasks/${encodeURIComponent(task.id)}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ assigned: nextAssigned })
-          });
+          await assignTaskUsers(client, task.id, nextAssigned);
+          engineerAssigned = true;
           status = OperationItemStatus.SUCCEEDED;
           afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, commentPosted: false };
+        }
+
+        if (engineerAssigned) {
+          await new Promise((resolve) => setTimeout(resolve, assignmentActionDelayMs));
         }
 
         if (commentText) {

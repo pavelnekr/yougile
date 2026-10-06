@@ -3,10 +3,26 @@ import { config } from "../../config.js";
 export class YougileApiError extends Error {
   constructor(
     message: string,
-    readonly statusCode: number
+    readonly statusCode: number,
+    readonly apiMessage?: string
   ) {
     super(message);
     this.name = "YougileApiError";
+  }
+}
+
+function getApiErrorMessage(responseText: string): string | undefined {
+  try {
+    const value: unknown = JSON.parse(responseText);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+
+    const record = value as Record<string, unknown>;
+    const message = [record.message, record.error, record.description]
+      .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0);
+    const cleanedMessage = message?.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 300);
+    return cleanedMessage || undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -47,7 +63,8 @@ export class YougileClient {
     if (!response.ok) {
       throw new YougileApiError(
         `YouGile request failed with HTTP ${response.status}`,
-        response.status
+        response.status,
+        getApiErrorMessage(responseText)
       );
     }
 

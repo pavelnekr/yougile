@@ -31,7 +31,7 @@ const DETAIL_ROW_LIMIT = 300;
 const previewSchema = z.object({
   rowNumbers: z.array(z.number().int().positive()).min(1).max(maxSitesPerOperation, tooManySitesError("строк XLSX"))
     .refine((rows) => new Set(rows).size === rows.length, "В плане выбраны повторяющиеся строки."),
-  workType: z.enum(["filter", "balancers", "bypasses", "ehw"]),
+  workType: z.enum(["filter", "balancers", "bypasses", "ehw", "other"]),
   commentTemplate: z.string().trim().min(1, "Введите шаблон комментария.")
     .max(10_000, "Шаблон комментария не должен превышать 10 000 символов.")
 });

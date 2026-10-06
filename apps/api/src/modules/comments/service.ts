@@ -6,6 +6,7 @@ import type { OperationJob } from "../../jobs/queue.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, readTask, validatePlanTask } from "../assignments/service.js";
+import { commentTemplateTypeSchema } from "../settings/schema.js";
 
 // Лимита площадок на операцию нет: комментарии пишутся в чаты, а не меняют назначения.
 // 2000 — аварийный предохранитель, чтобы один запрос не занял очередь на сутки.
@@ -28,10 +29,7 @@ const commentInputSchema = z.object({
     invalid_type_error: "Текст комментария должен быть строкой."
   }).trim().min(1, "Введите текст комментария.").max(10_000, "Комментарий не должен превышать 10 000 символов."),
   // Какой шаблон из настроек был использован — пишется в журнал операции.
-  commentTemplate: z.enum(
-    ["filter", "balancers", "bypasses", "ehw"],
-    { errorMap: () => ({ message: "Выберите существующий шаблон комментария." }) }
-  ).optional()
+  commentTemplate: commentTemplateTypeSchema.optional()
 });
 
 export type CommentInput = z.infer<typeof commentInputSchema>;

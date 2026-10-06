@@ -21,9 +21,8 @@ export type PlannedSite = {
 };
 export type SiteLoadState = "loading" | "ready" | "error";
 
-type TemplateType = "filter" | "balancers" | "bypasses" | "ehw";
 type CommentTemplateOption = {
-  type: TemplateType;
+  type: string;
   label: string;
   value: string;
 };
