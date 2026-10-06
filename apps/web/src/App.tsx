@@ -38,6 +38,7 @@ import { apiFetch, onSessionExpired } from "./apiClient.js";
 import { useStepScroll } from "./useStepScroll.js";
 import { countRu, siteForms, taskForms } from "./plural.js";
 import { avatarInitial } from "./avatar.js";
+import ActiveOperationsPanel from "./ActiveOperationsPanel.js";
 
 type Health = "loading" | "ok" | "error";
 type SiteLoadState = "loading" | "ready" | "error";
@@ -417,6 +418,8 @@ function Overview({
           <span className="notice-tag">НАСТРОЙКА</span>
         </div>
       )}
+
+      <ActiveOperationsPanel onNavigate={onNavigate} />
 
       <section className="stats-grid" aria-label="Сводка">
         <StatCard

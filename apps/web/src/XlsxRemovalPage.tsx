@@ -4,6 +4,7 @@ import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog"
 import OperationSites from "./OperationSites";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { findActiveOperation } from "./activeOperations";
 import { countRu, rowForms } from "./plural";
 
 type ImportRow = {
@@ -51,7 +52,7 @@ type Operation = {
   completed: number;
   failed: number;
   message: string | null;
-  items: { siteId: string; status: string; errorMessage: string | null }[];
+  items: { siteId: string; status: string; errorMessage: string | null; label: string | null }[];
 };
 type Source = "upload" | "history";
 
@@ -139,6 +140,21 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     };
   }, [operationId, onComplete]);
 
+  // Восстановление панели хода: если снятие запущено и выполняется в фоне,
+  // а пользователь вернулся на страницу сценария (в том числе после
+  // перезагрузки), подхватываем активную операцию этого типа и продолжаем
+  // показывать её ход.
+  useEffect(() => {
+    if (operationId) return;
+    const controller = new AbortController();
+    void findActiveOperation("REMOVE", controller.signal)
+      .then((operation) => {
+        if (operation && !controller.signal.aborted) setOperationId(operation.id);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [operationId]);
+
   const readyRows = useMemo(
     () => planImport?.rows.filter((row) => row.status === "READY" && row.siteId && row.engineerName) ?? [],
     [planImport]
@@ -146,7 +162,18 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
   const selectedReadyRows = readyRows.filter((row) => selectedRows.includes(row.rowNumber));
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
   const skippedCount = operation?.items.filter((item) => item.status === "SKIPPED").length ?? 0;
-  const siteLabels = preview ? Object.fromEntries(preview.items.map((item) => [item.siteId, item.address])) : undefined;
+  // Адреса площадок для таблицы состояний. Из предпросмотра — для своей
+  // операции; при восстановлении после ухода со страницы предпросмотра уже нет,
+  // тогда адрес берём из ответа операции (label из beforeData на сервере).
+  const siteLabels = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    if (preview) {
+      for (const item of preview.items) map[item.siteId] = item.address;
+    } else if (operation) {
+      for (const item of operation.items) map[item.siteId] = item.label;
+    }
+    return Object.keys(map).length > 0 ? map : undefined;
+  }, [preview, operation]);
 
   const resetSelection = () => {
     setPlanImport(null);

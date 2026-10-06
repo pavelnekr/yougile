@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { OperationType, PrismaClient } from "@prisma/client";
+import { OperationStatus, OperationType, PrismaClient } from "@prisma/client";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { getAssignmentUsers } from "../users/service.js";
@@ -14,6 +14,22 @@ const visibleOperationTypes: OperationType[] = [
   OperationType.REMOVE,
   OperationType.COMMENT
 ];
+
+// Название площадки для списка: для XLSX-строк это адрес (title в beforeData),
+// для остальных — заголовок задачи. Нужно, когда фронтенд восстанавливает панель
+// хода после ухода со страницы: предпросмотра уже нет, а адрес взять неоткуда.
+function operationItemLabel(beforeData: unknown, siteId: string): string {
+  if (
+    beforeData &&
+    typeof beforeData === "object" &&
+    !Array.isArray(beforeData) &&
+    "title" in beforeData &&
+    typeof (beforeData as { title?: unknown }).title === "string"
+  ) {
+    return (beforeData as { title: string }).title;
+  }
+  return siteId;
+}
 
 export async function registerAssignmentRoutes(
   app: FastifyInstance,
@@ -75,8 +91,43 @@ export async function registerAssignmentRoutes(
       items: operation.items.map((item) => ({
         siteId: item.siteId,
         status: item.status,
-        errorMessage: item.errorMessage
+        errorMessage: item.errorMessage,
+        label: operationItemLabel(item.beforeData, item.siteId)
       }))
+    };
+  });
+
+  // Активные операции для панели «Идёт операция» на обзоре. Сводка без строк:
+  // детальный список площадок страница получает по GET /api/operations/:id,
+  // когда открывает операцию. Операция активна, пока стоит в очереди или
+  // выполняется воркером в фоне.
+  app.get("/api/operations/active", async () => {
+    const operations = await prisma.operation.findMany({
+      where: { status: { in: [OperationStatus.QUEUED, OperationStatus.RUNNING] } },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        total: true,
+        completed: true,
+        failed: true,
+        message: true
+      }
+    });
+
+    return {
+      items: operations
+        .filter((operation) => visibleOperationTypes.includes(operation.type))
+        .map((operation) => ({
+          id: operation.id,
+          type: operation.type,
+          status: operation.status,
+          total: operation.total,
+          completed: operation.completed,
+          failed: operation.failed,
+          message: operation.message
+        }))
     };
   });
 

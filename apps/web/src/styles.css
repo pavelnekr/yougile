@@ -957,6 +957,70 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 }
 
 /* ============================================================================
+   Панель «Идёт операция» на обзоре
+   ========================================================================= */
+
+/* Карточка активной операции: работа продолжается в фоне, панель показывает
+   тип, счётчик и прогресс. Клик открывает сценарий, где страница восстановит
+   панель хода по активной операции. Прогресс — только transform (scaleX). */
+.overview-active-panel { display: grid; gap: 10px; margin-bottom: 28px; }
+.overview-active-list { display: grid; gap: 8px; }
+.overview-active-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e9edf3;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 2px 5px #26365905;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-ui) ease, background-color var(--dur-ui) ease, box-shadow var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
+}
+.overview-active-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  color: #fff;
+  background: #4169e1;
+}
+.overview-active-copy { display: grid; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.overview-active-copy strong { font-size: 13px; font-weight: 600; letter-spacing: -.2px; }
+.overview-active-copy small { color: #7b8598; font-size: 11px; }
+.overview-active-track {
+  flex: 0 1 150px;
+  min-width: 70px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0f6;
+}
+.overview-active-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #4169e1;
+  transform-origin: left center;
+  transform: scaleX(.02);
+  transition: transform var(--dur-progress) var(--ease-out);
+}
+.overview-active-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  color: #405fce;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ============================================================================
    Наведения и нажатия
    ========================================================================= */
 
@@ -990,6 +1054,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .admin-action-danger:hover:not(:disabled) { border-color: #eabdb0; color: #ad5f4a; }
   .logs-row-toggle:hover strong { color: #405fce; }
   .logs-row-toggle:hover svg { color: #536bc7; }
+  .overview-active-card:hover { border-color: #ccd6f4; box-shadow: 0 5px 14px #2537610b; }
 }
 
 /* У этих кнопок не было своего перехода: добавляем переход цвета и отклик на нажатие.
@@ -1014,6 +1079,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .removal-source-switch button:not(.removal-source-active):active,
 .removal-history-item:active:not(:disabled),
 .history-period button:not(.history-period-active):active,
+.overview-active-card:active,
 .sites-pagination button:active:not(:disabled), .history-pagination button:active:not(:disabled) {
   transform: scale(var(--press-scale));
 }
@@ -1026,12 +1092,12 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   /* Полоса прогресса и боковое меню позиционируются через transform, его обнулять
      нельзя. Вместо этого убираем transform из списка переходов — движение пропадает,
      конечное состояние остаётся. */
-  .sidebar, .operation-progress span { transition-property: opacity; }
+  .sidebar, .operation-progress span, .overview-active-track i { transition-property: opacity; }
   .action-card, .stat-card-button, .btn-primary, .outline-button, .text-button, .icon-button,
   .nav-link, .login-submit, .login-password-toggle, .login-preview button, .template-option,
   .profile, .xlsx-dropzone, .removal-source-switch button, .removal-history-item,
   .history-period button, .sites-pagination button, .history-pagination button,
-  .dialog-box {
+  .overview-active-card, .dialog-box {
     transform: none !important;
     transition-property: opacity, background-color, border-color, color, box-shadow, filter;
   }

@@ -12,6 +12,7 @@ import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog"
 import OperationSites from "./OperationSites";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { findActiveOperation } from "./activeOperations";
 import { countRu, rowForms, siteForms } from "./plural";
 
 type ImportRow = {
@@ -62,7 +63,7 @@ type Operation = {
   completed: number;
   failed: number;
   message: string | null;
-  items: { siteId: string; status: string; errorMessage: string | null }[];
+  items: { siteId: string; status: string; errorMessage: string | null; label: string | null }[];
 };
 
 const pageSize = 15;
@@ -157,6 +158,21 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     };
   }, [operationId, onComplete]);
 
+  // Восстановление панели хода: если операция запущена и выполняется в фоне,
+  // а пользователь вернулся на страницу сценария (в том числе после
+  // перезагрузки), подхватываем активную операцию этого типа и продолжаем
+  // показывать её ход, как будто страницу не закрывали.
+  useEffect(() => {
+    if (operationId) return;
+    const controller = new AbortController();
+    void findActiveOperation("ASSIGN", controller.signal)
+      .then((operation) => {
+        if (operation && !controller.signal.aborted) setOperationId(operation.id);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [operationId]);
+
   const filteredRows = useMemo(() => {
     const rows = planImport?.rows ?? [];
     const normalizedQuery = query.trim().toLocaleLowerCase("ru");
@@ -170,7 +186,18 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   const selectedReadyRows = (planImport?.rows ?? []).filter((row) => selectedRows.includes(row.rowNumber) && row.status === "READY");
   const validComment = comment.trim().length > 0 && comment.length <= 10_000;
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
-  const siteLabels = preview ? Object.fromEntries(preview.items.map((item) => [item.siteId, item.address])) : undefined;
+  // Адреса площадок для таблицы состояний. Из предпросмотра — для своей
+  // операции; при восстановлении после ухода со страницы предпросмотра уже нет,
+  // тогда адрес берём из ответа операции (label из beforeData на сервере).
+  const siteLabels = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    if (preview) {
+      for (const item of preview.items) map[item.siteId] = item.address;
+    } else if (operation) {
+      for (const item of operation.items) map[item.siteId] = item.label;
+    }
+    return Object.keys(map).length > 0 ? map : undefined;
+  }, [preview, operation]);
 
   const uploadWorkbook = async (file: File) => {
     setBusy(true);

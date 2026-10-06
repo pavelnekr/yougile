@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { findActiveOperation } from "./activeOperations";
 import OperationSites from "./OperationSites";
 import { countRu, siteForms } from "./plural";
 
@@ -47,7 +48,7 @@ type Operation = {
   completed: number;
   failed: number;
   message: string | null;
-  items: { siteId: string; status: string; errorMessage: string | null }[];
+  items: { siteId: string; status: string; errorMessage: string | null; label: string | null }[];
 };
 
 const pageSize = 25;
@@ -151,6 +152,21 @@ export default function CommentPage({
     };
   }, [operationId, onComplete]);
 
+  // Восстановление панели хода: если отправка комментариев запущена и идёт
+  // в фоне, а пользователь вернулся на страницу сценария (в том числе после
+  // перезагрузки), подхватываем активную операцию этого типа и продолжаем
+  // показывать её ход.
+  useEffect(() => {
+    if (operationId) return;
+    const controller = new AbortController();
+    void findActiveOperation("COMMENT", controller.signal)
+      .then((operation) => {
+        if (operation && !controller.signal.aborted) setOperationId(operation.id);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [operationId]);
+
   const filteredSites = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("ru");
     return normalizedQuery
@@ -169,8 +185,11 @@ export default function CommentPage({
     const map: Record<string, string | null> = {};
     for (const site of sites) map[site.siteNumber] = site.title;
     if (preview) for (const item of preview.items) map[item.siteNumber] = item.title;
+    // При восстановлении после ухода со страницы предпросмотра нет — названия
+    // задач берём из ответа операции (label из beforeData на сервере).
+    if (operation) for (const item of operation.items) map[item.siteId] = item.label;
     return map;
-  }, [sites, preview]);
+  }, [sites, preview, operation]);
 
   const updateSelection = (taskId: string, checked: boolean) => {
     setSelectedTaskIds((current) => {
