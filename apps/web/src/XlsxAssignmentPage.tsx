@@ -9,6 +9,7 @@ import {
   Upload
 } from "lucide-react";
 import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
+import OperationSites from "./OperationSites";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { countRu, rowForms, siteForms } from "./plural";
@@ -169,6 +170,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   const selectedReadyRows = (planImport?.rows ?? []).filter((row) => selectedRows.includes(row.rowNumber) && row.status === "READY");
   const validComment = comment.trim().length > 0 && comment.length <= 10_000;
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
+  const siteLabels = preview ? Object.fromEntries(preview.items.map((item) => [item.siteId, item.address])) : undefined;
 
   const uploadWorkbook = async (file: File) => {
     setBusy(true);
@@ -505,6 +507,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
           </div>
           {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
+          {operation && operation.items.length > 0 && <OperationSites items={operation.items} labelColumn="Адрес" labels={siteLabels} />}
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
         </div>
       )}

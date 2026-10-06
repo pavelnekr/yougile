@@ -306,6 +306,18 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .operation-progress span { display: block; width: 100%; height: 100%; border-radius: inherit; background: #5986dc; transform-origin: left center; transition: transform var(--dur-progress) var(--ease-out); }
 .operation-failures { max-height: 180px; overflow: auto; padding: 0 10px; border-left: 2px solid #d37c68; }
 .operation-failures p { margin: 5px 0; color: #a75c4e; font-size: 9px; }
+/* Таблица площадок операции: номер, адрес/задача и статус каждой строки.
+   Внутренний скролл, шапка липнет при прокрутке длинного списка. */
+.operation-sites { max-height: 285px; overflow: auto; border: 1px solid #eff1f5; border-radius: 7px; overscroll-behavior: contain; }
+.operation-sites-head { position: sticky; top: 0; z-index: 1; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 27px; padding: 0 10px; border-bottom: 1px solid #eff1f5; color: #929aaa; background: #fafbfd; font-size: 8px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; }
+.operation-site-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 30px; padding: 0 10px; border-bottom: 1px solid #f2f4f7; font-size: 9px; line-height: 1.35; }
+.operation-site-row:last-child { border-bottom: 0; }
+.operation-site-label { overflow: hidden; color: #58657a; text-overflow: ellipsis; white-space: nowrap; }
+.operation-site-status { display: inline-flex; align-items: center; gap: 5px; color: #93a0b4; white-space: nowrap; }
+.operation-site-row .operation-site-status { color: #93a0b4; }
+.operation-site-succeeded .operation-site-status { color: #4f9779; }
+.operation-site-failed .operation-site-status { color: #a75c4e; }
+.operation-site-skipped .operation-site-status { color: #9a875b; }
 .assignment-new-button { justify-self: start; }
 .comment-page { gap: 0; }
 .comment-select-all { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }

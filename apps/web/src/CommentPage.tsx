@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import OperationSites from "./OperationSites";
 import { countRu, siteForms } from "./plural";
 
 export type PlannedSite = {
@@ -164,6 +165,12 @@ export default function CommentPage({
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
   const limitReached = selectedTaskIds.length >= maxSites;
   const failedItems = operation?.items.filter((item) => item.status === "FAILED") ?? [];
+  const siteLabels = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const site of sites) map[site.siteNumber] = site.title;
+    if (preview) for (const item of preview.items) map[item.siteNumber] = item.title;
+    return map;
+  }, [sites, preview]);
 
   const updateSelection = (taskId: string, checked: boolean) => {
     setSelectedTaskIds((current) => {
@@ -418,6 +425,7 @@ export default function CommentPage({
             {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
           </div>
           {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
+          {operation && operation.items.length > 0 && <OperationSites items={operation.items} labelColumn="Задача" labels={siteLabels} />}
           {operationError && <p className="assignment-error">{operationError}</p>}
           {failedItems.length > 0 && (
             <div className="operation-failures">
