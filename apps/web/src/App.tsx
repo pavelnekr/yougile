@@ -17,6 +17,7 @@ import {
   Menu,
   MessageSquarePlus,
   RefreshCw,
+  ScrollText,
   Search,
   Settings2,
   ShieldCheck,
@@ -30,6 +31,7 @@ import CommentPage from "./CommentPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import HistoryPage from "./HistoryPage.js";
 import AdminUsersPage from "./AdminUsersPage.js";
+import LogsPage from "./LogsPage.js";
 import { syncSectionUrl, useSectionUrl, type Section } from "./router.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
@@ -82,7 +84,8 @@ const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: bo
   { label: "Аудит", icon: ClipboardCheck },
   { label: "История", icon: History },
   { label: "Настройки", icon: Settings2 },
-  { label: "Учётные записи", icon: UsersRound, adminOnly: true }
+  { label: "Учётные записи", icon: UsersRound, adminOnly: true },
+  { label: "Логирование", icon: ScrollText, adminOnly: true }
 ];
 
 const actions = [
@@ -352,6 +355,9 @@ function App() {
                 setSessionUser((user) => user ? { ...user, yougileTokenConfigured: configured } : user);
               }}
             />
+          ) : activeSection === "Логирование" ? (
+            // Раздел adminOnly, поэтому сюда попадает только ADMIN.
+            <LogsPage />
           ) : (
             <SectionPage section={activeSection} health={health} />
           )}
@@ -463,10 +469,10 @@ function Overview({
           )}
         </div>
         <div className="panel checklist-panel">
-          <div className="panel-heading"><div><h2>Этапы переноса</h2><p>Текущий статус проекта</p></div><span className="checklist-count">2 / 3</span></div>
+          <div className="panel-heading"><div><h2>Этапы переноса</h2><p>Текущий статус проекта</p></div><span className="checklist-count">3 / 3</span></div>
           <div className="checklist-item"><span className="checklist-done"><Check size={12} /></span><span><strong>Интеграция YouGile подключена</strong><small>Список задач и сотрудников загружается</small></span><span className="check-status check-status-done">ГОТОВО</span></div>
           <div className="checklist-item"><span className="checklist-done"><Check size={12} /></span><span><strong>Назначения по плану XLSX</strong><small>Загрузка, сопоставление и подтверждение</small></span><span className="check-status check-status-done">ГОТОВО</span></div>
-          <div className="checklist-item"><span className="checklist-empty"><Check size={12} /></span><span><strong>Личные учётные записи</strong><small>Нужны для безопасного доступа команды</small></span><span className="check-status">ДАЛЬШЕ</span></div>
+          <div className="checklist-item"><span className="checklist-done"><Check size={12} /></span><span><strong>Личные учётные записи</strong><small>Вход, роли и индивидуальные токены YouGile</small></span><span className="check-status check-status-done">ГОТОВО</span></div>
         </div>
       </section>
 
@@ -845,7 +851,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

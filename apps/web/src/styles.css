@@ -858,6 +858,93 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 }
 
 /* ============================================================================
+   Раздел «Логирование»
+   ========================================================================= */
+
+.logs-panel { display: grid; gap: 11px; margin-top: 15px; padding: 15px; }
+.logs-total { flex: 0 0 auto; padding: 4px 8px; border-radius: 5px; color: #536bc6; background: #edf1ff; font-size: 8px; font-weight: 650; }
+
+/* Фильтры переносятся строками: четыре поля и поиск не помещаются в один ряд
+   даже на обычном мониторе, а сжимать их — значит обрезать названия действий. */
+.logs-filters { display: flex; flex-wrap: wrap; gap: 9px; align-items: flex-end; }
+.logs-filter { display: grid; gap: 4px; min-width: 150px; }
+.logs-filter-action { min-width: 230px; flex: 1 1 230px; }
+.logs-filter span, .logs-detail-grid span, .logs-detail-block > span { color: #929bab; font-size: 7px; font-weight: 650; text-transform: uppercase; letter-spacing: .3px; }
+.logs-filter select { height: 30px; padding: 0 8px; border: 1px solid #e7ebf1; border-radius: 6px; outline: 0; color: #69758a; background: #fff; font: 8px "Segoe UI", sans-serif; }
+.logs-filter select:focus { border-color: #b5c1eb; box-shadow: 0 0 0 2px #eef1ff; }
+
+.logs-search { display: flex; min-width: 230px; flex: 1 1 230px; align-items: center; gap: 7px; padding: 0 9px; border: 1px solid #e7ebf1; border-radius: 6px; color: #959ead; background: #fff; }
+.logs-search:focus-within { border-color: #b5c1eb; box-shadow: 0 0 0 2px #eef1ff; }
+.logs-search input { width: 100%; height: 30px; border: 0; outline: 0; color: #59667b; background: transparent; font: 8px "Segoe UI", sans-serif; }
+.logs-search input::placeholder { color: #a2a9b5; }
+/* Высота как у соседних полей: иначе кнопка висит ниже строки ввода. */
+.logs-search-button { height: 30px; padding: 0 15px; }
+
+/* Максимальная высота нужна, чтобы липкая шапка таблицы работала: без
+   прокрутки внутри обёртки sticky-заголовок просто прилипнет к странице. */
+.logs-table-wrap { width: 100%; max-height: 620px; overflow: auto; border: 1px solid #edf0f4; border-radius: 7px; }
+.logs-table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; }
+.logs-table th { position: sticky; z-index: 1; top: 0; padding: 9px 10px; border-bottom: 1px solid #e9edf3; color: #929bab; background: #fafbfc; font-size: 7px; font-weight: 650; white-space: nowrap; }
+/* Без white-space: nowrap — сообщения об ошибках длинные и обязаны переноситься,
+   иначе либо обрезаются, либо растягивают колонку на всю ширину экрана. */
+.logs-table td { padding: 7px 10px; border-bottom: 1px solid #f0f2f5; color: #657086; font-size: 8px; vertical-align: top; }
+.logs-table tbody tr:last-child td { border-bottom: 0; }
+
+/* Подсветка строки по уровню. Она живёт на ячейках, потому что цвет фона
+   строки не виден: у таблицы border-spacing и собственный фон у td. */
+.logs-row-error td { background: #fdf7f5; }
+.logs-row-warn td { background: #fdfaf3; }
+
+.logs-cell-time { min-width: 88px; white-space: nowrap; }
+.logs-cell-time span { display: block; color: #59667b; font-size: 8px; font-weight: 650; }
+.logs-cell-time small { display: block; margin-top: 2px; color: #98a1b0; font-size: 7px; }
+
+.logs-level { display: inline-flex; padding: 4px 6px; border-radius: 5px; font-size: 7px; font-weight: 650; white-space: nowrap; }
+.logs-level-info { color: #4c7fd0; background: #edf3fc; }
+.logs-level-warn { color: #937341; background: #fbf3e7; }
+.logs-level-error { color: #ad5f4a; background: #fbefec; }
+
+/* Раскрытие записи — кнопка на всю ячейку события: так попадать точнее,
+   чем в маленький шеврон, а читаемость длинных сообщений не страдает. */
+.logs-cell-event { min-width: 300px; max-width: 520px; }
+.logs-row-toggle { display: flex; width: 100%; align-items: flex-start; gap: 6px; padding: 0; border: 0; outline: 0; color: inherit; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.logs-row-toggle svg { flex: 0 0 auto; margin-top: 2px; color: #a3abb9; }
+.logs-row-toggle > span { display: block; min-width: 0; }
+.logs-row-toggle strong { display: block; color: #3f4a5e; font-size: 9px; font-weight: 650; line-height: 1.35; }
+.logs-row-toggle small { display: block; margin-top: 2px; color: #98a1b0; font-size: 7px; }
+
+.logs-cell-actor { min-width: 96px; white-space: nowrap; }
+.logs-cell-actor small { display: block; margin-top: 2px; color: #98a1b0; font-size: 7px; }
+.logs-cell-status { min-width: 66px; white-space: nowrap; }
+.logs-cell-status strong { display: block; color: #4d5a70; font-size: 9px; }
+.logs-cell-status small { display: block; margin-top: 2px; color: #98a1b0; font-size: 7px; }
+
+/* Разложенная запись. Карточка внутри ячейки, а не поверх строки: так можно
+   развернуть сразу несколько записей и сравнивать их глазами. */
+.logs-detail-row td { padding: 0 10px 12px; background: #fafbfd; }
+.logs-detail { display: grid; gap: 10px; padding: 11px; border: 1px solid #e9edf3; border-radius: 7px; background: #fff; }
+.logs-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 9px 14px; }
+.logs-detail-grid > div { display: grid; gap: 3px; min-width: 0; }
+.logs-detail code { color: #4d5a70; font-size: 8px; overflow-wrap: anywhere; }
+.logs-detail-block { display: grid; gap: 5px; }
+/* pre — единственный элемент, который прокручивается внутри страницы,
+   поэтому у него overscroll-behavior: contain (см. телефон и планшет). */
+.logs-detail pre { max-height: 240px; margin: 0; padding: 9px; overflow: auto; overscroll-behavior: contain; border: 1px solid #edf0f4; border-radius: 6px; color: #4d5a70; background: #fafbfc; font: 8px/1.55 Consolas, "Courier New", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.logs-empty { display: grid; min-height: 95px; place-items: center; color: #9aa2b0; font-size: 8px; }
+.logs-more { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; color: #929aaa; font-size: 8px; }
+
+@media (max-width: 720px) {
+  .logs-panel { padding: 12px; }
+  /* Без ограничения высоты шапка таблицы уезжает вместе с содержимым. */
+  .logs-table-wrap { max-height: none; }
+  .logs-filter, .logs-filter-action, .logs-search { min-width: 0; width: 100%; flex: 1 1 100%; }
+  .logs-search-button { width: 100%; }
+  .logs-cell-event { min-width: 210px; }
+  .logs-table { min-width: 640px; }
+}
+
+/* ============================================================================
    Наведения и нажатия
    ========================================================================= */
 
@@ -889,6 +976,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .login-mode-switch:hover:not(:disabled) strong { color: #354fae; }
   .admin-action-button:hover:not(:disabled) { border-color: #b8c5ed; color: #4a64c4; }
   .admin-action-danger:hover:not(:disabled) { border-color: #eabdb0; color: #ad5f4a; }
+  .logs-row-toggle:hover strong { color: #405fce; }
+  .logs-row-toggle:hover svg { color: #536bc7; }
 }
 
 /* У этих кнопок не было своего перехода: добавляем переход цвета и отклик на нажатие.

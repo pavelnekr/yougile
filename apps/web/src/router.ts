@@ -20,7 +20,8 @@ export type Section =
   | "Аудит"
   | "История"
   | "Настройки"
-  | "Учётные записи";
+  | "Учётные записи"
+  | "Логирование";
 
 export const sectionSlugs: Record<Section, string> = {
   "Обзор": "",
@@ -32,7 +33,8 @@ export const sectionSlugs: Record<Section, string> = {
   "Аудит": "audit",
   "История": "history",
   "Настройки": "settings",
-  "Учётные записи": "admin/users"
+  "Учётные записи": "admin/users",
+  "Логирование": "admin/logs"
 };
 
 const slugToSection = new Map<string, Section>(
