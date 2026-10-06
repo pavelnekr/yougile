@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
 import OperationSites from "./OperationSites";
+import ErrorDiagnostics from "./ErrorDiagnostics";
+import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { findActiveOperation } from "./activeOperations";
@@ -64,7 +66,8 @@ type Operation = {
   completed: number;
   failed: number;
   message: string | null;
-  items: { siteId: string; status: string; errorMessage: string | null; label: string | null }[];
+  items: { siteId: string; status: string; errorMessage: string | null; label: string | null; details?: ErrorDetail | null }[];
+  errorDetails?: ErrorDetail | null;
 };
 
 const pageSize = 15;
@@ -537,6 +540,9 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
           {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
           {operation && operation.items.length > 0 && <OperationSites items={operation.items} labelColumn="Адрес" labels={siteLabels} />}
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
+          {(Boolean(error) || Boolean(operation && (operation.failed > 0 || operation.errorDetails || ["FAILED", "PARTIAL"].includes(operation.status)))) && (
+            <ErrorDiagnostics payload={operationDiagnosticsPayload({ action: "Назначение инженеров и комментариев по XLSX", operation, apiError: error || null })} />
+          )}
         </div>
       )}
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Источник назначений — выбранные строки XLSX</span></footer>

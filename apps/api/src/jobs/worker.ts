@@ -3,6 +3,7 @@ import { PrismaClient, type LogLevel, type OperationType } from "@prisma/client"
 import { Redis } from "ioredis";
 import { config } from "../config.js";
 import { getUserYougileClient } from "../integrations/yougile/user-client.js";
+import { describeError } from "../lib/error-details.js";
 import { processAssignmentOperation } from "../modules/assignments/service.js";
 import { processRemovalOperation } from "../modules/assignments/removal.js";
 import { processCommentOperation } from "../modules/comments/service.js";
@@ -140,12 +141,22 @@ export function createOperationWorker(prisma: PrismaClient) {
           await processAssignmentOperation(prisma, yougile, job.data);
         }
       } catch (error) {
+        const existing = await prisma.operation.findUnique({
+          where: { id: job.data.operationId },
+          select: { metadata: true }
+        }).catch(() => null);
+        const existingMetadata = existing?.metadata &&
+          typeof existing.metadata === "object" &&
+          !Array.isArray(existing.metadata)
+          ? existing.metadata
+          : {};
         const failedOperation = await prisma.operation.update({
           where: { id: job.data.operationId },
           data: {
             status: "FAILED",
             message: "Не удалось запустить операцию.",
-            finishedAt: new Date()
+            finishedAt: new Date(),
+            metadata: { ...existingMetadata, error: describeError(error) }
           },
           select: { metadata: true }
         }).catch((databaseError: unknown) => {

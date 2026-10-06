@@ -4,7 +4,8 @@ export class YougileApiError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly apiMessage?: string
+    readonly apiMessage?: string,
+    readonly responsePreview?: string
   ) {
     super(message);
     this.name = "YougileApiError";
@@ -64,7 +65,8 @@ export class YougileClient {
       throw new YougileApiError(
         `YouGile request failed with HTTP ${response.status}`,
         response.status,
-        getApiErrorMessage(responseText)
+        getApiErrorMessage(responseText),
+        responseText.slice(0, 1000)
       );
     }
 

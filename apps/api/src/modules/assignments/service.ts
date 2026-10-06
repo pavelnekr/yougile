@@ -5,6 +5,7 @@ import { YougileApiError, YougileClient } from "../../integrations/yougile/clien
 import { postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
+import { describeError } from "../../lib/error-details.js";
 import { getPlannedSites, type PlannedSite } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 
@@ -229,6 +230,7 @@ export async function processAssignmentOperation(
       } catch (error) {
         status = OperationItemStatus.FAILED;
         errorMessage = assignmentFailureMessage(error, phase);
+        afterData = { ...(afterData ?? {}), error: describeError(error) };
         console.error("Assignment item failed", {
           operationId,
           siteId: item.siteId,

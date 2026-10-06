@@ -3,6 +3,7 @@ import { z } from "zod";
 import { YougileClient } from "../../integrations/yougile/client.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
+import { describeError } from "../../lib/error-details.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, maxSitesPerOperation, readTask, tooManySitesError, validatePlanTask } from "./service.js";
@@ -166,6 +167,7 @@ export async function processRemovalOperation(
         errorMessage = error instanceof Error
           ? `Не удалось снять инженера с площадки ${item.siteId}: ${error.message}`
           : `Не удалось снять инженера с площадки ${item.siteId}.`;
+        afterData = { ...(afterData ?? {}), error: describeError(error) };
         console.error("Removal item failed", {
           operationId,
           siteId: item.siteId,

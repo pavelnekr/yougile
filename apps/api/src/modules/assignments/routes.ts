@@ -31,6 +31,23 @@ function operationItemLabel(beforeData: unknown, siteId: string): string {
   return siteId;
 }
 
+// Структурированные детали ошибки из JSON-контейнера (afterData элемента или
+// metadata операции): describeError кладёт их под ключом "error". Фронтенд
+// показывает их в блоке «Диагностика для поддержки», который оператор может
+// скопировать и передать разработчику.
+function errorDetailsFrom(container: unknown): unknown {
+  if (
+    container &&
+    typeof container === "object" &&
+    !Array.isArray(container) &&
+    "error" in container &&
+    (container as { error?: unknown }).error != null
+  ) {
+    return (container as { error: unknown }).error;
+  }
+  return null;
+}
+
 export async function registerAssignmentRoutes(
   app: FastifyInstance,
   prisma: PrismaClient
@@ -88,11 +105,13 @@ export async function registerAssignmentRoutes(
       completed: operation.completed,
       failed: operation.failed,
       message: operation.message,
+      errorDetails: errorDetailsFrom(operation.metadata),
       items: operation.items.map((item) => ({
         siteId: item.siteId,
         status: item.status,
         errorMessage: item.errorMessage,
-        label: operationItemLabel(item.beforeData, item.siteId)
+        label: operationItemLabel(item.beforeData, item.siteId),
+        details: errorDetailsFrom(item.afterData)
       }))
     };
   });

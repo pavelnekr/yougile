@@ -29,6 +29,8 @@ import ImportAuditPage from "./ImportAuditPage.js";
 import XlsxRemovalPage from "./XlsxRemovalPage.js";
 import CommentPage from "./CommentPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
+import ErrorDiagnostics from "./ErrorDiagnostics.js";
+import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js";
 import HistoryPage from "./HistoryPage.js";
 import AdminUsersPage from "./AdminUsersPage.js";
 import LogsPage from "./LogsPage.js";
@@ -70,7 +72,8 @@ type AssignmentOperation = {
   completed: number;
   failed: number;
   message: string | null;
-  items: { siteId: string; status: string; errorMessage: string | null }[];
+  items: { siteId: string; status: string; errorMessage: string | null; details?: ErrorDetail | null }[];
+  errorDetails?: ErrorDetail | null;
 };
 type WorkTypeStatistic = {
   month: string;
@@ -847,6 +850,9 @@ export function AssignmentPage({
           {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
           {operationError && <p className="assignment-error">{operationError}</p>}
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
+          {(Boolean(operationError) || Boolean(operation && (operation.failed > 0 || operation.errorDetails || ["FAILED", "PARTIAL"].includes(operation.status)))) && (
+            <ErrorDiagnostics payload={operationDiagnosticsPayload({ action: "Назначение инженера вручную", operation, apiError: operationError || null })} />
+          )}
           {operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) && <button className="outline-button assignment-new-button" onClick={resetAssignment}><RefreshCw size={14} /> Новое назначение</button>}
         </div>
       )}

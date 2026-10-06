@@ -11,6 +11,8 @@ import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { findActiveOperation } from "./activeOperations";
 import OperationSites from "./OperationSites";
+import ErrorDiagnostics from "./ErrorDiagnostics";
+import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics";
 import { countRu, siteForms } from "./plural";
 import { PORTAL_VERSION } from "./version";
 
@@ -49,7 +51,8 @@ type Operation = {
   completed: number;
   failed: number;
   message: string | null;
-  items: { siteId: string; status: string; errorMessage: string | null; label: string | null }[];
+  items: { siteId: string; status: string; errorMessage: string | null; label: string | null; details?: ErrorDetail | null }[];
+  errorDetails?: ErrorDetail | null;
 };
 
 const pageSize = 25;
@@ -182,6 +185,12 @@ export default function CommentPage({
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
   const limitReached = selectedTaskIds.length >= maxSites;
   const failedItems = operation?.items.filter((item) => item.status === "FAILED") ?? [];
+
+  // Блок копируемой диагностики показывается, когда операция завершилась с
+  // ошибками: сбойные площадки, падение всей операции или ошибка опроса статуса.
+  const showErrorDiagnostics = Boolean(operationError) || Boolean(
+    operation && (operation.failed > 0 || operation.errorDetails || ["FAILED", "PARTIAL"].includes(operation.status))
+  );
   const siteLabels = useMemo(() => {
     const map: Record<string, string | null> = {};
     for (const site of sites) map[site.siteNumber] = site.title;
@@ -456,6 +465,9 @@ export default function CommentPage({
             <div className="operation-failures">
               {failedItems.map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}
             </div>
+          )}
+          {showErrorDiagnostics && (
+            <ErrorDiagnostics payload={operationDiagnosticsPayload({ action: "Отправка комментариев", operation, apiError: operationError || null })} />
           )}
           {operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) && (
             <div className="comment-operation-actions">

@@ -71,7 +71,8 @@ apps/api/src/
 │   ├── queue.ts           BullMQ Queue, имя очереди "portal-operations"
 │   └── worker.ts          Worker, concurrency: 1, старт/итог операций пишет в PortalLog
 ├── lib/
-│   └── action-delay.ts    единая пауза 2 с между действиями в YouGile (yougileActionDelayMs)
+│   ├── action-delay.ts    единая пауза 2 с между действиями в YouGile (yougileActionDelayMs)
+│   └── error-details.ts   describeError(): структурированные детали ошибки для диагностики
 ├── integrations/yougile/
 │   ├── client.ts          YougileClient — HTTP к YouGile: токен, таймаут 15 с, повтор при 429
 │   ├── chat.ts            общие помощники чатов задач (чтение/отправка сообщений)
@@ -783,6 +784,17 @@ PowerShell.
 - Пользовательские тексты в интерфейсе — по-русски, без перевода на английский.
 - Ошибки для пользователя — понятные фразы на русском, технические детали — в лог через
   `app.log.error({ err: error }, "...")`, а не в ответ клиенту.
+- Технические детали ошибки для диагностики собирает `describeError()`
+  (`apps/api/src/lib/error-details.ts`): имя, сообщение, `statusCode`/`apiMessage`/
+  `responsePreview` для `YougileApiError` и начало стека. Детали пишутся в
+  `afterData.error` элемента операции и в `metadata.error` всей операции, а
+  `GET /api/operations/:id` отдаёт их фронтенду как `details` (элемент) и
+  `errorDetails` (операция). Фронтенд показывает их в блоке «Диагностика для
+  поддержки» с кнопкой «Скопировать» = блок есть на страницах комментария,
+  назначения (XLSX и вручную) и снятия, а запись журнала целиком копируется в
+  разделе «Логирование». Так оператор передаёт полную картину ошибки
+  разработчику, не пересказывая её своими словами; в `errorMessage` при этом
+  остаётся короткая русская фраза.
 
 ---
 

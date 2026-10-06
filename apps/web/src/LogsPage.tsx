@@ -1,14 +1,17 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AlertCircle,
+  Check,
   ChevronDown,
   ChevronUp,
+  Copy,
   LoaderCircle,
   RefreshCw,
   ScrollText,
   Search
 } from "lucide-react";
 import { apiFetch } from "./apiClient.js";
+import { copyText } from "./clipboard.js";
 import { countRu, recordForms } from "./plural.js";
 
 /**
@@ -108,6 +111,9 @@ export default function LogsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // id записи, содержимое которой только что скопировано (для короткой подписи
+  // «Скопировано» на кнопке).
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   // Отдельный контроллер на подгрузку: общий (из эффекта) сбрасывается только
   // при смене фильтров, а догрузка живёт своей жизненным циклом.
   const moreController = useRef<AbortController | null>(null);
@@ -115,6 +121,33 @@ export default function LogsPage() {
 
   const filters: Filters = { level, actor, action, query: appliedQuery };
   const hasFilters = Boolean(level || actor || action || appliedQuery);
+
+  // Копирование записи журнала целиком: оператор вставляет её в сообщение
+  // разработчику вместо пересказа. Поля те же, что видны в раскрытой записи.
+  const copyEntry = (item: LogItem) => {
+    const payload = {
+      id: item.id,
+      createdAt: item.createdAt,
+      level: item.level,
+      action: item.action,
+      message: item.message,
+      actorLogin: item.actorLogin,
+      actorRole: item.actorRole,
+      ip: item.ip,
+      method: item.method,
+      path: item.path,
+      status: item.status,
+      durationMs: item.durationMs,
+      request: item.request,
+      error: item.error,
+      entityId: item.entityId
+    };
+    void copyText(JSON.stringify(payload, null, 2)).then((ok) => {
+      if (!ok) return;
+      setCopiedId(item.id);
+      setTimeout(() => setCopiedId((current) => (current === item.id ? null : current)), 2000);
+    });
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -344,6 +377,16 @@ export default function LogsPage() {
                           <tr className="logs-detail-row">
                             <td colSpan={5}>
                               <div className="logs-detail">
+                                <div className="logs-detail-copy">
+                                  <button
+                                    type="button"
+                                    className="text-button"
+                                    disabled={copiedId === item.id}
+                                    onClick={() => copyEntry(item)}
+                                  >
+                                    {copiedId === item.id ? <Check size={13} /> : <Copy size={13} />} {copiedId === item.id ? "Скопировано" : "Скопировать запись"}
+                                  </button>
+                                </div>
                                 <div className="logs-detail-grid">
                                   <div>
                                     <span>Действие</span>

@@ -4,6 +4,7 @@ import { YougileApiError, YougileClient } from "../../integrations/yougile/clien
 import { readLatestChatMessage, postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
+import { describeError } from "../../lib/error-details.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, readTask, validatePlanTask } from "../assignments/service.js";
@@ -178,6 +179,7 @@ export async function processCommentOperation(
     } catch (error) {
       status = OperationItemStatus.FAILED;
       errorMessage = commentFailureMessage(error);
+      afterData = { ...(afterData ?? {}), error: describeError(error) };
       console.error("Comment item failed", {
         operationId,
         siteId: item.siteId,
