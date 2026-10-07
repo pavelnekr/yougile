@@ -151,13 +151,15 @@ export async function processRemovalOperation(
           status = OperationItemStatus.SKIPPED;
           afterData = { taskId: task.id, title: task.title, assignedUserIds: assigned, removed: false };
         } else {
+          // При снятии инженера вместе с ним передаём completed: false — статус
+          // работ «не выполнена», как это было в n8n (узел «Снять инженера»).
           await client.request(`tasks/${encodeURIComponent(task.id)}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ assigned: nextAssigned })
+            body: JSON.stringify({ assigned: nextAssigned, completed: false })
           });
           status = OperationItemStatus.SUCCEEDED;
-          afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, removed: true };
+          afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, completed: false, removed: true };
           // Пауза 2 секунды перед снятием инженера со следующей площадки —
           // записи идут строго по очереди, как и в остальных операциях.
           await delayBetweenYougileActions();
