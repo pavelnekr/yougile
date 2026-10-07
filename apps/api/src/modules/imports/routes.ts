@@ -10,7 +10,8 @@ import { readLatestChatMessageDetailed } from "../../integrations/yougile/chat.j
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
-import { annotateLog } from "../logs/service.js";
+import { describeError } from "../../lib/error-details.js";
+import { annotateLog, recordLog } from "../logs/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
   AssignmentValidationError,
@@ -244,6 +245,7 @@ export async function registerImportRoutes(
       // Чтение чатов строго по очереди, с паузой 2 секунды между площадками —
       // как записи операций: YouGile не получает пачку параллельных запросов.
       // Запрос синхронный, поэтому проверка занимает ~2 секунды на площадку.
+      let suspiciousReads = 0;
       for (const taskId of uniqueTaskIds) {
         try {
           // readLatestChatMessageDetailed доходит до последней страницы чата:
@@ -268,7 +270,38 @@ export async function registerImportRoutes(
             durationMs: diagnostics.durationMs
           };
           if (diagnostics.stoppedOnFullRawPage || diagnostics.stopReason === "max-pages") {
+            suspiciousReads += 1;
             app.log.warn({ ...logData, pages: diagnostics.pages }, "Work check: chat read stopped suspiciously");
+            // Строка в журнале сайта: администратор видит такие случаи без
+            // доступа к stdout. Диагностика страниц кладётся в request.
+            void recordLog(prisma, {
+              level: "WARN",
+              action: "WORK-CHECK",
+              message: diagnostics.stopReason === "max-pages"
+                ? `Чтение чата площадки ${taskId} упёрлось в лимит страниц: сообщений с текстом ${diagnostics.textMessages} из ${diagnostics.rawMessages}.`
+                : `Чтение чата площадки ${taskId} остановилось на полной странице без текстовых сообщений: с текстом ${diagnostics.textMessages} из ${diagnostics.rawMessages}. Последний комментарий мог быть не дочитан.`,
+              actorId: request.sessionUser?.id ?? null,
+              actorLogin: request.sessionUser?.login ?? null,
+              actorRole: request.sessionUser?.role ?? null,
+              ip: request.ip,
+              method: request.method,
+              path: request.url.split("?")[0] ?? request.url,
+              entityId: taskId,
+              request: {
+                taskId,
+                pagesRead: diagnostics.pagesRead,
+                rawMessages: diagnostics.rawMessages,
+                textMessages: diagnostics.textMessages,
+                emptyTextMessages: diagnostics.emptyTextMessages,
+                stopReason: diagnostics.stopReason,
+                stoppedOnFullRawPage: diagnostics.stoppedOnFullRawPage,
+                pages: diagnostics.pages,
+                latestTimestamp: diagnostics.latestTimestamp,
+                latestTextLength: diagnostics.latestTextLength,
+                latestTextPreview: diagnostics.latestTextPreview,
+                durationMs: diagnostics.durationMs
+              }
+            });
           } else {
             app.log.info(logData, "Work check: chat read result");
           }
@@ -278,13 +311,25 @@ export async function registerImportRoutes(
             taskId,
             statusCode: error instanceof YougileApiError ? error.statusCode : undefined
           }, "Could not load latest YouGile chat message");
-          latestByTaskId.set(taskId, {
-            text: null,
-            error: error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)
-              ? "Нет доступа к чату задачи."
-              : error instanceof YougileApiError && error.statusCode === 404
-                ? "Чат задачи не найден."
-                : "Не удалось загрузить комментарий из YouGile."
+          const failureMessage = error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)
+            ? "Нет доступа к чату задачи."
+            : error instanceof YougileApiError && error.statusCode === 404
+              ? "Чат задачи не найден."
+              : "Не удалось загрузить комментарий из YouGile.";
+          latestByTaskId.set(taskId, { text: null, error: failureMessage });
+          void recordLog(prisma, {
+            level: "ERROR",
+            action: "WORK-CHECK",
+            message: `Не удалось прочитать чат площадки ${taskId}: ${failureMessage}`,
+            actorId: request.sessionUser?.id ?? null,
+            actorLogin: request.sessionUser?.login ?? null,
+            actorRole: request.sessionUser?.role ?? null,
+            ip: request.ip,
+            method: request.method,
+            path: request.url.split("?")[0] ?? request.url,
+            entityId: taskId,
+            request: { taskId, statusCode: error instanceof YougileApiError ? error.statusCode : undefined, details: describeError(error) },
+            error: failureMessage
           });
         }
         const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
@@ -323,6 +368,15 @@ export async function registerImportRoutes(
         errors,
         errorBreakdown: Object.fromEntries(errorBreakdown)
       }, "Work check run finished");
+      // Строка в журнале сайта: кто и когда запускал проверку и чем она
+      // закончилась. Подозрительные остановки чтения и ошибки пишутся
+      // отдельными WARN/ERROR-строками по каждой площадке.
+      annotateLog(request, {
+        action: "WORK-CHECK",
+        message: `Проверка работ «${batch.fileName}»: комментариев найдено ${foundComments}, без комментариев ${noComments}, ошибок ${errors}${suspiciousReads > 0 ? `, подозрительных остановок чтения ${suspiciousReads}` : ""}.`,
+        level: errors > 0 || suspiciousReads > 0 ? "WARN" : "INFO",
+        entityId: batch.id
+      });
 
       return {
         importId: batch.id,
