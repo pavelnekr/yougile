@@ -48,7 +48,7 @@ const workCheckSchema = z.object({
   checkId: z.string().trim().min(1).max(64).optional()
 });
 
-// Живой прогресс «Проверки работ». Запрос синхронный и идёт примерно 2 секунды
+// Живой прогресс «Проверки работ». Запрос синхронный и идёт примерно 4 секунды
 // на площадку, поэтому фронтенду нужен отдельный источник правды, чтобы показать
 // полосу и оценку оставшегося времени. Прогресс хранится в памяти процесса и не
 // переживает рестарт API — для полосы ожидания это допустимо.
@@ -77,7 +77,7 @@ function estimateWorkCheckRemainingMs(entry: WorkCheckProgressEntry): number | n
   if (entry.total === 0 || entry.processed === 0) return null;
   const perSiteMs = (Date.now() - entry.startedAt) / entry.processed;
   // Нижняя граница: на каждую оставшуюся площадку уходит минимум сам запрос
-  // (плюс пауза 2 секунды перед следующей), поэтому в начале проверки темп ещё
+  // (плюс пауза 4 секунды перед следующей), поэтому в начале проверки темп ещё
   // не успевает сложиться, и результат без границы был бы обманчиво маленьким.
   const remainingMs = Math.max(
     (entry.total - entry.processed) * perSiteMs,
@@ -242,9 +242,9 @@ export async function registerImportRoutes(
           finishedAt: null
         });
       }
-      // Чтение чатов строго по очереди, с паузой 2 секунды между площадками —
+      // Чтение чатов строго по очереди, с паузой 4 секунды между площадками —
       // как записи операций: YouGile не получает пачку параллельных запросов.
-      // Запрос синхронный, поэтому проверка занимает ~2 секунды на площадку.
+      // Запрос синхронный, поэтому проверка занимает ~4 секунды на площадку.
       let suspiciousReads = 0;
       for (const taskId of uniqueTaskIds) {
         try {
@@ -334,7 +334,7 @@ export async function registerImportRoutes(
         }
         const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
         if (progressEntry) progressEntry.processed += 1;
-        // Пауза 2 секунды перед чтением чата следующей площадки.
+        // Пауза 4 секунды перед чтением чата следующей площадки.
         await delayBetweenYougileActions();
       }
       const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;

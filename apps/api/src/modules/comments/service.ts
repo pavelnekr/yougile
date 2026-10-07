@@ -148,7 +148,7 @@ export async function processCommentOperation(
   });
 
   const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
-  // Комментарии отправляются строго по очереди, с паузой 2 секунды между
+  // Комментарии отправляются строго по очереди, с паузой 4 секунды между
   // площадками, как и остальные записи в YouGile. Параллельная отправка
   // (раньше — 3 воркера) давала трекеру пачку запросов разом и ломала
   // порядок сообщений в чатах.
@@ -174,7 +174,7 @@ export async function processCommentOperation(
       await postChatMessage(client, task.id, comment);
       status = OperationItemStatus.SUCCEEDED;
       afterData = { taskId: task.id, title: task.title, commentPosted: true };
-      // Пауза 2 секунды перед отправкой комментария на следующую площадку.
+      // Пауза 4 секунды перед отправкой комментария на следующую площадку.
       await delayBetweenYougileActions();
     } catch (error) {
       status = OperationItemStatus.FAILED;

@@ -211,7 +211,7 @@ export async function processAssignmentOperation(
           afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, commentPosted: false };
         }
 
-        // Пауза 2 секунды после каждой записи в YouGile: после назначения перед
+        // Пауза 4 секунды после каждой записи в YouGile: после назначения перед
         // комментарием (YouGile должен успеть применить назначение) и после
         // комментария перед следующей площадкой. При повторном запуске, когда
         // инженер уже на площадке, назначать нечего — комментарий всё равно идёт

@@ -160,7 +160,7 @@ export async function processRemovalOperation(
           });
           status = OperationItemStatus.SUCCEEDED;
           afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, completed: false, removed: true };
-          // Пауза 2 секунды перед снятием инженера со следующей площадки —
+          // Пауза 4 секунды перед снятием инженера со следующей площадки —
           // записи идут строго по очереди, как и в остальных операциях.
           await delayBetweenYougileActions();
         }
