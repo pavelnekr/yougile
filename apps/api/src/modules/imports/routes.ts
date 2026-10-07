@@ -6,7 +6,7 @@ import { ImportBatchStatus, ImportRowStatus, OperationStatus, OperationType, Pri
 import { z } from "zod";
 import { config } from "../../config.js";
 import { YougileClient, YougileApiError } from "../../integrations/yougile/client.js";
-import { readLatestChatMessage } from "../../integrations/yougile/chat.js";
+import { readLatestChatMessageDetailed } from "../../integrations/yougile/chat.js";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
@@ -246,13 +246,38 @@ export async function registerImportRoutes(
       // Запрос синхронный, поэтому проверка занимает ~2 секунды на площадку.
       for (const taskId of uniqueTaskIds) {
         try {
-          // readLatestChatMessage доходит до последней страницы чата: YouGile
-          // отдаёт сообщения старыми вперёд, и при длинном чате последний
-          // комментарий лежит за пределами первой сотни.
-          const latest = await readLatestChatMessage(yougile, taskId);
+          // readLatestChatMessageDetailed доходит до последней страницы чата:
+          // YouGile отдаёт сообщения старыми вперёд, и при длинном чате
+          // последний комментарий лежит за пределами первой сотни. Диагностика
+          // каждой площадки пишется в лог, чтобы видеть, где теряется
+          // последний комментарий: преждевременная остановка цикла или ошибки
+          // YouGile на отдельных страницах.
+          const { latest, diagnostics } = await readLatestChatMessageDetailed(yougile, taskId);
           latestByTaskId.set(taskId, { text: latest?.text ?? null, error: null });
+          const logData = {
+            taskId,
+            pagesRead: diagnostics.pagesRead,
+            rawMessages: diagnostics.rawMessages,
+            textMessages: diagnostics.textMessages,
+            emptyTextMessages: diagnostics.emptyTextMessages,
+            stopReason: diagnostics.stopReason,
+            stoppedOnFullRawPage: diagnostics.stoppedOnFullRawPage,
+            latestTimestamp: diagnostics.latestTimestamp,
+            latestTextLength: diagnostics.latestTextLength,
+            latestTextPreview: diagnostics.latestTextPreview,
+            durationMs: diagnostics.durationMs
+          };
+          if (diagnostics.stoppedOnFullRawPage || diagnostics.stopReason === "max-pages") {
+            app.log.warn({ ...logData, pages: diagnostics.pages }, "Work check: chat read stopped suspiciously");
+          } else {
+            app.log.info(logData, "Work check: chat read result");
+          }
         } catch (error) {
-          app.log.error({ err: error, taskId }, "Could not load latest YouGile chat message");
+          app.log.error({
+            err: error,
+            taskId,
+            statusCode: error instanceof YougileApiError ? error.statusCode : undefined
+          }, "Could not load latest YouGile chat message");
           latestByTaskId.set(taskId, {
             text: null,
             error: error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)
@@ -269,6 +294,35 @@ export async function registerImportRoutes(
       }
       const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
       if (progressEntry) progressEntry.finishedAt = Date.now();
+
+      // Сводка по запуску: сколько площадок вернули комментарий, у скольких его
+      // нет и какие ошибки встретились. По ней видно, систематическая ли это
+      // проблема (много «noComments» при подозрительных остановках чтения) или
+      // разовые сбои YouGile (коды ошибок в errorBreakdown).
+      let foundComments = 0;
+      let noComments = 0;
+      let errors = 0;
+      const errorBreakdown = new Map<string, number>();
+      for (const row of batch.rows) {
+        const result = row.yougileTaskId ? latestByTaskId.get(row.yougileTaskId) : undefined;
+        if (result?.text) foundComments += 1;
+        else if (result?.error) {
+          errors += 1;
+          errorBreakdown.set(result.error, (errorBreakdown.get(result.error) ?? 0) + 1);
+        } else {
+          noComments += 1;
+        }
+      }
+      app.log.info({
+        importId: batch.id,
+        fileName: batch.fileName,
+        rows: batch.rows.length,
+        uniqueTasks: uniqueTaskIds.length,
+        foundComments,
+        noComments,
+        errors,
+        errorBreakdown: Object.fromEntries(errorBreakdown)
+      }, "Work check run finished");
 
       return {
         importId: batch.id,
