@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Info, LoaderCircle, Plus, Save, SlidersHorizontal, Trash2 } from "lucide-react";
 import { apiFetch } from "./apiClient";
-import { columnForms, countRu } from "./plural";
+import { columnForms, countRu, recipientForms } from "./plural";
 import { PORTAL_VERSION } from "./version";
 
 type PortalColumn = { id: string; name: string };
 type LoadState = "loading" | "ready" | "error";
-type TabKey = "filter" | "avr";
+type TabKey = "filter" | "avr" | "mail";
 
 // ID колонки YouGile — UUID. Как и на бэкенде, сверяем только форму записи,
 // без проверки версии: важен сам идентификатор, а не какая версия UUID.
 const columnIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const maxColumns = 100;
+// Адрес почты для получателей писем. Строгая проверка живёт на бэкенде (zod),
+// здесь — грубая, чтобы поймать опечатку до отправки запроса.
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось выполнить запрос.";
@@ -61,8 +64,15 @@ export default function PortalConfigPage({
   const [avr, setAvr] = useState<PortalColumn[]>([]);
   const [savedAvr, setSavedAvr] = useState<PortalColumn[]>([]);
 
+  const [mailRecipients, setMailRecipients] = useState<string[]>([]);
+  const [savedMailRecipients, setSavedMailRecipients] = useState<string[]>([]);
+  const [mailLoaded, setMailLoaded] = useState(false);
+  const [mailLoadError, setMailLoadError] = useState("");
+  const [smtpConfigured, setSmtpConfigured] = useState(false);
+
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingAvr, setSavingAvr] = useState(false);
+  const [savingMail, setSavingMail] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -92,8 +102,35 @@ export default function PortalConfigPage({
     return () => controller.abort();
   }, [load]);
 
+  // Получатели писем живут в другом API-модуле (coordination), поэтому
+  // грузятся отдельно от столбцов: сбой одной настройки не должен блокировать
+  // другую. Загрузка один раз, дальше страница работает с памятью.
+  const loadMail = useCallback(async (signal?: AbortSignal) => {
+    setMailLoadError("");
+    try {
+      const response = await apiFetch("/api/coordination/config", { signal });
+      const data = await response.json() as { recipients?: string[]; smtpConfigured?: boolean; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить получателей писем.");
+      const recipients = Array.isArray(data.recipients) ? data.recipients : [];
+      setMailRecipients(recipients);
+      setSavedMailRecipients(recipients);
+      setSmtpConfigured(Boolean(data.smtpConfigured));
+      setMailLoaded(true);
+    } catch (reason) {
+      if (signal?.aborted) return;
+      setMailLoadError(errorMessage(reason));
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadMail(controller.signal);
+    return () => controller.abort();
+  }, [loadMail]);
+
   const planChanged = plan.id !== savedPlan.id || plan.name !== savedPlan.name;
   const avrChanged = JSON.stringify(avr) !== JSON.stringify(savedAvr);
+  const mailChanged = JSON.stringify(mailRecipients) !== JSON.stringify(savedMailRecipients);
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -187,6 +224,68 @@ export default function PortalConfigPage({
     setAvr((current) => [...current, { id: "", name: "" }]);
   };
 
+  /** Первая ошибка списка получателей или null, если всё заполнено правильно. */
+  const validateMail = (recipients: string[]): string | null => {
+    if (recipients.length === 0) return "Укажите хотя бы одного получателя письма.";
+    const seen = new Set<string>();
+    for (let index = 0; index < recipients.length; index += 1) {
+      const address = recipients[index].trim();
+      if (!emailPattern.test(address)) return `Строка ${index + 1}: проверьте адрес электронной почты.`;
+      const key = address.toLowerCase();
+      if (seen.has(key)) return `Строка ${index + 1}: этот адрес уже указан.`;
+      seen.add(key);
+    }
+    return null;
+  };
+
+  const saveMail = async () => {
+    if (savingMail || !mailChanged) return;
+    const trimmed = mailRecipients.map((address) => address.trim());
+    const validation = validateMail(trimmed);
+    if (validation) {
+      setNotice("");
+      setError(validation);
+      return;
+    }
+    setSavingMail(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await apiFetch("/api/coordination/recipients", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipients: trimmed })
+      });
+      const data = await response.json() as { recipients?: string[]; error?: string };
+      if (!response.ok || !data.recipients) throw new Error(data.error ?? "Не удалось сохранить получателей.");
+      setMailRecipients(data.recipients);
+      setSavedMailRecipients(data.recipients);
+      setNotice("Получатели сохранены — новые письма уйдут по этому списку.");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSavingMail(false);
+    }
+  };
+
+  const updateMailRecipient = (index: number, address: string) => {
+    setError("");
+    setNotice("");
+    setMailRecipients((current) => current.map((item, position) => position === index ? address : item));
+  };
+
+  const removeMailRecipient = (index: number) => {
+    setError("");
+    setNotice("");
+    setMailRecipients((current) => current.filter((_, position) => position !== index));
+  };
+
+  const addMailRecipient = () => {
+    setError("");
+    setNotice("");
+    setMailRecipients((current) => current.length >= 20 ? current : [...current, ""]);
+  };
+
   return (
     <section className="section-view portal-config-page">
       <div className="eyebrow"><span className="eyebrow-line" /> ТОЛЬКО ДЛЯ АДМИНИСТРАТОРА</div>
@@ -194,7 +293,7 @@ export default function PortalConfigPage({
         <span className="section-hero-icon"><SlidersHorizontal size={22} /></span>
         <div>
           <h1>Конфигурация портала</h1>
-          <p>Столбцы YouGile: плановый столбец «Фильтрация» и добавляемые столбцы АВР. Изменения вступают в силу после сохранения.</p>
+          <p>Столбцы YouGile («Фильтрация» и АВР) и получатели писем раздела «Согласование/Оповещение». Изменения вступают в силу после сохранения.</p>
         </div>
       </div>
 
@@ -233,6 +332,17 @@ export default function PortalConfigPage({
               onClick={() => switchTab("avr")}
             >
               АВР <span className="portal-config-tab-count">{avr.length}</span>
+            </button>
+            <button
+              id="portal-config-tab-mail"
+              type="button"
+              role="tab"
+              aria-selected={tab === "mail"}
+              aria-controls="portal-config-panel-mail"
+              className={`portal-config-tab ${tab === "mail" ? "portal-config-tab-active" : ""}`}
+              onClick={() => switchTab("mail")}
+            >
+              Оповещения <span className="portal-config-tab-count">{mailRecipients.length}</span>
             </button>
           </div>
 
@@ -391,6 +501,108 @@ export default function PortalConfigPage({
                   className="text-button"
                   disabled={savingAvr}
                   onClick={() => { setAvr(savedAvr); setError(""); setNotice(""); }}
+                >
+                  Отменить
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div
+            className="portal-config-section"
+            id="portal-config-panel-mail"
+            role="tabpanel"
+            aria-labelledby="portal-config-tab-mail"
+            hidden={tab !== "mail"}
+          >
+            <div className="portal-config-section-heading">
+              <div>
+                <h2>Получатели писем</h2>
+                <p>Адреса, на которые уходят письма раздела «Согласование/Оповещение». Список применяется сразу после сохранения.</p>
+              </div>
+              <span className={`portal-config-save-state ${mailChanged ? "portal-config-save-state-dirty" : ""}`}>
+                {mailChanged ? "Есть несохранённые изменения" : "Сохранено"}
+              </span>
+            </div>
+
+            {mailLoadError ? (
+              <div className="portal-config-feedback portal-config-feedback-error" role="alert">
+                {mailLoadError}
+                <button className="text-button" onClick={() => void loadMail()}>Повторить</button>
+              </div>
+            ) : !mailLoaded ? (
+              <div className="portal-config-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем получателей…</div>
+            ) : mailRecipients.length === 0 ? (
+              <div className="portal-config-empty">
+                <strong>Получатели не добавлены.</strong>
+                <span>Нажмите «Добавить адрес» — без получателей письмо отправить нельзя.</span>
+              </div>
+            ) : (
+              <>
+                <div className="portal-config-list-count">{countRu(mailRecipients.length, recipientForms)}</div>
+                <div className="portal-config-list">
+                  <div className="portal-config-row portal-config-row-head portal-config-row-single" aria-hidden="true">
+                    <span>Адрес получателя</span><span />
+                  </div>
+                  {mailRecipients.map((address, index) => (
+                    <div className="portal-config-row portal-config-row-single" key={index}>
+                      <input
+                        type="email"
+                        value={address}
+                        maxLength={254}
+                        disabled={savingMail}
+                        placeholder="name@example.ru"
+                        aria-label={`Адрес получателя, строка ${index + 1}`}
+                        onChange={(event) => updateMailRecipient(index, event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="icon-button portal-config-row-remove"
+                        disabled={savingMail}
+                        aria-label={`Удалить адрес, строка ${index + 1}`}
+                        onClick={() => removeMailRecipient(index)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="portal-config-note">
+              <Info size={14} />
+              <span>
+                {smtpConfigured
+                  ? "SMTP настроен: письма отправляет сервер портала, параметры подключения (SMTP_HOST и другие) задаются в переменных окружения."
+                  : "SMTP не настроен: предпросмотр писем доступен, но отправка будет отклоняться, пока в настройках портала не задан SMTP_HOST."}
+              </span>
+            </div>
+
+            {error && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{error}</div>}
+            {notice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{notice}</div>}
+
+            <div className="portal-config-actions">
+              <button
+                className="outline-button"
+                disabled={savingMail || mailRecipients.length >= 20}
+                onClick={addMailRecipient}
+              >
+                <Plus size={14} /> Добавить адрес
+              </button>
+              <button
+                className="btn-primary"
+                disabled={savingMail || !mailLoaded || !mailChanged}
+                onClick={() => void saveMail()}
+              >
+                {savingMail ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
+                {savingMail ? "Сохраняем…" : "Сохранить"}
+              </button>
+              {mailChanged && (
+                <button
+                  className="text-button"
+                  disabled={savingMail}
+                  onClick={() => { setMailRecipients(savedMailRecipients); setError(""); setNotice(""); }}
                 >
                   Отменить
                 </button>

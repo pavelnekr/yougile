@@ -407,6 +407,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .assignment-layout { grid-template-columns: 1fr; }
   .assignment-sites-list { max-height: 390px; }
   .assignment-controls { grid-row: 1; }
+  .coordination-fields { grid-template-columns: minmax(0, 1fr); }
+  .coordination-body-heading { flex-direction: column; align-items: flex-start; gap: 7px; }
   .sites-table-header { display: none; }
   .sites-table-row { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; padding: 0 12px; }
   .sites-table-row > :nth-child(3), .sites-table-row > :nth-child(5) { display: none; }
@@ -441,7 +443,36 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .import-summary-panel, .imported-rows-panel, .xlsx-assignment-preview { margin-top: 13px; padding: 15px; }
 /* Цели автоматической прокрутки карточек: useStepScroll. Отступ равен высоте
    липкой шапки плюс зазор, иначе панель уезжает под неё. */
-.imported-rows-panel, .xlsx-assignment-preview, .assignment-preview-panel, .assignment-operation, .work-check-results, .import-audit-details-panel { scroll-margin-top: calc(78px + env(safe-area-inset-top, 0px)); }
+.imported-rows-panel, .xlsx-assignment-preview, .assignment-preview-panel, .assignment-operation, .work-check-results, .import-audit-details-panel, .coordination-preview-panel, .coordination-result-panel { scroll-margin-top: calc(78px + env(safe-area-inset-top, 0px)); }
+
+/* ============================================================================
+   Раздел «Согласование/Оповещение»: данные письма, предпросмотр, результат
+   ========================================================================= */
+.coordination-form-panel, .coordination-preview-panel, .coordination-result-panel { display: grid; gap: 14px; }
+.coordination-preview-panel, .coordination-result-panel { margin-top: 13px; }
+.coordination-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+.coordination-build-button { justify-self: start; }
+.coordination-form-hint { color: #929aaa; font-size: 9px; line-height: 1.5; }
+.coordination-meta { display: flex; flex-wrap: wrap; gap: 7px; }
+.coordination-meta > span { padding: 6px 8px; border: 1px solid #edf0f4; border-radius: 6px; color: #707b8f; background: #fafbfc; font-size: 8px; }
+.coordination-warnings { display: grid; gap: 7px; }
+.coordination-warning { display: flex; align-items: flex-start; gap: 7px; padding: 9px 10px; border: 1px solid #f1e3cd; border-radius: 7px; color: #a87945; background: #fffbf3; font-size: 9px; line-height: 1.5; }
+.coordination-warning svg { flex: 0 0 auto; margin-top: 1px; }
+.coordination-recipients { display: flex; align-items: flex-start; gap: 7px; padding: 9px 10px; border: 1px solid #e3eaf8; border-radius: 7px; color: #4d5f92; background: #f7f9ff; font-size: 9px; line-height: 1.5; }
+.coordination-recipients svg { flex: 0 0 auto; margin-top: 1px; }
+.coordination-recipients-off { border-color: #f1e3cd; color: #a87945; background: #fffbf3; }
+.coordination-body-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.coordination-body-label { color: #6a7486; font-size: 9px; font-weight: 600; }
+.coordination-mode-switch { display: flex; gap: 7px; }
+.coordination-mode-switch button { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #e5e9f0; border-radius: 7px; color: #758095; background: #fff; font-size: 9px; cursor: pointer; }
+.coordination-mode-switch .coordination-mode-active { border-color: #cfd8f8; color: #526bc6; background: #f4f6ff; }
+.coordination-letter { max-height: 430px; overflow: auto; padding: 16px; border: 1px solid #e4e8f0; border-radius: 8px; color: #1e2430; background: #fff; font-size: 11px; line-height: 1.55; overscroll-behavior: contain; }
+.coordination-letter table { max-width: 100%; }
+.coordination-body-source { width: 100%; min-height: 340px; padding: 12px; border: 1px solid #e4e8f0; border-radius: 8px; color: #394457; background: #fbfcfe; font: 10px/1.6 Consolas, "Courier New", monospace; resize: vertical; }
+.coordination-body-source:focus { border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; outline: none; }
+.coordination-preview-actions { display: flex; align-items: center; gap: 10px; }
+.coordination-result-body { display: flex; align-items: flex-start; gap: 8px; padding: 11px 12px; border: 1px solid #d9ede2; border-radius: 7px; color: #45886d; background: #f4fbf7; font-size: 10px; line-height: 1.55; }
+.coordination-result-body svg { flex: 0 0 auto; margin-top: 1px; }
 .import-file-heading { display: flex; align-items: center; gap: 10px; }
 .xlsx-file-icon { width: 35px; height: 35px; }
 .import-file-heading > div { display: grid; min-width: 0; flex: 1; gap: 4px; }
@@ -1097,6 +1128,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .portal-config-list-count { margin-bottom: 9px; color: #8b95a5; font-size: 9px; }
 .portal-config-list { display: grid; gap: 8px; }
 .portal-config-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 31px; gap: 9px; align-items: center; }
+/* Строка с одним полем — почтовые получатели: широкий инпут и кнопка удаления. */
+.portal-config-row-single { grid-template-columns: minmax(0, 1fr) 31px; }
 .portal-config-row-head { padding: 0 2px; color: #98a0ae; font-size: 8px; font-weight: 600; }
 .portal-config-row input {
   width: 100%;
@@ -1194,6 +1227,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .overview-active-card:hover { border-color: #ccd6f4; box-shadow: 0 5px 14px #2537610b; }
   .portal-config-tab:not(.portal-config-tab-active):hover { border-color: #ccd6f4; color: #405fce; }
   .avr-column-chip:not(.avr-column-chip-active):hover { border-color: #ccd6f4; color: #405fce; }
+  .coordination-mode-switch button:not(.coordination-mode-active):hover { border-color: #c8d1ef; color: #526bc6; }
 }
 
 /* У этих кнопок не было своего перехода: добавляем переход цвета и отклик на нажатие.
@@ -1202,7 +1236,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .icon-button, .nav-link, .outline-button, .text-button, .profile, .login-password-toggle,
 .login-preview button, .removal-source-switch button, .removal-history-item,
 .history-period button, .sites-pagination button, .history-pagination button,
-.portal-config-tab {
+.portal-config-tab, .coordination-mode-switch button {
   transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
 }
 .avr-column-chip {
@@ -1225,6 +1259,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .history-period button:not(.history-period-active):active,
 .overview-active-card:active,
 .sites-pagination button:active:not(:disabled), .history-pagination button:active:not(:disabled),
+.coordination-mode-switch button:not(.coordination-mode-active):active,
 .avr-column-chip:not(.avr-column-chip-active):active {
   transform: scale(var(--press-scale));
 }
@@ -1242,7 +1277,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .nav-link, .login-submit, .login-password-toggle, .login-preview button, .template-option,
   .profile, .xlsx-dropzone, .removal-source-switch button, .removal-history-item,
   .history-period button, .sites-pagination button, .history-pagination button,
-  .portal-config-tab, .overview-active-card, .dialog-box, .avr-column-chip {
+  .portal-config-tab, .overview-active-card, .dialog-box, .avr-column-chip,
+  .coordination-mode-switch button {
     transform: none !important;
     transition-property: opacity, background-color, border-color, color, box-shadow, filter;
   }

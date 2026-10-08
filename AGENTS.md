@@ -89,14 +89,24 @@ apps/api/src/
     ├── logs/              журнал действий портала              (routes + service + schema)
     ├── auth/              сессии, вход, регистрация по ключу     (routes + service + schema + rate-limit)
     ├── admin/             учётные записи, роли, токены, статистика (routes + service + schema)
+    ├── coordination/      письмо согласования АВР: DOCX → SMTP   (routes + service + schema + letter)
     └── portal-config/     ID столбцов YouGile, только ADMIN      (routes + service + schema)
 ```
+
+Модуль `coordination` — порт n8n-воркфлоу «Отправка писем ПМО»: `letter.ts`
+разбирает HTML из mammoth (номер АВР, площадка, таблица оборудования и
+регламента) и собирает тему/тело письма, `service.ts` читает получателей из
+`AppSetting` и шлёт письмо через nodemailer. SMTP задаётся переменными
+`SMTP_*`, при пустом `SMTP_HOST` отправка отдаёт понятную ошибку, а предпросмотр
+работает. Получатели редактируются в «Конфигурации портала» (вкладка
+«Оповещения»).
 
 ### Правило: модуль с маршрутами экспортирует функцию регистрации
 
 Все модули с эндпоинтами (`health`, `auth`, `sites`, `assignments`, `comments`,
-`imports`, `history`, `settings`, `admin`, `logs`, `portal-config`) экспортируют
-`registerXRoutes(app, prisma)` и регистрируются в `server.ts` в одном месте.
+`imports`, `history`, `settings`, `admin`, `logs`, `portal-config`,
+`coordination`) экспортируют `registerXRoutes(app, prisma)` и регистрируются в
+`server.ts` в одном месте.
 YouGile в сигнатуру не передаётся: внутри маршрута клиент строится через
 `getUserYougileClient(prisma, request.sessionUser?.id, options)`. Папка `users`
 — сервисная: у неё только `service.ts` и `types.ts`, маршрутов она не добавляет.
@@ -395,8 +405,9 @@ DELETE /api/admin/users/:id/yougile-token  снять токен
 
 ### Правило: страницы — отдельные файлы, навигация — в `App.tsx`
 
-Всего двенадцать экранов: обзор, площадки, площадки АВР, назначение, снятие, комментарий,
-проверка работ, аудит, история, настройки, учётные записи, логирование.
+Всего тринадцать экранов: обзор, площадки, площадки АВР, назначение, снятие, комментарий,
+проверка работ, аудит, история, настройки, учётные записи, логирование,
+согласование/оповещение.
 Переключение — через `activeSection` в `App.tsx`. «Обзор», «Площадки» и «Площадки АВР» — это
 компоненты `Overview`, `SitesPage` и `AvrSitesPage` прямо в `App.tsx`: первые два делят общий список
 площадок, который грузится на уровне `App` (`GET /api/sites/in-plan`), третий —
@@ -405,7 +416,7 @@ DELETE /api/admin/users/:id/yougile-token  снять токен
 разделы — отдельные файлы в `apps/web/src/` (`XlsxAssignmentPage.tsx`,
 `XlsxRemovalPage.tsx`, `XlsxWorkCheckPage.tsx`, `CommentPage.tsx`,
 `ImportAuditPage.tsx`, `HistoryPage.tsx`, `CommentTemplatesPage.tsx`,
-`AdminUsersPage.tsx`, `LogsPage.tsx`).
+`AdminUsersPage.tsx`, `LogsPage.tsx`, `CoordinationPage.tsx`).
 
 ### Правило: раздел живёт в URL
 
@@ -651,6 +662,10 @@ npx skills add emilkowalski/skills -a opencode -y --copy
 | `YOUGILE_TOKEN_ENCRYPTION_KEY` | 32 случайных байта в hex для шифрования пользовательских токенов; хранить отдельно от Git и базы |
 | `YOUGILE_PLAN_COLUMN_ID` | ID колонки YouGile с активными задачами; в `.env` (не коммитится), в `.env.example` только пример |
 | `UPLOAD_MAX_BYTES` | лимит загрузки XLSX, по умолчанию 10 МБ |
+| `SMTP_HOST` | SMTP-сервер раздела «Согласование/Оповещение». Пусто — почта не настроена: предпросмотр работает, отправка отдаёт понятную ошибку |
+| `SMTP_PORT` | порт SMTP, по умолчанию 465 (включает TLS; 25/587 используют STARTTLS) |
+| `SMTP_USER` / `SMTP_PASSWORD` | учётные данные SMTP; пустые — сервер без аутентификации |
+| `SMTP_FROM` | адрес отправителя; пусто — берётся `SMTP_USER` |
 
 Переменные ниже нужны только `docker-compose.prod.yml`, сам API их не читает:
 
@@ -858,7 +873,15 @@ PowerShell.
 - админ-раздел «Конфигурация портала» (`/admin/config`): столбец плана «Фильтрация»
   с возможностью смены (применяется сразу, кэш площадок сбрасывается) и список
   столбцов АВР — добавление, редактирование, удаление; хранение в `AppSetting`,
-  столбцы АВР к рабочим процессам пока не подключены.
+  столбцы АВР к рабочим процессам пока не подключены; вкладка «Оповещения» —
+  получатели писем раздела «Согласование/Оповещение»;
+- раздел «Согласование/Оповещение» (`/coordination`): загрузка DOCX-плана с регионом,
+  подрядчиком и днём работ → сервер разбирает документ (mammoth), собирает тему и
+  HTML-текст письма согласования АВР (порт n8n-воркфлоу «Отправка писем ПМО»),
+  оператор правит их в предпросмотре и отправляет по SMTP (nodemailer);
+  получатели — в «Конфигурации портала», SMTP — в `SMTP_*`; отправка
+  журналируется в `PortalLog`, попытки без настроенного SMTP отклоняются с
+  понятной ошибкой.
 
 Не сделано:
 

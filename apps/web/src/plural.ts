@@ -18,6 +18,10 @@ export const engineerForms: PluralForms = ["инженер", "инженера",
 export const participantForms: PluralForms = ["участник", "участника", "участников"];
 export const adminForms: PluralForms = ["администратор", "администратора", "администраторов"];
 export const columnForms: PluralForms = ["столбец", "столбца", "столбцов"];
+export const recipientForms: PluralForms = ["получатель", "получателя", "получателей"];
+export const equipmentForms: PluralForms = ["позиция", "позиции", "позиций"];
+export const stepForms: PluralForms = ["этап", "этапа", "этапов"];
+export const letterForms: PluralForms = ["письмо", "письма", "писем"];
 // У прилагательных, употреблённых как существительные, вторая и третья формы
 // совпадают: и «2 активных», и «5 активных» — родительный множественного.
 export const activeForms: PluralForms = ["активный", "активных", "активных"];

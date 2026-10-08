@@ -32,6 +32,7 @@ import CommentTemplatesPage from "./CommentTemplatesPage.js";
 import ImportAuditPage from "./ImportAuditPage.js";
 import XlsxRemovalPage from "./XlsxRemovalPage.js";
 import CommentPage from "./CommentPage.js";
+import CoordinationPage from "./CoordinationPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import UnderDevelopmentPage from "./UnderDevelopmentPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
@@ -390,11 +391,7 @@ function App() {
               avrError={avrError}
             />
           ) : activeSection === "Согласование/Оповещение" ? (
-            <UnderDevelopmentPage
-              icon={BellRing}
-              title="Согласование/Оповещение"
-              description="Согласование изменений и оповещение ответственных о назначениях и снятии инженеров."
-            />
+            <CoordinationPage />
           ) : activeSection === "Планирование Работ" ? (
             <UnderDevelopmentPage
               icon={CalendarDays}

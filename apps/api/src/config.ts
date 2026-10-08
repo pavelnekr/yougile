@@ -16,7 +16,18 @@ const envSchema = z.object({
   // (не коммитится) или в «Конфигурация портала» (таблица AppSetting). Чужой ID
   // в репозиторий не кладём.
   YOUGILE_PLAN_COLUMN_ID: z.string().uuid().default("11111111-1111-4111-8111-111111111111"),
-  UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024)
+  UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  // SMTP раздела «Согласование/Оповещение». Все значения необязательные: портал
+  // стартует и работает без почты, предпросмотр письма доступен, а отправка
+  // отдаёт понятную ошибку «SMTP не настроен» (см. modules/coordination).
+  // Незащищённый порт (25/587) не требует отдельной переменной: nodemailer
+  // сам предлагает STARTTLS, а 465 включает TLS сразу.
+  SMTP_HOST: z.string().trim().default(""),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: z.string().default(""),
+  SMTP_PASSWORD: z.string().default(""),
+  // От кого письмо. Пустое значение — берётся SMTP_USER.
+  SMTP_FROM: z.string().trim().default("")
 });
 
 export const config = envSchema.parse(process.env);
