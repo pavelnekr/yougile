@@ -3,13 +3,14 @@ import { OperationType, PrismaClient } from "@prisma/client";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { AssignmentValidationError } from "../assignments/service.js";
+import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
 import { commentRequestBodySchema, previewComments } from "./service.js";
 
 export async function registerCommentRoutes(
   app: FastifyInstance,
   prisma: PrismaClient
 ) {
-  app.post("/api/comments/preview", async (request, reply) => {
+  app.post("/api/comments/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
     const parsed = commentRequestBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({

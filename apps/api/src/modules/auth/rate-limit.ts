@@ -1,7 +1,8 @@
-// Ограничение частоты неудачных попыток входа. Своя реализация вместо
+// Ограничение частоты запросов. Своя реализация вместо
 // @fastify/rate-limit: зависимости здесь не добавляются намеренно (см. service.ts),
 // а нужна привязка не к маршруту, а к логину — иначе через общий прокси все
 // сотрудники попадали бы в один счётчик.
+import type { FastifyReply, FastifyRequest } from "fastify";
 //
 // Счётчики живут в памяти процесса. Это осознанно: несколько экземпляров API
 // делили бы внешнее хранилище, но для единственного процесса на сервере
@@ -63,8 +64,9 @@ export function rateLimitState(key: string, limit: RateLimit, now = Date.now()):
 }
 
 /**
- * Учитывает одну неудачную попытку. Успешный вход счётчик не трогает, поэтому
- * десять правильных входов подряд не приводят к блокировке.
+ * Учитывает одну попытку. Вход считает только неудачи — десять правильных
+ * паролей подряд не приводят к блокировке. Тяжёлые роуты (см. rateLimitPerUser)
+ * считают каждый запрос, потому что дорог и сам успешный.
  */
 export function recordRateLimit(key: string, now = Date.now()) {
   cleanup(now);
@@ -79,4 +81,55 @@ export function recordRateLimit(key: string, now = Date.now()) {
 /** Сбрасывает счётчик: после успешного входа попытки снова разрешены. */
 export function clearRateLimit(key: string) {
   windows.delete(key);
+}
+
+// Лимиты «тяжёлых» роутов. Оба считаются по пользователю (см. rateLimitPerUser).
+//
+// Предпросмотр: он перечитывает задачи из YouGile построчно, поэтому и нормальный
+// темп оператора, и ускоренный двойными кликами упираются в эти же 30 запросов
+// за окно — дальше только вред.
+export const previewRateLimit: RateLimit = {
+  limit: 30,
+  message: "Слишком много предпросмотров подряд. Обновите страницу через несколько минут."
+};
+
+// Проверка работ: один запрос синхронно читает чаты всех выбранных площадок
+// с паузой 4 секунды — это минуты работы и десятки запросов к YouGile. Пять
+// запусков за окно — уже щедро: повторная проверка тех же строк редко нужна.
+export const workCheckRateLimit: RateLimit = {
+  limit: 5,
+  message: "Слишком много запусков проверки работ. Попробуйте через 15 минут."
+};
+
+/**
+ * preHandler, считающий каждый запрос, а не только неудачные попытки.
+ *
+ * Нужен «тяжёлым» роутам — предпросмотрам и проверке работ: один такой запрос
+ * держит соединение минутами и построчно дергает YouGile. Без лимита залогиненный
+ * пользователь параллельными запусками перегружает YouGile до ответов 429, и те
+ * бьют уже по фоновым операциям всех остальных.
+ *
+ * Счётчик идёт по сессии, а не по адресу: вход и так невозможен без логина, а
+ * за общим прокси IP-лимит блокировал бы всех сотрудников офиса разом — та же
+ * причина, по которой логин считает по логину.
+ */
+export function rateLimitPerUser(limit: RateLimit) {
+  return async function heavyRateLimitHook(
+    request: FastifyRequest,
+    reply: FastifyReply
+  ): Promise<void> {
+    // Без сессии глобальный хук в server.ts отвечает раньше нас — считать нечего.
+    const userId = request.sessionUser?.id;
+    if (!userId) return;
+
+    const key = `heavy:${userId}`;
+    const blocked = rateLimitState(key, limit);
+    if (!blocked) {
+      recordRateLimit(key);
+      return;
+    }
+
+    request.log.warn({ url: request.url, userId }, "Rejected heavy request by rate limit");
+    reply.code(429).header("Retry-After", String(blocked.retryAfterSeconds)).send({ error: limit.message });
+  };
 }

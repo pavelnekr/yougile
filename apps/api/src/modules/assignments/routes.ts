@@ -3,6 +3,7 @@ import { OperationStatus, OperationType, PrismaClient } from "@prisma/client";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { getAssignmentUsers } from "../users/service.js";
+import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
 import {
   assignmentPreviewBodySchema,
   AssignmentValidationError,
@@ -66,7 +67,7 @@ export async function registerAssignmentRoutes(
     }
   });
 
-  app.post("/api/assignments/preview", async (request, reply) => {
+  app.post("/api/assignments/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
     const parsed = assignmentPreviewBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "Выберите уникальные площадки и одного инженера." });

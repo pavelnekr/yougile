@@ -88,10 +88,8 @@ apps/
       integrations/    YouGile HTTP-клиент и шифрование токенов
       jobs/            очередь и последовательный обработчик операций
       modules/         auth, admin, sites, imports, assignments, comments,
-                       history, settings, users, audit
+                       history, settings, users, logs, portal-config
   web/                 React 18 + TypeScript + Vite 6
-packages/
-  shared/              пакет общих типов
 ```
 
 - **PostgreSQL** хранит учётные записи, сессии, загрузки XLSX, настройки,

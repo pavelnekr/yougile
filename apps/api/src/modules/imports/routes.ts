@@ -13,6 +13,7 @@ import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { normalizeEngineerName } from "../../lib/engineer-name.js";
 import { describeError } from "../../lib/error-details.js";
 import { annotateLog, recordLog } from "../logs/service.js";
+import { previewRateLimit, rateLimitPerUser, workCheckRateLimit } from "../auth/rate-limit.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
   AssignmentValidationError,
@@ -217,7 +218,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.post<{ Params: { id: string } }>("/api/imports/:id/work-check", async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/api/imports/:id/work-check", { preHandler: rateLimitPerUser(workCheckRateLimit) }, async (request, reply) => {
     const parsed = workCheckSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите строки XLSX для проверки комментариев." });
 
@@ -484,7 +485,7 @@ export async function registerImportRoutes(
     };
   });
 
-  app.post("/api/imports/preview", async (request, reply) => {
+  app.post("/api/imports/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const upload = await request.file();

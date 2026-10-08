@@ -29,7 +29,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./apps/web:/app/apps/web
-      - ./packages/shared:/app/packages/shared
       # Перекрывают node_modules хоста версиями из образа: в Windows-каталогих лежат
       # платформенные бинарники и symlink-шимы, которые в Linux-контейнере не работают.
       - web-dev-root-modules:/app/node_modules

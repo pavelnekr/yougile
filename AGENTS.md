@@ -24,13 +24,12 @@
 
 ## 2. Стек и структура монорепозитория
 
-npm workspaces, три пакета:
+npm workspaces, два пакета:
 
 ```
 cursor-gemini/
 ├── apps/api/          Fastify 5 + Prisma + BullMQ  (TypeScript, ESM)
 ├── apps/web/          React 18 + Vite 6            (TypeScript)
-├── packages/shared/   общие типы (сейчас почти пусто)
 ├── .agents/skills/    скиллы для ИИ-агентов, из них берутся UI-правила
 ├── docker-compose.yml postgres + redis (+ web / web-dev)
 └── .env               локальные переменные, НЕ коммитится
@@ -83,12 +82,11 @@ apps/api/src/
     ├── sites/             площадки: колонка плана и столбцы АВР   (routes + service)
     ├── users/             сотрудники YouGile                  (service + types)
     ├── imports/           XLSX: предпросмотры, назначение/снятие/проверка, аудит, выгрузка проблем
-    ├── assignments/       назначение и снятие инженеров       (routes + service + preview + removal)
+    ├── assignments/       назначение и снятие инженеров       (routes + service + removal)
     ├── comments/          предпросмотр и отправка комментариев в чаты задач (routes + service)
     ├── history/           аналитика и журнал операций          (routes + types)
     ├── settings/          шаблоны комментариев (AppSetting)   (routes + schema)
     ├── logs/              журнал действий портала              (routes + service + schema)
-    ├── audit/             сверки назначений                    (checks)
     ├── auth/              сессии, вход, регистрация по ключу     (routes + service + schema + rate-limit)
     ├── admin/             учётные записи, роли, токены, статистика (routes + service + schema)
     └── portal-config/     ID столбцов YouGile, только ADMIN      (routes + service + schema)
@@ -100,10 +98,10 @@ apps/api/src/
 `imports`, `history`, `settings`, `admin`, `logs`, `portal-config`) экспортируют
 `registerXRoutes(app, prisma)` и регистрируются в `server.ts` в одном месте.
 YouGile в сигнатуру не передаётся: внутри маршрута клиент строится через
-`getUserYougileClient(prisma, request.sessionUser?.id, options)`. Папки `users`,
-`audit` — сервисные: у них только `service.ts`, `types.ts` или `checks.ts`,
-маршрутов они не добавляют. Новый модуль с эндпоинтами обязан следовать общему
-шаблону и подключаться в `server.ts`.
+`getUserYougileClient(prisma, request.sessionUser?.id, options)`. Папка `users`
+— сервисная: у неё только `service.ts` и `types.ts`, маршрутов она не добавляет.
+Новый модуль с эндпоинтами обязан следовать общему шаблону и подключаться в
+`server.ts`.
 
 Сессию проверяет глобальный `preHandler`-хук в `server.ts` (публичные пути
 `/api/auth/` и `/api/health` перечислены явно). Хук журнала `registerLogHooks`
@@ -705,8 +703,8 @@ docker compose up -d --build web-dev     # http://127.0.0.1:5173
 Как это устроено:
 
 - `apps/web/Dockerfile.dev` — dev-образ, `CMD` запускает `vite --host 0.0.0.0`.
-- Volume `./apps/web:/app/apps/web` и `./packages/shared:/app/packages/shared`
-  отдают код из репозитория, поэтому правки подхватываются сразу.
+- Volume `./apps/web:/app/apps/web` отдаёт код из репозитория, поэтому правки
+  подхватываются сразу.
 - Именованные volume `web-dev-root-modules` и `web-dev-web-modules` перекрывают
   `node_modules` хоста версиями из образа. Это обязательно: в каталогах Windows лежат
   платформенные бинарники и symlink-шимы, которые в Linux-контейнере не работают.
@@ -865,8 +863,8 @@ PowerShell.
 Не сделано:
 
 - импорт таблиц из n8n;
-- аудит назначений как отдельный экран: сверки `audit/checks.ts` пока не выведены
-  в интерфейс;
+- аудит назначений как отдельный экран: сверки назначений пока не реализованы
+  (старая заготовка `audit/checks.ts` удалена как мёртвый код);
 - ролевое разделение операций: `VIEWER` есть в схеме, но права просмотра на
   разделы и запуск операций по ролям ещё не ограничены (сейчас это делает только
   флаг `adminOnly` для трёх админ-разделов).

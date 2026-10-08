@@ -3,8 +3,7 @@
   "private": true,
   "workspaces": [
     "apps/api",
-    "apps/web",
-    "packages/shared"
+    "apps/web"
   ],
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm run dev --workspace @portal/api\" \"npm run dev --workspace @portal/web\"",

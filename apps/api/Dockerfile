@@ -5,11 +5,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY apps/web/package.json apps/web/package.json
-COPY packages/shared/package.json packages/shared/package.json
 RUN npm ci --workspace @portal/api --ignore-scripts
 
 COPY apps/api apps/api
-COPY packages/shared packages/shared
 # db:generate обязателен до tsc: без сгенерированного клиента @prisma/client
 # не экспортирует PrismaClient и сборка падает. На уровне корня это делает
 # скрипт build, но здесь вызывается сборка воркспейса напрямую.
