@@ -80,7 +80,7 @@ apps/api/src/
 │   └── user-client.ts     getUserYougileClient() — клиент по токену инициатора
 ├── scripts/               create-user.ts — создание учётной записи из CLI
 └── modules/
-    ├── sites/             список площадок из колонки плана     (routes + service)
+    ├── sites/             площадки: колонка плана и столбцы АВР   (routes + service)
     ├── users/             сотрудники YouGile                  (service + types)
     ├── imports/           XLSX: предпросмотры, назначение/снятие/проверка, аудит, выгрузка проблем
     ├── assignments/       назначение и снятие инженеров       (routes + service + preview + removal)
@@ -397,11 +397,13 @@ DELETE /api/admin/users/:id/yougile-token  снять токен
 
 ### Правило: страницы — отдельные файлы, навигация — в `App.tsx`
 
-Всего одиннадцать экранов: обзор, площадки, назначение, снятие, комментарий,
+Всего двенадцать экранов: обзор, площадки, площадки АВР, назначение, снятие, комментарий,
 проверка работ, аудит, история, настройки, учётные записи, логирование.
-Переключение — через `activeSection` в `App.tsx`. «Обзор» и «Площадки» — это
-компоненты `Overview` и `SitesPage` прямо в `App.tsx`: они делят общий список
-площадок, который грузится на уровне `App` (`GET /api/sites/in-plan`). Остальные
+Переключение — через `activeSection` в `App.tsx`. «Обзор», «Площадки» и «Площадки АВР» — это
+компоненты `Overview`, `SitesPage` и `AvrSitesPage` прямо в `App.tsx`: первые два делят общий список
+площадок, который грузится на уровне `App` (`GET /api/sites/in-plan`), третий —
+единый список площадок АВР (`GET /api/sites/in-avr`, тоже на уровне `App`), поэтому
+карточка «Площадки в АВР» и её страница всегда показывают одинаковые числа. Остальные
 разделы — отдельные файлы в `apps/web/src/` (`XlsxAssignmentPage.tsx`,
 `XlsxRemovalPage.tsx`, `XlsxWorkCheckPage.tsx`, `CommentPage.tsx`,
 `ImportAuditPage.tsx`, `HistoryPage.tsx`, `CommentTemplatesPage.tsx`,
@@ -417,6 +419,7 @@ DELETE /api/admin/users/:id/yougile-token  снять токен
 |---|---|
 | Обзор | `/` |
 | Площадки | `/sites` |
+| Площадки АВР | `/sites/avr` |
 | Назначить инженера | `/assign` |
 | Снять инженеров | `/remove` |
 | Написать комментарий | `/comment` |

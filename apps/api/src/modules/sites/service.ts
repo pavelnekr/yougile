@@ -78,15 +78,6 @@ async function fetchColumnTasks(client: YougileClient, columnId: string): Promis
 
 // Площадка — задача без признаков удаления/архива, чей заголовок начинается с
 // номера площадки. Это ровно то правило, по которому собирается список «Площадки».
-function countSites(tasks: YougileTask[]): number {
-  let count = 0;
-  for (const task of tasks) {
-    if (task.deleted || task.archived) continue;
-    if (extractSiteIdFromTaskTitle(task.title)) count += 1;
-  }
-  return count;
-}
-
 function toPlannedSites(tasks: YougileTask[]): PlannedSite[] {
   return tasks
     .filter((task) => !task.deleted && !task.archived)
@@ -136,62 +127,64 @@ export function invalidateSitesCache(): void {
   cacheExpiresAt = 0;
 }
 
-export type AvrColumnCount = { id: string; name: string; count: number };
-export type AvrSitesCount = { columns: AvrColumnCount[]; total: number };
+export type AvrColumnSites = { id: string; name: string; sites: PlannedSite[] };
+export type AvrSitesList = { columns: AvrColumnSites[]; items: PlannedSite[]; total: number };
 
-// Подсчёт площадок по столбцам АВР из «Конфигурации портала». Кэш ключуется
-// полным списком столбцов: как только администратор поменял ID, прежний
-// результат по старым колонкам становится невалидным и не отдаётся.
-const avrCountDurationMs = 30_000;
-let cachedAvrCount: { key: string; data: AvrSitesCount } | null = null;
-let avrCountExpiresAt = 0;
-let pendingAvrCount: Promise<AvrSitesCount> | null = null;
-let pendingAvrCountKey: string | null = null;
+// Площадки по столбцам АВР из «Конфигурации портала». Кэш ключуется полным
+// списком столбцов: как только администратор поменял ID, прежний результат
+// по старым колонкам становится невалидным и не отдаётся.
+const avrSitesDurationMs = 30_000;
+let cachedAvrSites: { key: string; data: AvrSitesList } | null = null;
+let avrSitesExpiresAt = 0;
+let pendingAvrSites: Promise<AvrSitesList> | null = null;
+let pendingAvrSitesKey: string | null = null;
 
-export async function getAvrSitesCount(
+export async function getAvrSites(
   client: YougileClient,
   columns: PortalColumn[]
-): Promise<AvrSitesCount> {
+): Promise<AvrSitesList> {
   const key = columns.map((column) => `${column.id}:${column.name}`).join("|");
 
-  if (cachedAvrCount && cachedAvrCount.key === key && Date.now() < avrCountExpiresAt) {
-    return cachedAvrCount.data;
+  if (cachedAvrSites && cachedAvrSites.key === key && Date.now() < avrSitesExpiresAt) {
+    return cachedAvrSites.data;
   }
-  if (pendingAvrCount && pendingAvrCountKey === key) return pendingAvrCount;
+  if (pendingAvrSites && pendingAvrSitesKey === key) return pendingAvrSites;
 
   // Столбцы обходим по одному: у YouGile нет пакетного запроса, а параллельные
   // обращения легко упираются в лимиты их API.
-  const promise = (async (): Promise<AvrSitesCount> => {
-    const items: AvrColumnCount[] = [];
+  const promise = (async (): Promise<AvrSitesList> => {
+    const items: AvrColumnSites[] = [];
     for (const column of columns) {
       const tasks = await fetchColumnTasks(client, column.id);
-      items.push({ id: column.id, name: column.name, count: countSites(tasks) });
+      items.push({ id: column.id, name: column.name, sites: toPlannedSites(tasks) });
     }
     return {
       columns: items,
-      total: items.reduce((sum, item) => sum + item.count, 0)
+      // Единая таблица: площадки идут столбцом за столбцом в порядке конфигурации.
+      items: items.flatMap((item) => item.sites),
+      total: items.reduce((sum, item) => sum + item.sites.length, 0)
     };
   })();
 
-  pendingAvrCount = promise;
-  pendingAvrCountKey = key;
+  pendingAvrSites = promise;
+  pendingAvrSitesKey = key;
   try {
     const data = await promise;
-    cachedAvrCount = { key, data };
-    avrCountExpiresAt = Date.now() + avrCountDurationMs;
+    cachedAvrSites = { key, data };
+    avrSitesExpiresAt = Date.now() + avrSitesDurationMs;
     return data;
   } finally {
     // Запрос мог быть перекрыт другим списком столбцов — чистим только свой.
-    if (pendingAvrCount === promise) {
-      pendingAvrCount = null;
-      pendingAvrCountKey = null;
+    if (pendingAvrSites === promise) {
+      pendingAvrSites = null;
+      pendingAvrSitesKey = null;
     }
   }
 }
 
-// Смена списка столбцов АВР в конфигурации: прежний подсчёт считал по старым ID.
+// Смена списка столбцов АВР в конфигурации: прежний кэш считал по старым ID.
 // Вызывается из модуля portal-config сразу после сохранения нового списка.
-export function invalidateAvrCountCache(): void {
-  cachedAvrCount = null;
-  avrCountExpiresAt = 0;
+export function invalidateAvrSitesCache(): void {
+  cachedAvrSites = null;
+  avrSitesExpiresAt = 0;
 }

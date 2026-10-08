@@ -210,7 +210,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .action-link { display: flex; align-items: center; gap: 5px; color: #526dd1; font-size: 9px; font-weight: 600; }
 .bottom-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; margin-top: 20px; }
 .panel { border: 1px solid #e9edf3; border-radius: 9px; background: #fff; }
-.activity-panel, .checklist-panel { min-height: 212px; padding: 16px 17px; }
+.activity-panel { min-height: 212px; padding: 16px 17px; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panel-heading h2 { font-size: 12px; }
 .panel-heading p { font-size: 9px; }
@@ -219,16 +219,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .empty-icon { display: grid; width: 35px; height: 35px; margin-bottom: 8px; place-items: center; border-radius: 10px; color: #8998ca; background: #f0f3fc; }
 .empty-state strong { color: #657085; font-size: 10px; font-weight: 600; }
 .empty-state p { max-width: 300px; margin: 4px 0 0; color: #a0a7b3; font-size: 9px; line-height: 1.5; }
-.checklist-count { display: grid; width: 35px; height: 22px; place-items: center; border-radius: 12px; color: #8d96a7; background: #f2f4f8; font-size: 9px; font-weight: 600; }
-.checklist-item { display: flex; align-items: center; gap: 9px; margin-top: 16px; }
-.checklist-empty { display: grid; width: 17px; height: 17px; flex: 0 0 auto; place-items: center; border: 1px solid #dce1e9; border-radius: 50%; color: transparent; }
-.checklist-done { display: grid; width: 17px; height: 17px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: #59a27c; }
-.checklist-item > span:nth-child(2) { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
-.checklist-item strong { color: #586376; font-size: 9px; font-weight: 600; }
-.checklist-item small { color: #9ca4b1; font-size: 8px; }
-.check-status { color: #a69b82; font-size: 7px; font-weight: 700; letter-spacing: .55px; }
-.check-status-done { color: #549273; }
-.planned-sites-preview { overflow: hidden; }
+.planned-sites-preview, .avr-sites-preview { overflow: hidden; }
 .sites-message { display: grid; min-height: 125px; place-items: center; padding: 18px; color: #929aaa; font-size: 10px; text-align: center; }
 .sites-message-error { color: #b75c50; }
 .preview-list { margin-top: 12px; }
@@ -237,6 +228,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .site-title { overflow: hidden; color: #616c7e; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .site-status { display: inline-flex; align-items: center; justify-content: center; padding: 4px 7px; border-radius: 10px; color: #a4814c; background: #fcf5e8; font-size: 8px; white-space: nowrap; }
 .site-status-complete { color: #478969; background: #eaf5ee; }
+/* Имя столбца АВР: в превью заменяет статус, в таблице — отдельная колонка. */
+.site-column { overflow: hidden; padding: 4px 7px; border-radius: 10px; color: #6c63a8; background: #f3f1fb; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .sites-page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 12px 0 20px; }
 .sites-page-heading h1 { margin-top: 0; }
 .sites-page-heading p { margin: 0; color: #8790a0; font-size: 11px; }
@@ -253,6 +246,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .sites-table-header, .sites-table-row { display: grid; grid-template-columns: 90px minmax(150px, 1fr) 82px 100px 110px; align-items: center; gap: 12px; padding: 0 17px; }
 .sites-table-header { min-height: 34px; border-top: 1px solid #eff1f5; border-bottom: 1px solid #eff1f5; color: #98a0ae; background: #fafbfc; font-size: 8px; font-weight: 600; }
 .sites-table-row { min-height: 43px; border-bottom: 1px solid #f0f2f6; }
+/* У таблицы АВР на одну колонку больше — «Столбец» между адресом и инженерами. */
+.sites-table-header.avr-sites-table, .sites-table-row.avr-sites-table { grid-template-columns: 90px minmax(150px, 1fr) 130px 82px 100px 110px; }
+.avr-column-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 17px 13px; }
+.avr-column-chip { padding: 5px 9px; border: 1px solid #e6eaf1; border-radius: 12px; color: #667184; background: #fff; font-size: 8px; font-weight: 600; cursor: pointer; }
+.avr-column-chip-active { border-color: #d8dcf2; color: #4c5fc0; background: #f0f3fd; }
 .site-assignees { color: #657084; font-size: 9px; }
 .site-task-id { overflow: hidden; color: #9aa2b0; font: 9px Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .sites-page-message { display: grid; min-height: 220px; place-items: center; padding: 24px; color: #929aaa; font-size: 11px; text-align: center; }
@@ -408,10 +406,13 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .sites-table-header { display: none; }
   .sites-table-row { grid-template-columns: 38px minmax(0, 1fr) auto; gap: 8px; padding: 0 12px; }
   .sites-table-row > :nth-child(3), .sites-table-row > :nth-child(5) { display: none; }
+  /* В таблице АВР оставляем №, адрес и статус; столбец, инженеры и ID прячем. */
+  .sites-table-row.avr-sites-table { grid-template-columns: 38px minmax(0, 1fr) auto; }
+  .sites-table-row.avr-sites-table > :nth-child(3), .sites-table-row.avr-sites-table > :nth-child(4), .sites-table-row.avr-sites-table > :nth-child(6) { display: none; }
   .sites-toolbar { align-items: flex-start; flex-direction: column; }
   .sites-search { width: 100%; }
   .sites-pagination { align-items: flex-start; flex-direction: column; }
-  .activity-panel, .checklist-panel { min-height: 190px; }
+  .activity-panel { min-height: 190px; }
   .setup-notice { align-items: flex-start; }
   .notice-tag { display: none; }
   .page-footer { align-items: flex-start; flex-direction: column; }
@@ -1189,6 +1190,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .logs-row-toggle:hover svg { color: #536bc7; }
   .overview-active-card:hover { border-color: #ccd6f4; box-shadow: 0 5px 14px #2537610b; }
   .portal-config-tab:not(.portal-config-tab-active):hover { border-color: #ccd6f4; color: #405fce; }
+  .avr-column-chip:not(.avr-column-chip-active):hover { border-color: #ccd6f4; color: #405fce; }
 }
 
 /* У этих кнопок не было своего перехода: добавляем переход цвета и отклик на нажатие.
@@ -1198,6 +1200,9 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .login-preview button, .removal-source-switch button, .removal-history-item,
 .history-period button, .sites-pagination button, .history-pagination button,
 .portal-config-tab {
+  transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
+}
+.avr-column-chip {
   transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
 }
 
@@ -1216,7 +1221,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .removal-history-item:active:not(:disabled),
 .history-period button:not(.history-period-active):active,
 .overview-active-card:active,
-.sites-pagination button:active:not(:disabled), .history-pagination button:active:not(:disabled) {
+.sites-pagination button:active:not(:disabled), .history-pagination button:active:not(:disabled),
+.avr-column-chip:not(.avr-column-chip-active):active {
   transform: scale(var(--press-scale));
 }
 
@@ -1233,7 +1239,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .nav-link, .login-submit, .login-password-toggle, .login-preview button, .template-option,
   .profile, .xlsx-dropzone, .removal-source-switch button, .removal-history-item,
   .history-period button, .sites-pagination button, .history-pagination button,
-  .portal-config-tab, .overview-active-card, .dialog-box {
+  .portal-config-tab, .overview-active-card, .dialog-box, .avr-column-chip {
     transform: none !important;
     transition-property: opacity, background-color, border-color, color, box-shadow, filter;
   }

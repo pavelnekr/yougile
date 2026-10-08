@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { PortalRole, type PrismaClient } from "@prisma/client";
 import { requireRole } from "../auth/service.js";
-import { invalidateAvrCountCache, invalidateSitesCache } from "../sites/service.js";
+import { invalidateAvrSitesCache, invalidateSitesCache } from "../sites/service.js";
 import { avrColumnsSchema, planColumnSchema } from "./schema.js";
 import {
   avrColumnsSettingKey,
@@ -80,7 +80,7 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     }
     // Список столбцов изменился — подсчёт площадок по старым ID невалиден,
     // сбрасываем кэш, чтобы карточка «Площадки в АВР» сразу показала новое число.
-    invalidateAvrCountCache();
+    invalidateAvrSitesCache();
     app.log.warn(
       { actor: request.sessionUser?.login, count: parsed.data.items.length },
       "AVR columns updated via portal config"

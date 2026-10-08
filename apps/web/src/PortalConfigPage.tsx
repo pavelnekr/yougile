@@ -42,10 +42,16 @@ function validateColumns(columns: PortalColumn[]): string | null {
  * роль проверена и в меню (App.tsx), и в API (requireRole).
  *
  * Два подраздела: «Фильтрация» — единственный столбец, из которого реально
- * грузится план (его смена применяется сразу), и «АВР» — список добавляемых
- * администратором ID, который пока только хранится.
+ * грузится план, и «АВР» — список столбцов, площадки которых собираются в
+ * единую таблицу. Оба применяются сразу после сохранения.
  */
-export default function PortalConfigPage({ onPlanColumnChanged }: { onPlanColumnChanged?: () => void }) {
+export default function PortalConfigPage({
+  onPlanColumnChanged,
+  onAvrColumnsChanged
+}: {
+  onPlanColumnChanged?: () => void;
+  onAvrColumnsChanged?: () => void;
+}) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState<TabKey>("filter");
@@ -152,7 +158,10 @@ export default function PortalConfigPage({ onPlanColumnChanged }: { onPlanColumn
       if (!response.ok || !data.avr) throw new Error(data.error ?? "Не удалось сохранить столбцы АВР.");
       setAvr(data.avr);
       setSavedAvr(data.avr);
-      setNotice("Столбцы АВР сохранены.");
+      setNotice("Столбцы АВР сохранены. Обзор и страница «Площадки АВР» перечитывают список.");
+      // Столбцы изменились, значит изменился и состав площадок АВР — просим
+      // обзор перечитать единый список сразу после сохранения.
+      onAvrColumnsChanged?.();
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {

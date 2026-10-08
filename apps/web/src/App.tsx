@@ -87,10 +87,13 @@ type WorkTypeStatistic = {
   unclassified: number;
   items: { type: "filter" | "balancers" | "bypasses" | "ehw" | "other"; label: string; count: number }[];
 };
-// Ответ GET /api/sites/avr-count: сколько площадок в каждом столбце АВР
-// из «Конфигурации портала» и их сумма для карточки «Площадки в АВР».
-type AvrSitesCount = {
+// Ответ GET /api/sites/in-avr: единый список площадок по столбцам АВР из
+// «Конфигурации портала». Карточка на обзоре и страница «Площадки АВР»
+// читают один и тот же ответ, поэтому числа у них всегда совпадают.
+type AvrSite = PlannedSite & { columnId: string; columnName: string };
+type AvrSitesList = {
   columns: { id: string; name: string; count: number }[];
+  items: AvrSite[];
   total: number;
 };
 
@@ -157,6 +160,11 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [siteRefreshKey, setSiteRefreshKey] = useState(0);
   const refreshSites = useCallback(() => setSiteRefreshKey((key) => key + 1), []);
+  const [avrSites, setAvrSites] = useState<AvrSitesList | null>(null);
+  const [avrLoadState, setAvrLoadState] = useState<SiteLoadState>("loading");
+  const [avrError, setAvrError] = useState("");
+  const [avrRefreshKey, setAvrRefreshKey] = useState(0);
+  const refreshAvrSites = useCallback(() => setAvrRefreshKey((key) => key + 1), []);
 
   // При загрузке страницы спрашиваем у API, есть ли действующая сессия.
   // Именно это убирает повторный ввод логина и пароля после перезагрузки.
@@ -232,6 +240,32 @@ function App() {
 
     return () => controller.abort();
   }, [siteRefreshKey]);
+
+  // Единый список площадок АВР: служит и карточке на обзоре, и странице
+  // «Площадки АВР». Смена столбцов в конфигурации увеличивает avrRefreshKey,
+  // поэтому данные перечитываются сразу после сохранения.
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch("/api/sites/in-avr", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          const error = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(error?.error ?? "Не удалось загрузить площадки АВР.");
+        }
+        return response.json() as Promise<AvrSitesList>;
+      })
+      .then((data) => {
+        setAvrSites(data);
+        setAvrLoadState("ready");
+        setAvrError("");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setAvrError(error instanceof Error ? error.message : "Не удалось загрузить площадки АВР.");
+        setAvrLoadState("error");
+      });
+    return () => controller.abort();
+  }, [avrRefreshKey]);
 
   const chooseSection = (label: Section) => {
     navigate(label);
@@ -345,7 +379,16 @@ function App() {
             </div>
           )}
           {activeSection === "Управление работами в YouGile" ? (
-            <Overview onNavigate={chooseSection} health={health} sites={sites} siteLoadState={siteLoadState} siteError={siteError} />
+            <Overview
+              onNavigate={chooseSection}
+              health={health}
+              sites={sites}
+              siteLoadState={siteLoadState}
+              siteError={siteError}
+              avrSites={avrSites}
+              avrLoadState={avrLoadState}
+              avrError={avrError}
+            />
           ) : activeSection === "Согласование/Оповещение" ? (
             <UnderDevelopmentPage
               icon={BellRing}
@@ -360,6 +403,8 @@ function App() {
             />
           ) : activeSection === "Площадки" ? (
             <SitesPage sites={sites} loadState={siteLoadState} error={siteError} />
+          ) : activeSection === "Площадки АВР" ? (
+            <AvrSitesPage avrSites={avrSites} loadState={avrLoadState} error={avrError} />
           ) : activeSection === "Назначить инженера" ? (
             <XlsxAssignmentPage onComplete={refreshSites} />
           ) : activeSection === "Снять инженеров" ? (
@@ -395,7 +440,7 @@ function App() {
             // Раздел adminOnly, поэтому сюда попадает только ADMIN.
             // Смена столбца плана меняет источник списка площадок — просим
             // обзор перечитать его сразу после сохранения.
-            <PortalConfigPage onPlanColumnChanged={refreshSites} />
+            <PortalConfigPage onPlanColumnChanged={refreshSites} onAvrColumnsChanged={refreshAvrSites} />
           ) : (
             <SectionPage section={activeSection} health={health} />
           )}
@@ -410,41 +455,22 @@ function Overview({
   health,
   sites,
   siteLoadState,
-  siteError
+  siteError,
+  avrSites,
+  avrLoadState,
+  avrError
 }: {
   onNavigate: (section: Section) => void;
   health: Health;
   sites: PlannedSite[];
   siteLoadState: SiteLoadState;
   siteError: string;
+  avrSites: AvrSitesList | null;
+  avrLoadState: SiteLoadState;
+  avrError: string;
 }) {
   const [workTypeStatistics, setWorkTypeStatistics] = useState<WorkTypeStatistic | null>(null);
   const [workTypeStatisticsError, setWorkTypeStatisticsError] = useState("");
-  const [avrSitesCount, setAvrSitesCount] = useState<AvrSitesCount | null>(null);
-  const [avrCountLoadState, setAvrCountLoadState] = useState<SiteLoadState>("loading");
-
-  // Число площадок по столбцам АВР из «Конфигурации портала». Обзор
-  // монтируется при каждом возврате на раздел, поэтому после сохранения
-  // столбцов в конфигурации счётчик перечитывается сам.
-  useEffect(() => {
-    const controller = new AbortController();
-    apiFetch("/api/sites/avr-count", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const error = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(error?.error ?? "Не удалось загрузить площадки АВР.");
-        }
-        return response.json() as Promise<AvrSitesCount>;
-      })
-      .then((data) => {
-        setAvrSitesCount(data);
-        setAvrCountLoadState("ready");
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setAvrCountLoadState("error");
-      });
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -463,9 +489,9 @@ function Overview({
   }, []);
 
   const avrCountFoot =
-    avrCountLoadState === "loading" ? "Загрузка списка из YouGile"
-      : avrCountLoadState === "error" ? "Не удалось загрузить данные"
-        : avrSitesCount && avrSitesCount.columns.length === 0 ? "Столбцы АВР не добавлены"
+    avrLoadState === "loading" ? "Загрузка списка из YouGile"
+      : avrLoadState === "error" ? "Не удалось загрузить данные"
+        : avrSites && avrSites.columns.length === 0 ? "Столбцы АВР не добавлены"
           : "Активные задачи в столбцах АВР";
 
   return (
@@ -492,10 +518,11 @@ function Overview({
       <section className="stats-grid" aria-label="Сводка">
         <StatCard
           title="Площадки в АВР"
-          value={avrCountLoadState === "ready" && avrSitesCount ? avrSitesCount.total.toLocaleString("ru-RU") : "—"}
+          value={avrLoadState === "ready" && avrSites ? avrSites.total.toLocaleString("ru-RU") : "—"}
           foot={avrCountFoot}
           icon={Columns3}
           tone="violet"
+          onClick={() => onNavigate("Площадки АВР")}
         />
         <StatCard
           title="Площадки в фильтрации"
@@ -546,11 +573,23 @@ function Overview({
             </div>
           )}
         </div>
-        <div className="panel checklist-panel">
-          <div className="panel-heading"><div><h2>Этапы переноса</h2><p>Текущий статус проекта</p></div><span className="checklist-count">3 / 3</span></div>
-          <div className="checklist-item"><span className="checklist-done"><Check size={12} /></span><span><strong>Интеграция YouGile подключена</strong><small>Список задач и сотрудников загружается</small></span><span className="check-status check-status-done">ГОТОВО</span></div>
-          <div className="checklist-item"><span className="checklist-done"><Check size={12} /></span><span><strong>Назначения по плану XLSX</strong><small>Загрузка, сопоставление и подтверждение</small></span><span className="check-status check-status-done">ГОТОВО</span></div>
-          <div className="checklist-item"><span className="checklist-done"><Check size={12} /></span><span><strong>Личные учётные записи</strong><small>Вход, роли и индивидуальные токены YouGile</small></span><span className="check-status check-status-done">ГОТОВО</span></div>
+        <div className="panel activity-panel avr-sites-preview">
+          <div className="panel-heading"><div><h2>Площадки в АВР</h2><p>{avrLoadState === "ready" ? `${countRu(avrSites?.total ?? 0, taskForms)} из YouGile` : "Актуальный список из YouGile"}</p></div><button className="text-button" onClick={() => onNavigate("Площадки АВР")}>Все площадки <ArrowRight size={14} /></button></div>
+          {avrLoadState === "loading" ? (
+            <div className="sites-message">Загружаем список площадок…</div>
+          ) : avrLoadState === "error" ? (
+            <div className="sites-message sites-message-error">{avrError}</div>
+          ) : avrSites && avrSites.columns.length === 0 ? (
+            <div className="sites-message">Столбцы АВР не добавлены в конфигурации портала.</div>
+          ) : !avrSites || avrSites.items.length === 0 ? (
+            <div className="sites-message">В столбцах АВР пока нет площадок.</div>
+          ) : (
+            <div className="preview-list">
+              {avrSites.items.slice(0, 5).map((site) => (
+                <SiteRow key={site.taskId} site={site} columnName={site.columnName} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -603,12 +642,15 @@ function WorkTypeStatsCard({
   );
 }
 
-function SiteRow({ site }: { site: PlannedSite }) {
+function SiteRow({ site, columnName }: { site: PlannedSite; columnName?: string }) {
   return (
     <div className="site-row">
       <span className="site-number">{site.siteNumber}</span>
       <span className="site-title" title={site.title}>{site.title}</span>
-      <span className={`site-status ${site.completed ? "site-status-complete" : ""}`}>{site.completed ? "Выполнена" : "В плане"}</span>
+      {columnName
+        // У площадки в АВР вместо статуса показываем, из какого столбца она взята.
+        ? <span className="site-column" title={columnName}>{columnName}</span>
+        : <span className={`site-status ${site.completed ? "site-status-complete" : ""}`}>{site.completed ? "Выполнена" : "В плане"}</span>}
     </div>
   );
 }
@@ -647,6 +689,88 @@ function SitesPage({ sites, loadState, error }: { sites: PlannedSite[]; loadStat
               <div className="sites-table-row" key={site.taskId}>
                 <span className="site-number">{site.siteNumber}</span>
                 <span className="site-title" title={site.title}>{site.title}</span>
+                <span className="site-assignees">{site.assignedCount}</span>
+                <span><span className={`site-status ${site.completed ? "site-status-complete" : ""}`}>{site.completed ? "Выполнена" : "В плане"}</span></span>
+                <span className="site-task-id" title={site.taskId}>{site.taskId.slice(0, 8)}…</span>
+              </div>
+            ))}
+            <div className="sites-pagination">
+              <span>Показано {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, filteredSites.length)} из {filteredSites.length.toLocaleString("ru-RU")}</span>
+              <div><button disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Назад</button><span>{currentPage} / {pageCount}</span><button disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>Вперёд</button></div>
+            </div>
+          </>
+        )}
+      </div>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Обновление списка при открытии страницы · кэш API 30 секунд</span></footer>
+    </section>
+  );
+}
+
+/**
+ * Единая таблица площадок АВР: все столбцы из «Конфигурация портала» → «АВР»
+ * свалены в один список, у каждой площадки видно, из какого столбца она взята.
+ * Каркас, поиск и пагинация те же, что у списка «Площадки в плане».
+ */
+function AvrSitesPage({ avrSites, loadState, error }: { avrSites: AvrSitesList | null; loadState: SiteLoadState; error: string }) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [columnFilter, setColumnFilter] = useState("");
+  const pageSize = 25;
+  const sites = avrSites?.items ?? [];
+  const normalizedQuery = query.trim().toLocaleLowerCase("ru");
+  const filteredSites = sites.filter((site) => {
+    if (columnFilter && site.columnId !== columnFilter) return false;
+    return `${site.siteNumber} ${site.title} ${site.columnName}`.toLocaleLowerCase("ru").includes(normalizedQuery);
+  });
+  const pageCount = Math.max(1, Math.ceil(filteredSites.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleSites = filteredSites.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  return (
+    <section className="section-view">
+      <div className="eyebrow"><span className="eyebrow-line" /> ДАННЫЕ YOUGILE</div>
+      <div className="sites-page-heading">
+        <div><h1>Площадки в АВР</h1><p>Активные задачи из столбцов АВР в YouGile.</p></div>
+        <span className="sites-total">{loadState === "ready" ? countRu(sites.length, siteForms) : "Загрузка…"}</span>
+      </div>
+      <div className="panel sites-table-panel">
+        <div className="sites-toolbar">
+          <div><strong>Список площадок</strong><span>{loadState === "ready" ? `Найдено: ${filteredSites.length.toLocaleString("ru-RU")}` : "Источник: YouGile"}</span></div>
+          <label className="sites-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Поиск по номеру, адресу или столбцу" /></label>
+        </div>
+        {/* Фильтр по столбцам имеет смысл только когда их несколько: при одном столбце он занимает место и ничего не фильтрует. */}
+        {loadState === "ready" && avrSites && avrSites.columns.length > 1 && (
+          <div className="avr-column-filter">
+            <button className={!columnFilter ? "avr-column-chip avr-column-chip-active" : "avr-column-chip"} onClick={() => { setColumnFilter(""); setPage(1); }}>
+              Все столбцы · {countRu(sites.length, siteForms)}
+            </button>
+            {avrSites.columns.map((column) => (
+              <button
+                key={column.id}
+                className={columnFilter === column.id ? "avr-column-chip avr-column-chip-active" : "avr-column-chip"}
+                onClick={() => { setColumnFilter(column.id); setPage(1); }}
+              >
+                {column.name || "Без названия"} · {countRu(column.count, siteForms)}
+              </button>
+            ))}
+          </div>
+        )}
+        {loadState === "loading" ? (
+          <div className="sites-page-message">Загружаем список из YouGile…</div>
+        ) : loadState === "error" ? (
+          <div className="sites-page-message sites-message-error">{error}</div>
+        ) : !avrSites || avrSites.columns.length === 0 ? (
+          <div className="sites-page-message">Столбцы АВР не добавлены в конфигурации портала.</div>
+        ) : filteredSites.length === 0 ? (
+          <div className="sites-page-message">{query || columnFilter ? "По вашему запросу площадок не найдено." : "В столбцах АВР пока нет площадок."}</div>
+        ) : (
+          <>
+            <div className="sites-table-header avr-sites-table"><span>№ площадки</span><span>Площадка / адрес</span><span>Столбец</span><span>Инженеры</span><span>Статус</span><span>ID задачи</span></div>
+            {visibleSites.map((site) => (
+              <div className="sites-table-row avr-sites-table" key={site.taskId}>
+                <span className="site-number">{site.siteNumber}</span>
+                <span className="site-title" title={site.title}>{site.title}</span>
+                <span className="site-column" title={site.columnName}>{site.columnName || "Без названия"}</span>
                 <span className="site-assignees">{site.assignedCount}</span>
                 <span><span className={`site-status ${site.completed ? "site-status-complete" : ""}`}>{site.completed ? "Выполнена" : "В плане"}</span></span>
                 <span className="site-task-id" title={site.taskId}>{site.taskId.slice(0, 8)}…</span>
@@ -932,7 +1056,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Планирование Работ" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,
