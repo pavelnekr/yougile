@@ -17,6 +17,8 @@ type WorkCheckItem = {
   rowNumber: number;
   siteId: string | null;
   comment: string | null;
+  /** Время написания последнего комментария (ISO), если YouGile его вернул. */
+  commentedAt: string | null;
   message: string;
 };
 type WorkCheckProgress = {
@@ -284,12 +286,15 @@ export default function XlsxWorkCheckPage() {
           ) : items.length > 0 ? (
             <div className="work-check-table-wrap">
               <table className="work-check-table">
-                <thead><tr><th>Номер площадки</th><th>Последний комментарий</th></tr></thead>
+                <thead><tr><th>Номер площадки</th><th>Последний комментарий</th><th>Написано</th></tr></thead>
                 <tbody>
                   {items.map((item) => (
                     <tr key={`${item.rowNumber}-${item.siteId ?? "unknown"}`}>
                       <td>{item.siteId ?? "—"}</td>
                       <td className={item.comment ? "" : "work-check-empty-comment"}>{item.comment ?? item.message}</td>
+                      <td className={item.commentedAt ? "work-check-comment-time" : "work-check-empty-comment"}>
+                        {item.commentedAt ? formatDate(item.commentedAt) : "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

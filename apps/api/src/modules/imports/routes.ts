@@ -231,7 +231,9 @@ export async function registerImportRoutes(
       }
 
       const uniqueTaskIds = [...new Set(batch.rows.flatMap((row) => row.yougileTaskId ? [row.yougileTaskId] : []))];
-      const latestByTaskId = new Map<string, { text: string | null; error: string | null }>();
+      // timestamp — метка времени последнего сообщения из id YouGile (epoch ms),
+      // уходит на фронт как commentedAt, чтобы показать, когда комментарий написан.
+      const latestByTaskId = new Map<string, { text: string | null; timestamp: number | null; error: string | null }>();
       if (parsed.data.checkId) {
         sweepWorkCheckProgress();
         workCheckProgress.set(parsed.data.checkId, {
@@ -255,7 +257,7 @@ export async function registerImportRoutes(
           // последний комментарий: преждевременная остановка цикла или ошибки
           // YouGile на отдельных страницах.
           const { latest, diagnostics } = await readLatestChatMessageDetailed(yougile, taskId);
-          latestByTaskId.set(taskId, { text: latest?.text ?? null, error: null });
+          latestByTaskId.set(taskId, { text: latest?.text ?? null, timestamp: latest?.timestamp ?? null, error: null });
           const logData = {
             taskId,
             pagesRead: diagnostics.pagesRead,
@@ -316,7 +318,7 @@ export async function registerImportRoutes(
             : error instanceof YougileApiError && error.statusCode === 404
               ? "Чат задачи не найден."
               : "Не удалось загрузить комментарий из YouGile.";
-          latestByTaskId.set(taskId, { text: null, error: failureMessage });
+          latestByTaskId.set(taskId, { text: null, timestamp: null, error: failureMessage });
           void recordLog(prisma, {
             level: "ERROR",
             action: "WORK-CHECK",
@@ -387,6 +389,7 @@ export async function registerImportRoutes(
             rowNumber: row.rowNumber,
             siteId: row.siteId,
             comment: result?.text ?? null,
+            commentedAt: result?.timestamp != null ? new Date(result.timestamp).toISOString() : null,
             message: result?.error ?? (result?.text
               ? "Последний комментарий найден."
               : row.yougileTaskId ? "Комментариев пока нет." : "Площадка не найдена в YouGile.")
