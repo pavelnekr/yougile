@@ -7,16 +7,18 @@ import { useCallback, useEffect, useState } from "react";
  * неаккуратно в закладках, письмах и логах. Слаг — часть контракта: переименование
  * ломает сохранённые ссылки, поэтому менять его нужно вместе с редиректом со старого.
  *
- * Обзор — это корень `/`, а не `/overview`: он открывается по умолчанию и должен
- * выглядеть как главная страница портала.
+ * Управление работами в YouGile — это корень `/`, а не `/management`: он открывается
+ * по умолчанию и должен выглядеть как главная страница портала.
  */
 export type Section =
-  | "Обзор"
+  | "Управление работами в YouGile"
   | "Площадки"
   | "Назначить инженера"
   | "Снять инженеров"
   | "Написать комментарий"
   | "Проверить работы"
+  | "Согласование/Оповещение"
+  | "Планирование Работ"
   | "Аудит"
   | "История"
   | "Настройки"
@@ -24,12 +26,14 @@ export type Section =
   | "Логирование";
 
 export const sectionSlugs: Record<Section, string> = {
-  "Обзор": "",
+  "Управление работами в YouGile": "",
   "Площадки": "sites",
   "Назначить инженера": "assign",
   "Снять инженеров": "remove",
   "Написать комментарий": "comment",
   "Проверить работы": "work-check",
+  "Согласование/Оповещение": "coordination",
+  "Планирование Работ": "planning",
   "Аудит": "audit",
   "История": "history",
   "Настройки": "settings",
@@ -66,12 +70,12 @@ export type Navigate = (section: Section, options?: { replace?: boolean }) => vo
  */
 export function useSectionUrl(): [Section, Navigate] {
   const [section, setSection] = useState<Section>(
-    () => sectionFromPath(window.location.pathname) ?? "Обзор"
+    () => sectionFromPath(window.location.pathname) ?? "Управление работами в YouGile"
   );
 
   useEffect(() => {
     const onPopState = () => {
-      setSection(sectionFromPath(window.location.pathname) ?? "Обзор");
+      setSection(sectionFromPath(window.location.pathname) ?? "Управление работами в YouGile");
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);

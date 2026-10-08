@@ -5,6 +5,8 @@ import {
   ArrowDownToLine,
   ArrowRight,
   ArrowUpRight,
+  BellRing,
+  CalendarDays,
   Check,
   ChevronDown,
   ClipboardCheck,
@@ -29,6 +31,7 @@ import ImportAuditPage from "./ImportAuditPage.js";
 import XlsxRemovalPage from "./XlsxRemovalPage.js";
 import CommentPage from "./CommentPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
+import UnderDevelopmentPage from "./UnderDevelopmentPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js";
 import HistoryPage from "./HistoryPage.js";
@@ -85,7 +88,9 @@ type WorkTypeStatistic = {
 // adminOnly — пункт показывается только роли ADMIN. Проверка роли есть и в API
 // (requireRole), здесь она нужна, чтобы не показывать недоступный раздел.
 const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: boolean }[] = [
-  { label: "Обзор", icon: LayoutDashboard },
+  { label: "Управление работами в YouGile", icon: LayoutDashboard },
+  { label: "Согласование/Оповещение", icon: BellRing },
+  { label: "Планирование Работ", icon: CalendarDays },
   { label: "Аудит", icon: ClipboardCheck },
   { label: "История", icon: History },
   { label: "Настройки", icon: Settings2 },
@@ -234,7 +239,7 @@ function App() {
   // первом рендере. Гость админ-раздел тоже увидеть не может, но форму входа
   // показываем по любой ссылке: после входа раздел откроется, если права есть.
   const activeSection: Section = sessionUser && !isAdmin && navigation.some((item) => item.label === section && item.adminOnly)
-    ? "Обзор"
+    ? "Управление работами в YouGile"
     : section;
 
   // Адрес приводим к открытому разделу: неизвестный путь, лишний слеш и раздел
@@ -246,7 +251,7 @@ function App() {
   // Заголовок вкладки повторяет раздел: в закладках и истории браузера видно,
   // какая страница портала открыта, а не всегда «Портал операций».
   useEffect(() => {
-    document.title = activeSection === "Обзор"
+    document.title = activeSection === "Управление работами в YouGile"
       ? "Портал операций — YouGile"
       : `${activeSection} — Портал операций`;
   }, [activeSection]);
@@ -269,7 +274,7 @@ function App() {
     <div className="app-shell">
       {mobileNavOpen && <button className="mobile-scrim" aria-label="Закрыть меню" onClick={() => setMobileNavOpen(false)} />}
       <aside className={`sidebar ${mobileNavOpen ? "sidebar-open" : ""}`}>
-        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); chooseSection("Обзор"); }}>
+        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); chooseSection("Управление работами в YouGile"); }}>
           <span className="brand-mark"><span /><span /><span /><span /></span>
           <span className="brand-copy"><strong>yougile</strong><small>OPERATIONS PORTAL</small></span>
         </a>
@@ -328,8 +333,20 @@ function App() {
               </div>
             </div>
           )}
-          {activeSection === "Обзор" ? (
+          {activeSection === "Управление работами в YouGile" ? (
             <Overview onNavigate={chooseSection} health={health} sites={sites} siteLoadState={siteLoadState} siteError={siteError} />
+          ) : activeSection === "Согласование/Оповещение" ? (
+            <UnderDevelopmentPage
+              icon={BellRing}
+              title="Согласование/Оповещение"
+              description="Согласование изменений и оповещение ответственных о назначениях и снятии инженеров."
+            />
+          ) : activeSection === "Планирование Работ" ? (
+            <UnderDevelopmentPage
+              icon={CalendarDays}
+              title="Планирование Работ"
+              description="Планирование работ по площадкам и подготовка планов к выполнению."
+            />
           ) : activeSection === "Площадки" ? (
             <SitesPage sites={sites} loadState={siteLoadState} error={siteError} />
           ) : activeSection === "Назначить инженера" ? (
@@ -861,7 +878,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Обзор" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Планирование Работ" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,
@@ -875,9 +892,9 @@ function SectionPage({ section, health }: { section: Exclude<Section, "Обзо�
       description: "Сверяйте план работ с ответственными в YouGile и находите расхождения до начала работ.",
       points: ["Сверка ID площадок и задач", "Проверка назначенных пользователей", "Отчёт с причинами расхождений"]
     },
-    Обзор: {
+    "Управление работами в YouGile": {
       icon: LayoutDashboard,
-      title: "Обзор",
+      title: "Управление работами в YouGile",
       description: "",
       points: []
     }
