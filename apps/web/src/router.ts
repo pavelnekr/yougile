@@ -23,7 +23,8 @@ export type Section =
   | "История"
   | "Настройки"
   | "Учётные записи"
-  | "Логирование";
+  | "Логирование"
+  | "Конфигурация портала";
 
 export const sectionSlugs: Record<Section, string> = {
   "Управление работами в YouGile": "",
@@ -38,7 +39,8 @@ export const sectionSlugs: Record<Section, string> = {
   "История": "history",
   "Настройки": "settings",
   "Учётные записи": "admin/users",
-  "Логирование": "admin/logs"
+  "Логирование": "admin/logs",
+  "Конфигурация портала": "admin/config"
 };
 
 const slugToSection = new Map<string, Section>(

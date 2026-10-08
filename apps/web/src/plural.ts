@@ -17,6 +17,7 @@ export const taskForms: PluralForms = ["активная задача", "акт�
 export const engineerForms: PluralForms = ["инженер", "инженера", "инженеров"];
 export const participantForms: PluralForms = ["участник", "участника", "участников"];
 export const adminForms: PluralForms = ["администратор", "администратора", "администраторов"];
+export const columnForms: PluralForms = ["столбец", "столбца", "столбцов"];
 // У прилагательных, употреблённых как существительные, вторая и третья формы
 // совпадают: и «2 активных», и «5 активных» — родительный множественного.
 export const activeForms: PluralForms = ["активный", "активных", "активных"];

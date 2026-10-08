@@ -1,11 +1,11 @@
 import { OperationItemStatus, OperationStatus, OperationType, PrismaClient } from "@prisma/client";
 import { z } from "zod";
-import { config } from "../../config.js";
 import { YougileApiError, YougileClient } from "../../integrations/yougile/client.js";
 import { postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { describeError } from "../../lib/error-details.js";
+import { getPlanColumn } from "../portal-config/service.js";
 import { getPlannedSites, type PlannedSite } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 
@@ -76,7 +76,7 @@ export function validatePlanTask(task: TaskDetails, siteByTaskId: Map<string, Pl
   const plannedSite = siteByTaskId.get(task.id);
   if (
     !plannedSite ||
-    task.columnId !== config.YOUGILE_PLAN_COLUMN_ID ||
+    task.columnId !== getPlanColumn().id ||
     task.archived ||
     task.deleted ||
     plannedSite.siteNumber !== task.title.match(/^(\d+)/)?.[1]

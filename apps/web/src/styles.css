@@ -160,7 +160,9 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .setup-notice strong { color: #71582e; font-size: 11px; }
 .setup-notice p { margin: 3px 0 0; color: #9a8765; font-size: 10px; }
 .notice-tag { margin-left: auto; color: #ae8950; font-size: 8px; font-weight: 700; letter-spacing: .8px; }
-.stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+/* Сводка: одна строка 25% / 25% / 50% — по две узкие карточки площадок
+   и карточка «Назначено работ за месяц» на половину строки. */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 14px; }
 .stat-card { min-height: 122px; padding: 15px 16px 13px; border: 1px solid #eaedf3; border-radius: 9px; background: #fff; box-shadow: 0 2px 5px #26365905; }
 .stat-card-button { display: flex; width: 100%; flex-direction: column; align-items: stretch; padding-top: 11px; color: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-ui) var(--ease-out), box-shadow var(--dur-ui) var(--ease-out), transform var(--dur-press) var(--ease-out); }
 .stat-top { display: flex; align-items: center; justify-content: center; gap: 9px; color: #778193; font-size: 10px; font-weight: 500; }
@@ -171,6 +173,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .stat-icon.orange { color: #d69559; background: #fcf3e9; }
 .stat-icon.green { color: #4d9e7b; background: #eaf6f0; }
 .stat-value { display: block; margin-top: 12px; font: 700 24px "Segoe UI", sans-serif; letter-spacing: -.4px; }
+.stats-grid > .stat-card:not(.work-type-stat-card) { display: flex; flex-direction: column; justify-content: center; }
 .stats-grid > .stat-card:not(.work-type-stat-card) .stat-value { margin-top: 2px; text-align: center; }
 .stats-grid > .stat-card:not(.work-type-stat-card) .stat-foot { margin-top: 8px; text-align: center; }
 .stat-foot { display: block; margin-top: 3px; color: #a0a7b4; font-size: 9px; }
@@ -373,7 +376,9 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .main-area { margin-left: 225px; }
   .page-content { padding-right: 25px; padding-left: 25px; }
   .topbar { padding-right: 25px; padding-left: 25px; }
+  /* Узкие экраны: две карточки площадок по 50%, карточка работ — на всю строку. */
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-grid > .work-type-stat-card { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
   .sidebar { width: 252px; transform: translateX(-100%); transition: transform var(--dur-modal) var(--ease-drawer); }
@@ -1039,6 +1044,116 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 }
 
 /* ============================================================================
+   Конфигурация портала
+   ========================================================================= */
+
+.portal-config-panel { padding: 18px; }
+.portal-config-loading { display: flex; align-items: center; gap: 8px; min-height: 110px; color: #828b9c; font-size: 10px; }
+
+.portal-config-tabs { display: flex; gap: 7px; padding-bottom: 14px; border-bottom: 1px solid #eff1f5; }
+.portal-config-tab {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid #e5e9f0;
+  border-radius: 7px;
+  color: #758095;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.portal-config-tab-active { border-color: #ccd6f4; color: #405fce; background: #f4f6ff; }
+.portal-config-tab-count {
+  display: inline-flex;
+  min-width: 17px;
+  justify-content: center;
+  padding: 1px 5px;
+  border-radius: 999px;
+  color: #758095;
+  background: #eef1f7;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.portal-config-tab-active .portal-config-tab-count { color: #405fce; background: #e6ebff; }
+
+/* У секций не задаём display: скрытая вкладка работает через атрибут hidden,
+   и любое display в классе его перебило бы. */
+.portal-config-section { padding-top: 17px; }
+.portal-config-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 15px; }
+.portal-config-section-heading h2 { margin: 0; color: #354056; font-size: 15px; }
+.portal-config-section-heading p { margin: 5px 0 0; color: #8b95a5; font-size: 9px; line-height: 1.5; }
+.portal-config-save-state { max-width: 190px; padding-top: 4px; color: #9ba3b0; font-size: 8px; text-align: right; }
+.portal-config-save-state-dirty { color: #a87945; }
+
+.portal-config-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 13px; }
+
+.portal-config-list-count { margin-bottom: 9px; color: #8b95a5; font-size: 9px; }
+.portal-config-list { display: grid; gap: 8px; }
+.portal-config-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 31px; gap: 9px; align-items: center; }
+.portal-config-row-head { padding: 0 2px; color: #98a0ae; font-size: 8px; font-weight: 600; }
+.portal-config-row input {
+  width: 100%;
+  min-height: 37px;
+  padding: 0 10px;
+  border: 1px solid #e5e9f0;
+  border-radius: 7px;
+  outline: 0;
+  color: #475367;
+  background: #fff;
+  font: inherit;
+  font-size: 10px;
+}
+.portal-config-row input:focus { border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; }
+.portal-config-row-remove { justify-self: center; }
+
+.portal-config-empty {
+  display: grid;
+  gap: 5px;
+  padding: 18px;
+  border: 1px dashed #e2e7ef;
+  border-radius: 8px;
+  color: #8b95a5;
+  background: #fafbfc;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.portal-config-empty strong { color: #596477; font-size: 10px; }
+
+.portal-config-note {
+  display: flex;
+  gap: 8px;
+  margin-top: 15px;
+  padding: 11px 13px;
+  border: 1px solid #e6eaf2;
+  border-radius: 8px;
+  color: #6a7486;
+  background: #f8f9fc;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.portal-config-note svg { flex: 0 0 auto; margin-top: 1px; color: #8b95a5; }
+
+.portal-config-feedback { display: flex; align-items: center; gap: 6px; margin-top: 13px; font-size: 9px; }
+.portal-config-feedback-error { color: #ad5f4a; }
+.portal-config-feedback-success { color: #45886d; }
+.portal-config-actions { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+
+@media (max-width: 720px) {
+  .portal-config-fields { grid-template-columns: minmax(0, 1fr); }
+  .portal-config-section-heading { flex-direction: column; gap: 7px; }
+  .portal-config-save-state { max-width: none; padding-top: 0; text-align: left; }
+  /* В узкой строке ID уезжает под названием, кнопка удаления остаётся справа. */
+  .portal-config-row { grid-template-columns: minmax(0, 1fr) 31px; }
+  .portal-config-row-head { display: none; }
+  .portal-config-row > input:first-child { grid-column: 1; grid-row: 1; }
+  .portal-config-row > .portal-config-row-remove { grid-column: 2; grid-row: 1; }
+  .portal-config-row > input:nth-child(2) { grid-column: 1; grid-row: 2; }
+}
+
+/* ============================================================================
    Наведения и нажатия
    ========================================================================= */
 
@@ -1073,6 +1188,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .logs-row-toggle:hover strong { color: #405fce; }
   .logs-row-toggle:hover svg { color: #536bc7; }
   .overview-active-card:hover { border-color: #ccd6f4; box-shadow: 0 5px 14px #2537610b; }
+  .portal-config-tab:not(.portal-config-tab-active):hover { border-color: #ccd6f4; color: #405fce; }
 }
 
 /* У этих кнопок не было своего перехода: добавляем переход цвета и отклик на нажатие.
@@ -1080,7 +1196,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
    правил для transition здесь быть не должно — они сбросят остальные переходы. */
 .icon-button, .nav-link, .outline-button, .text-button, .profile, .login-password-toggle,
 .login-preview button, .removal-source-switch button, .removal-history-item,
-.history-period button, .sites-pagination button, .history-pagination button {
+.history-period button, .sites-pagination button, .history-pagination button,
+.portal-config-tab {
   transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
 }
 
@@ -1095,6 +1212,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .login-password-toggle:active, .login-preview button:active, .action-card:active,
 .stat-card-button:active, .template-option:active, .profile:active, .xlsx-dropzone:active,
 .removal-source-switch button:not(.removal-source-active):active,
+.portal-config-tab:not(.portal-config-tab-active):active,
 .removal-history-item:active:not(:disabled),
 .history-period button:not(.history-period-active):active,
 .overview-active-card:active,
@@ -1115,7 +1233,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .nav-link, .login-submit, .login-password-toggle, .login-preview button, .template-option,
   .profile, .xlsx-dropzone, .removal-source-switch button, .removal-history-item,
   .history-period button, .sites-pagination button, .history-pagination button,
-  .overview-active-card, .dialog-box {
+  .portal-config-tab, .overview-active-card, .dialog-box {
     transform: none !important;
     transition-property: opacity, background-color, border-color, color, box-shadow, filter;
   }

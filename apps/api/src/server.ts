@@ -16,6 +16,7 @@ import { registerSettingsRoutes } from "./modules/settings/routes.js";
 import { registerHistoryRoutes } from "./modules/history/routes.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
 import { registerAdminRoutes } from "./modules/admin/routes.js";
+import { registerPortalConfigRoutes } from "./modules/portal-config/routes.js";
 import { registerLogRoutes } from "./modules/logs/routes.js";
 import { registerLogHooks, startLogRetention, stopLogRetention } from "./modules/logs/service.js";
 import { requireSession } from "./modules/auth/service.js";
@@ -70,6 +71,7 @@ await registerImportRoutes(app, prisma);
 await registerHistoryRoutes(app, prisma);
 await registerSettingsRoutes(app, prisma);
 await registerAdminRoutes(app, prisma);
+await registerPortalConfigRoutes(app, prisma);
 await registerLogRoutes(app, prisma);
 
 // Очистка старых записей журнала. Таймер гаснет вместе с сервером, иначе

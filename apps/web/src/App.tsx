@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Clock3,
   CheckCircle2,
+  Columns3,
   FileSpreadsheet,
   History,
   LayoutDashboard,
@@ -23,6 +24,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   UsersRound
 } from "lucide-react";
 import XlsxAssignmentPage from "./XlsxAssignmentPage.js";
@@ -37,6 +39,7 @@ import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js"
 import HistoryPage from "./HistoryPage.js";
 import AdminUsersPage from "./AdminUsersPage.js";
 import LogsPage from "./LogsPage.js";
+import PortalConfigPage from "./PortalConfigPage.js";
 import { syncSectionUrl, useSectionUrl, type Section } from "./router.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
@@ -84,6 +87,12 @@ type WorkTypeStatistic = {
   unclassified: number;
   items: { type: "filter" | "balancers" | "bypasses" | "ehw" | "other"; label: string; count: number }[];
 };
+// Ответ GET /api/sites/avr-count: сколько площадок в каждом столбце АВР
+// из «Конфигурации портала» и их сумма для карточки «Площадки в АВР».
+type AvrSitesCount = {
+  columns: { id: string; name: string; count: number }[];
+  total: number;
+};
 
 // adminOnly — пункт показывается только роли ADMIN. Проверка роли есть и в API
 // (requireRole), здесь она нужна, чтобы не показывать недоступный раздел.
@@ -95,7 +104,9 @@ const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: bo
   { label: "История", icon: History },
   { label: "Настройки", icon: Settings2 },
   { label: "Учётные записи", icon: UsersRound, adminOnly: true },
-  { label: "Логирование", icon: ScrollText, adminOnly: true }
+  { label: "Логирование", icon: ScrollText, adminOnly: true },
+  // Последний пункт списка: конфигурация нужна редко и только администраторам.
+  { label: "Конфигурация портала", icon: SlidersHorizontal, adminOnly: true }
 ];
 
 const actions = [
@@ -380,6 +391,11 @@ function App() {
           ) : activeSection === "Логирование" ? (
             // Раздел adminOnly, поэтому сюда попадает только ADMIN.
             <LogsPage />
+          ) : activeSection === "Конфигурация портала" ? (
+            // Раздел adminOnly, поэтому сюда попадает только ADMIN.
+            // Смена столбца плана меняет источник списка площадок — просим
+            // обзор перечитать его сразу после сохранения.
+            <PortalConfigPage onPlanColumnChanged={refreshSites} />
           ) : (
             <SectionPage section={activeSection} health={health} />
           )}
@@ -404,6 +420,31 @@ function Overview({
 }) {
   const [workTypeStatistics, setWorkTypeStatistics] = useState<WorkTypeStatistic | null>(null);
   const [workTypeStatisticsError, setWorkTypeStatisticsError] = useState("");
+  const [avrSitesCount, setAvrSitesCount] = useState<AvrSitesCount | null>(null);
+  const [avrCountLoadState, setAvrCountLoadState] = useState<SiteLoadState>("loading");
+
+  // Число площадок по столбцам АВР из «Конфигурации портала». Обзор
+  // монтируется при каждом возврате на раздел, поэтому после сохранения
+  // столбцов в конфигурации счётчик перечитывается сам.
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch("/api/sites/avr-count", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          const error = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(error?.error ?? "Не удалось загрузить площадки АВР.");
+        }
+        return response.json() as Promise<AvrSitesCount>;
+      })
+      .then((data) => {
+        setAvrSitesCount(data);
+        setAvrCountLoadState("ready");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setAvrCountLoadState("error");
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -420,6 +461,12 @@ function Overview({
       });
     return () => controller.abort();
   }, []);
+
+  const avrCountFoot =
+    avrCountLoadState === "loading" ? "Загрузка списка из YouGile"
+      : avrCountLoadState === "error" ? "Не удалось загрузить данные"
+        : avrSitesCount && avrSitesCount.columns.length === 0 ? "Столбцы АВР не добавлены"
+          : "Активные задачи в столбцах АВР";
 
   return (
     <>
@@ -444,9 +491,16 @@ function Overview({
 
       <section className="stats-grid" aria-label="Сводка">
         <StatCard
+          title="Площадки в АВР"
+          value={avrCountLoadState === "ready" && avrSitesCount ? avrSitesCount.total.toLocaleString("ru-RU") : "—"}
+          foot={avrCountFoot}
+          icon={Columns3}
+          tone="violet"
+        />
+        <StatCard
           title="Площадки в фильтрации"
           value={siteLoadState === "ready" ? sites.length.toLocaleString("ru-RU") : "—"}
-          foot={siteLoadState === "ready" ? "Активные задачи в колонке плана YouGile" : siteLoadState === "error" ? "Не удалось загрузить данные" : "Загрузка списка из YouGile"}
+          foot={siteLoadState === "ready" ? "Активные задачи в колонке фильтрации" : siteLoadState === "error" ? "Не удалось загрузить данные" : "Загрузка списка из YouGile"}
           icon={LayoutDashboard}
           tone="blue"
           onClick={() => onNavigate("Площадки")}
@@ -878,7 +932,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Планирование Работ" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Планирование Работ" | "Площадки" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,
