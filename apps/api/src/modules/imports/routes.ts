@@ -6,7 +6,7 @@ import { ImportBatchStatus, ImportRowStatus, OperationStatus, OperationType, Pri
 import { z } from "zod";
 import { config } from "../../config.js";
 import { YougileClient, YougileApiError } from "../../integrations/yougile/client.js";
-import { readLatestChatMessageDetailed } from "../../integrations/yougile/chat.js";
+import { readLatestChatMessageDetailed, type ChatLatestReadResult } from "../../integrations/yougile/chat.js";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
@@ -26,6 +26,13 @@ import { parsePlanWorkbook } from "./xlsx.js";
 
 const maxStoredImports = 5;
 const importRetentionLockId = 847201563;
+// Пауза перед повтором чтения чата и общее число попыток в «Проверке работ».
+// YouGile редко, но отвечает HTTP 429 на чтение чата: одна площадка тогда
+// падает без видимой причины. Один повтор через 5 секунд сглаживает разовые
+// сбои, не раздувая проверку в длинную серию ретраев. Если повтор не удался —
+// площадка пропускается, как было раньше.
+const workCheckRetryDelayMs = 5_000;
+const workCheckReadAttempts = 2;
 // Сколько строк XLSX отдаём в просмотр содержимого. Дальше пользователь всё
 // равно не читает таблицу глазами, а страница с несколькими тысячами ячеек
 // перестаёт прокручиваться.
@@ -249,14 +256,94 @@ export async function registerImportRoutes(
       // Запрос синхронный, поэтому проверка занимает ~4 секунды на площадку.
       let suspiciousReads = 0;
       for (const taskId of uniqueTaskIds) {
-        try {
-          // readLatestChatMessageDetailed доходит до последней страницы чата:
-          // YouGile отдаёт сообщения старыми вперёд, и при длинном чате
-          // последний комментарий лежит за пределами первой сотни. Диагностика
-          // каждой площадки пишется в лог, чтобы видеть, где теряется
-          // последний комментарий: преждевременная остановка цикла или ошибки
-          // YouGile на отдельных страницах.
-          const { latest, diagnostics } = await readLatestChatMessageDetailed(yougile, taskId);
+        // readLatestChatMessageDetailed доходит до последней страницы чата:
+        // YouGile отдаёт сообщения старыми вперёд, и при длинном чате
+        // последний комментарий лежит за пределами первой сотни. Диагностика
+        // каждой площадки пишется в лог, чтобы видеть, где теряется
+        // последний комментарий: преждевременная остановка цикла или ошибки
+        // YouGile на отдельных страницах.
+        //
+        // Ошибка чтения (разовый HTTP 429 и т.п.) не роняет площадку сразу:
+        // ждём 5 секунд и повторяем тот же запрос один раз. Если повтор опять
+        // не удался — площадка пропускается, цикл идёт дальше.
+        let chatResult: ChatLatestReadResult | null = null;
+        let readError: unknown = null;
+        let lastAttemptError: unknown = null;
+        for (let attempt = 1; attempt <= workCheckReadAttempts; attempt++) {
+          try {
+            chatResult = await readLatestChatMessageDetailed(yougile, taskId);
+            readError = null;
+            break;
+          } catch (error) {
+            readError = error;
+            lastAttemptError = error;
+            if (attempt < workCheckReadAttempts) {
+              app.log.warn({
+                err: error,
+                taskId,
+                attempt,
+                statusCode: error instanceof YougileApiError ? error.statusCode : undefined
+              }, "Work check: chat read failed, retrying in 5 seconds");
+              await new Promise((resolve) => setTimeout(resolve, workCheckRetryDelayMs));
+            }
+          }
+        }
+
+        if (readError) {
+          const error = readError;
+          app.log.error({
+            err: error,
+            taskId,
+            statusCode: error instanceof YougileApiError ? error.statusCode : undefined
+          }, "Could not load latest YouGile chat message");
+          const failureMessage = error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)
+            ? "Нет доступа к чату задачи."
+            : error instanceof YougileApiError && error.statusCode === 404
+              ? "Чат задачи не найден."
+              : "Не удалось загрузить комментарий из YouGile.";
+          latestByTaskId.set(taskId, { text: null, timestamp: null, error: failureMessage });
+          void recordLog(prisma, {
+            level: "ERROR",
+            action: "WORK-CHECK",
+            message: `Не удалось прочитать чат площадки ${taskId}: ${failureMessage}`,
+            actorId: request.sessionUser?.id ?? null,
+            actorLogin: request.sessionUser?.login ?? null,
+            actorRole: request.sessionUser?.role ?? null,
+            ip: request.ip,
+            method: request.method,
+            path: request.url.split("?")[0] ?? request.url,
+            entityId: taskId,
+            request: { taskId, statusCode: error instanceof YougileApiError ? error.statusCode : undefined, details: describeError(error) },
+            error: failureMessage
+          });
+        } else {
+          // Повтор помог — в журнал попадает строка WARN, чтобы без доступа к
+          // stdout было видно, что YouGile сбоил, но проверка площадки прошла.
+          if (lastAttemptError) {
+            const retryErrorText = lastAttemptError instanceof YougileApiError
+              ? `HTTP ${lastAttemptError.statusCode}`
+              : lastAttemptError instanceof Error
+                ? lastAttemptError.message
+                : String(lastAttemptError);
+            void recordLog(prisma, {
+              level: "WARN",
+              action: "WORK-CHECK",
+              message: `Чтение чата площадки ${taskId} не удалось с первого раза (${retryErrorText}), повтор через 5 секунд прошёл успешно.`,
+              actorId: request.sessionUser?.id ?? null,
+              actorLogin: request.sessionUser?.login ?? null,
+              actorRole: request.sessionUser?.role ?? null,
+              ip: request.ip,
+              method: request.method,
+              path: request.url.split("?")[0] ?? request.url,
+              entityId: taskId,
+              request: {
+                taskId,
+                statusCode: lastAttemptError instanceof YougileApiError ? lastAttemptError.statusCode : undefined,
+                details: describeError(lastAttemptError)
+              }
+            });
+          }
+          const { latest, diagnostics } = chatResult as ChatLatestReadResult;
           latestByTaskId.set(taskId, { text: latest?.text ?? null, timestamp: latest?.timestamp ?? null, error: null });
           const logData = {
             taskId,
@@ -307,32 +394,6 @@ export async function registerImportRoutes(
           } else {
             app.log.info(logData, "Work check: chat read result");
           }
-        } catch (error) {
-          app.log.error({
-            err: error,
-            taskId,
-            statusCode: error instanceof YougileApiError ? error.statusCode : undefined
-          }, "Could not load latest YouGile chat message");
-          const failureMessage = error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)
-            ? "Нет доступа к чату задачи."
-            : error instanceof YougileApiError && error.statusCode === 404
-              ? "Чат задачи не найден."
-              : "Не удалось загрузить комментарий из YouGile.";
-          latestByTaskId.set(taskId, { text: null, timestamp: null, error: failureMessage });
-          void recordLog(prisma, {
-            level: "ERROR",
-            action: "WORK-CHECK",
-            message: `Не удалось прочитать чат площадки ${taskId}: ${failureMessage}`,
-            actorId: request.sessionUser?.id ?? null,
-            actorLogin: request.sessionUser?.login ?? null,
-            actorRole: request.sessionUser?.role ?? null,
-            ip: request.ip,
-            method: request.method,
-            path: request.url.split("?")[0] ?? request.url,
-            entityId: taskId,
-            request: { taskId, statusCode: error instanceof YougileApiError ? error.statusCode : undefined, details: describeError(error) },
-            error: failureMessage
-          });
         }
         const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
         if (progressEntry) progressEntry.processed += 1;
