@@ -10,6 +10,7 @@ import { readLatestChatMessageDetailed, type ChatLatestReadResult } from "../../
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
+import { normalizeEngineerName } from "../../lib/engineer-name.js";
 import { describeError } from "../../lib/error-details.js";
 import { annotateLog, recordLog } from "../logs/service.js";
 import { getAssignmentUsers } from "../users/service.js";
@@ -105,10 +106,6 @@ type PreparedImportItem = {
   alreadyAssigned: boolean;
   comment: string;
 };
-
-function normalizeEngineerName(name: string) {
-  return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru");
-}
 
 function describeImportRowProblems(row: {
   siteId: string | null;

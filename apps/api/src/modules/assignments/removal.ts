@@ -3,6 +3,7 @@ import { z } from "zod";
 import { YougileClient } from "../../integrations/yougile/client.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
+import { normalizeEngineerName } from "../../lib/engineer-name.js";
 import { describeError } from "../../lib/error-details.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
@@ -14,10 +15,6 @@ export const importRemovalSchema = z.object({
 });
 
 export type ImportRemovalInput = z.infer<typeof importRemovalSchema>;
-
-function normalizeEngineerName(name: string) {
-  return name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru");
-}
 
 export async function prepareImportRemoval(
   client: YougileClient,
