@@ -450,6 +450,10 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
    ========================================================================= */
 .coordination-form-panel, .coordination-preview-panel, .coordination-result-panel { display: grid; gap: 14px; padding: 16px; }
 .coordination-preview-panel, .coordination-result-panel { margin-top: 13px; }
+.coordination-back-button { margin-bottom: 10px; }
+/* Карточки сценариев на странице раздела: не растягиваются на всю ширину,
+   а складываются в сетку фиксированного размера, как карточки на обзоре. */
+.coordination-landing-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 360px)); }
 .coordination-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .coordination-build-button { justify-self: start; }
 .coordination-form-hint { color: #929aaa; font-size: 9px; line-height: 1.5; }

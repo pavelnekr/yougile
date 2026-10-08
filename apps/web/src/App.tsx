@@ -33,6 +33,7 @@ import ImportAuditPage from "./ImportAuditPage.js";
 import XlsxRemovalPage from "./XlsxRemovalPage.js";
 import CommentPage from "./CommentPage.js";
 import CoordinationPage from "./CoordinationPage.js";
+import CoordinationLandingPage from "./CoordinationLandingPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import UnderDevelopmentPage from "./UnderDevelopmentPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
@@ -287,6 +288,13 @@ function App() {
   const activeSection: Section = sessionUser && !isAdmin && navigation.some((item) => item.label === section && item.adminOnly)
     ? "Управление работами в YouGile"
     : section;
+  // «Согласование АВР» — подраздел раздела «Согласование/Оповещение»: карточка
+  // на странице раздела открывает его по собственному адресу. Подсветка меню
+  // и пункт навигации остаются у родительского раздела.
+  const parentSectionOf: Partial<Record<Section, Section>> = {
+    "Согласование АВР": "Согласование/Оповещение"
+  };
+  const activeNavSection = parentSectionOf[activeSection] ?? activeSection;
 
   // Адрес приводим к открытому разделу: неизвестный путь, лишний слеш и раздел
   // без прав заменяются корнем через replaceState, без записи в историю.
@@ -334,7 +342,7 @@ function App() {
         <p className="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</p>
         <nav className="navigation" aria-label="Основная навигация">
           {visibleNavigation.map(({ label, icon: Icon }) => (
-            <button key={label} className={`nav-link ${activeSection === label ? "nav-link-active" : ""}`} onClick={() => chooseSection(label)}>
+            <button key={label} className={`nav-link ${activeNavSection === label ? "nav-link-active" : ""}`} onClick={() => chooseSection(label)}>
               <Icon size={18} strokeWidth={1.8} />
               <span>{label}</span>
             </button>
@@ -391,7 +399,9 @@ function App() {
               avrError={avrError}
             />
           ) : activeSection === "Согласование/Оповещение" ? (
-            <CoordinationPage />
+            <CoordinationLandingPage onNavigate={chooseSection} />
+          ) : activeSection === "Согласование АВР" ? (
+            <CoordinationPage onBack={() => chooseSection("Согласование/Оповещение")} />
           ) : activeSection === "Планирование Работ" ? (
             <UnderDevelopmentPage
               icon={CalendarDays}
@@ -1053,7 +1063,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

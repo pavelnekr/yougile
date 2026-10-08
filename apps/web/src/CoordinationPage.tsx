@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   Code2,
   Eye,
@@ -39,14 +40,16 @@ function errorMessage(error: unknown) {
 }
 
 /**
- * Раздел «Согласование/Оповещение»: DOCX-план → письмо согласования АВР → SMTP.
+ * Подраздел «Согласование АВР»: DOCX-план → письмо согласования АВР → SMTP.
+ * Открывается карточкой на странице раздела «Согласование/Оповещение»
+ * (CoordinationLandingPage) по адресу `/coordination/avr`.
  *
  * Шаги страницы: загрузка файла с реквизитами, предпросмотр с редактированием
  * темы и текста, отправка по явному подтверждению. Пока оператор не нажал
  * «Отправить письмо», наружу ничего не уходит — как и в остальных сценариях
  * портала, запись только после подтверждения.
  */
-export default function CoordinationPage() {
+export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
   const [config, setConfig] = useState<CoordinationConfig | null>(null);
   const [configError, setConfigError] = useState("");
 
@@ -163,10 +166,15 @@ export default function CoordinationPage() {
 
   return (
     <section className="section-view assignment-page coordination-page">
+      {onBack && (
+        <button className="text-button coordination-back-button" onClick={onBack}>
+          <ArrowLeft size={14} /> Все сценарии
+        </button>
+      )}
       <div className="eyebrow"><span className="eyebrow-line" /> ПИСЬМО СОГЛАСОВАНИЯ АВР · ОТПРАВКА ПО SMTP</div>
       <div className="sites-page-heading">
         <div>
-          <h1>Согласование/Оповещение</h1>
+          <h1>Согласование АВР</h1>
           <p>Загрузите DOCX-план работ — портал соберёт письмо согласования АВР. Проверьте тему и текст, затем отправьте получателям.</p>
         </div>
         {config && !sent && <span className="sites-total">{countRu(config.recipients.length, recipientForms)}</span>}
