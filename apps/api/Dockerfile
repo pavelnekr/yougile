@@ -33,6 +33,12 @@ COPY --from=build /app/apps/api/prisma ./prisma
 
 RUN apk add --no-cache openssl
 
+# Контейнер работает не от root: при компрометации процесса атакующий получает
+# внутри контейнера только права непривилегированного пользователя. API ничего
+# не пишет на диск, поэтому chown нужен только для владельца каталога.
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 4000
 
 CMD ["node", "dist/server.js"]

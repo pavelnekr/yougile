@@ -78,7 +78,10 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-yougile_portal}
       POSTGRES_USER: ${POSTGRES_USER:-portal}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portal}
+      # Без дефолта: fallback «portal» позволил бы базе подняться с паролем по
+      # умолчанию, пока DATABASE_URL в сервисах API уже падает на отсутствии
+      # переменной. Пароль обязан быть задан явно.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:

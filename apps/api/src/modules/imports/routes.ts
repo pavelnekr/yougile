@@ -73,7 +73,11 @@ const workCheckProgressTtlMs = 5 * 60 * 1000;
 function sweepWorkCheckProgress() {
   const now = Date.now();
   for (const [checkId, entry] of workCheckProgress) {
-    if (entry.finishedAt !== null && now - entry.finishedAt > workCheckProgressTtlMs) {
+    // Запись удаляем и по завершению, и по возрасту начала. Второе нужно для
+    // упавшей проверки: если цикл упал по исключению, finishedAt так и остался
+    // null, и без проверки startedAt запись лежала бы в памяти вечно.
+    const referenceTime = entry.finishedAt ?? entry.startedAt;
+    if (now - referenceTime > workCheckProgressTtlMs) {
       workCheckProgress.delete(checkId);
     }
   }

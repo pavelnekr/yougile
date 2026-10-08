@@ -29,6 +29,19 @@ const loginPerIpLimit: RateLimit = {
   message: "Слишком много попыток входа с этого адреса. Попробуйте позже."
 };
 
+// Регистрация по ключу: перебор ключа дороже перебора логина, потому что удача
+// даёт OPERATOR-доступ. Счётчики ведём по адресу и по логину — иначе через один
+// прокси можно было бы вести параллельный перебор многих логинов, не упираясь
+// в per-IP предел. Лимиты щедрее логинных: ключ вводят редко и обычно с первого раза.
+const registerPerIpLimit: RateLimit = {
+  limit: 20,
+  message: "Слишком много попыток регистрации с этого адреса. Попробуйте позже."
+};
+const registerPerLoginLimit: RateLimit = {
+  limit: 8,
+  message: "Слишком много попыток регистрации для этого логина. Попробуйте через 15 минут."
+};
+
 // Cookie ставим с флагом secure только когда сам запрос пришёл по HTTPS.
 // Иначе локальная разработка по http://localhost не сможет сохранить сессию.
 function isSecureRequest(request: { protocol: string; headers: Record<string, unknown> }) {
@@ -174,9 +187,30 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
       return reply.code(400).send({ error: message });
     }
 
+    // Проверяем до обращения к базе и до scrypt, чтобы отказ не стоил ничего.
+    // Ключ логина в нижнем регистре по той же причине, что и на входе.
+    const registerLoginKey = `register:${parsed.data.login.toLowerCase()}`;
+    const registerIpKey = `register-ip:${request.ip}`;
+    const registerLimits: [string, RateLimit][] = [
+      [registerLoginKey, registerPerLoginLimit],
+      [registerIpKey, registerPerIpLimit]
+    ];
+    for (const [key, limit] of registerLimits) {
+      const blocked = rateLimitState(key, limit);
+      if (!blocked) continue;
+      request.log.warn({ login: parsed.data.login, ip: request.ip }, "Rejected portal registration by rate limit");
+      return reply
+        .code(429)
+        .header("Retry-After", String(blocked.retryAfterSeconds))
+        .send({ error: limit.message });
+    }
+
     if (!isRegistrationKeyValid(parsed.data.registrationKey)) {
       // Ключ в лог не пишем: достаточно логина и адреса клиента.
       request.log.warn({ login: parsed.data.login, ip: request.ip }, "Rejected portal registration attempt");
+      // Неудача считается по обоим ключам: успешная регистрация ничего не учитывает.
+      recordRateLimit(registerLoginKey);
+      recordRateLimit(registerIpKey);
       return reply.code(403).send({ error: "Ключ регистрации не подходит." });
     }
 
@@ -204,6 +238,9 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     const userAgent = typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : null;
     const { token, expiresAt } = await createSession(prisma, user.id, "long", userAgent);
     setSessionCookie(reply, token, expiresAt, isSecureRequest(request));
+
+    // Регистрация состоялась — попытки по этому логину снова разрешены.
+    clearRateLimit(registerLoginKey);
 
     request.log.info({ login: user.login, role: user.role }, "Portal account registered");
     annotateLog(request, { message: "Регистрация завершена", entityId: user.id });

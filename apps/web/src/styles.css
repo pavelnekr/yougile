@@ -214,7 +214,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panel-heading h2 { font-size: 12px; }
 .panel-heading p { font-size: 9px; }
-.text-button { display: flex; align-items: center; gap: 5px; border: 0; color: #526dd1; background: none; font-size: 9px; font-weight: 600; cursor: pointer; }
+/* Единственное объявление кнопки-надписи. Раньше стиль был описан дважды —
+   второе объявление ниже перекрывало первое, и синий «бесшовный» вариант
+   нигде не действовал. Свойства объединены с учётом того порядка, в каком
+   они применялись. */
+.text-button { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 7px 9px; border: 1px solid #e5e9f0; border-radius: 6px; color: #647087; background: #fff; font-size: 8px; font-weight: 600; cursor: pointer; }
 .empty-state { display: flex; flex-direction: column; align-items: center; padding: 22px 12px 5px; text-align: center; }
 .empty-icon { display: grid; width: 35px; height: 35px; margin-bottom: 8px; place-items: center; border-radius: 10px; color: #8998ca; background: #f0f3fc; }
 .empty-state strong { color: #657085; font-size: 10px; font-weight: 600; }
@@ -443,7 +447,6 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .import-file-heading > div { display: grid; min-width: 0; flex: 1; gap: 4px; }
 .import-file-heading strong { overflow: hidden; color: #394457; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .import-file-heading small { color: #929aaa; font-size: 8px; }
-.text-button { flex: 0 0 auto; padding: 7px 9px; border: 1px solid #e5e9f0; border-radius: 6px; color: #647087; background: #fff; font-size: 8px; cursor: pointer; }
 .text-button:disabled { opacity: .5; cursor: not-allowed; }
 .import-counts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
 .import-counts > span { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #edf0f4; border-radius: 6px; color: #707b8f; background: #fafbfc; font-size: 8px; }

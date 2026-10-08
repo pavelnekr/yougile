@@ -25,9 +25,6 @@ export type AssignmentUser = {
 
 const cacheDurationMs = 60_000;
 const pageSize = 1000;
-let cachedUsers: AssignmentUser[] | null = null;
-let cacheExpiresAt = 0;
-let pendingRequest: Promise<AssignmentUser[]> | null = null;
 
 async function fetchUsers(client: YougileClient): Promise<AssignmentUser[]> {
   const users: AssignmentUser[] = [];
@@ -57,21 +54,25 @@ async function fetchUsers(client: YougileClient): Promise<AssignmentUser[]> {
   throw new Error("YouGile users pagination did not complete");
 }
 
+// Кэш ключуется по YougileClient.cacheKey — хешу токена. Токены YouGile
+// персональные: с одним общим ключом администратор прогрел бы кэш своим токеном,
+// а оператор получил бы список чужих сотрудников.
+const usersCache = new Map<string, { data: AssignmentUser[] | null; expiresAt: number; pending: Promise<AssignmentUser[]> | null }>();
+
 export async function getAssignmentUsers(client: YougileClient): Promise<AssignmentUser[]> {
-  if (cachedUsers && Date.now() < cacheExpiresAt) return cachedUsers;
-  if (pendingRequest) return pendingRequest;
+  const entry = usersCache.get(client.cacheKey) ?? { data: null, expiresAt: 0, pending: null };
+  usersCache.set(client.cacheKey, entry);
 
-  pendingRequest = fetchUsers(client);
+  if (entry.data && Date.now() < entry.expiresAt) return entry.data;
+  if (entry.pending) return entry.pending;
+
+  const pending = fetchUsers(client);
+  entry.pending = pending;
   try {
-    cachedUsers = await pendingRequest;
-    cacheExpiresAt = Date.now() + cacheDurationMs;
-    return cachedUsers;
+    entry.data = await pending;
+    entry.expiresAt = Date.now() + cacheDurationMs;
+    return entry.data;
   } finally {
-    pendingRequest = null;
+    entry.pending = null;
   }
-}
-
-export function invalidateAssignmentUsersCache() {
-  cachedUsers = null;
-  cacheExpiresAt = 0;
 }

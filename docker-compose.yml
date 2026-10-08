@@ -47,8 +47,11 @@ services:
       POSTGRES_DB: yougile_portal
       POSTGRES_USER: portal
       POSTGRES_PASSWORD: portal
+    # Порты привязаны к 127.0.0.1: PostgreSQL и Redis не должны быть видны
+    # снаружи машины разработки. Redis вообще работает без пароля, а 5432
+    # на незащищённом периметре — прямой доступ к базе с паролем по умолчанию.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -61,7 +64,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:

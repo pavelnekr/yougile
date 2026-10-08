@@ -36,9 +36,13 @@ export type PlannedSite = {
 const pageSize = 1000;
 const maxPages = 100;
 const cacheDurationMs = 30_000;
-let cachedSites: PlannedSite[] | null = null;
-let cacheExpiresAt = 0;
-let pendingRequest: Promise<PlannedSite[]> | null = null;
+
+// Кэши ключуются по YougileClient.cacheKey — хешу токена. Токены YouGile
+// персональные: без привязки к токену администратор прогрел бы кэш своим
+// токеном, а оператор получил бы чужие данные. Один файл на процесс при этом
+// сохраняется, меняется только ключ записи.
+type CacheEntry<T> = { data: T | null; expiresAt: number; pending: Promise<T> | null };
+const plannedSitesCache = new Map<string, CacheEntry<PlannedSite[]>>();
 
 type YougileTask = z.infer<typeof taskSchema>;
 
@@ -105,54 +109,59 @@ async function fetchPlannedSites(client: YougileClient): Promise<PlannedSite[]> 
 }
 
 export async function getPlannedSites(client: YougileClient): Promise<PlannedSite[]> {
-  if (cachedSites && Date.now() < cacheExpiresAt) return cachedSites;
-  if (pendingRequest) return pendingRequest;
+  // Ключ включает ID столбца плана: смена колонки в конфигурации меняет
+  // источник данных, и старая запись не должна отдаваться.
+  const key = `${client.cacheKey}|${getPlanColumn().id}`;
+  const entry = plannedSitesCache.get(key) ?? { data: null, expiresAt: 0, pending: null };
+  plannedSitesCache.set(key, entry);
 
-  pendingRequest = fetchPlannedSites(client);
+  if (entry.data && Date.now() < entry.expiresAt) return entry.data;
+  if (entry.pending) return entry.pending;
+
+  const pending = fetchPlannedSites(client);
+  entry.pending = pending;
   try {
-    const sites = await pendingRequest;
-    cachedSites = sites;
-    cacheExpiresAt = Date.now() + cacheDurationMs;
+    const sites = await pending;
+    entry.data = sites;
+    entry.expiresAt = Date.now() + cacheDurationMs;
     return sites;
   } finally {
-    pendingRequest = null;
+    entry.pending = null;
   }
 }
 
 // Смена столбца плана в конфигурации делает накопленный кэш устаревшим:
 // в нём лежат задачи из старой колонки. Вызывается из модуля portal-config
-// сразу после сохранения нового значения.
+// сразу после сохранения нового значения. Чистим все записи сразу: ключ теперь
+// включает ID колонки, но хранить устаревшие записи других токенов незачем.
 export function invalidateSitesCache(): void {
-  cachedSites = null;
-  cacheExpiresAt = 0;
+  plannedSitesCache.clear();
 }
 
 export type AvrColumnSites = { id: string; name: string; sites: PlannedSite[] };
 export type AvrSitesList = { columns: AvrColumnSites[]; items: PlannedSite[]; total: number };
 
-// Площадки по столбцам АВР из «Конфигурации портала». Кэш ключуется полным
-// списком столбцов: как только администратор поменял ID, прежний результат
-// по старым колонкам становится невалидным и не отдаётся.
+// Площадки по столбцам АВР из «Конфигурации портала». Кэш ключуется и по
+// токену (см. plannedSitesCache), и по полному списку столбцов: как только
+// администратор поменял ID, прежний результат по старым колонкам становится
+// невалидным и не отдаётся.
 const avrSitesDurationMs = 30_000;
-let cachedAvrSites: { key: string; data: AvrSitesList } | null = null;
-let avrSitesExpiresAt = 0;
-let pendingAvrSites: Promise<AvrSitesList> | null = null;
-let pendingAvrSitesKey: string | null = null;
+const avrSitesCache = new Map<string, CacheEntry<AvrSitesList>>();
 
 export async function getAvrSites(
   client: YougileClient,
   columns: PortalColumn[]
 ): Promise<AvrSitesList> {
-  const key = columns.map((column) => `${column.id}:${column.name}`).join("|");
+  const key = `${client.cacheKey}|${columns.map((column) => `${column.id}:${column.name}`).join("|")}`;
+  const entry = avrSitesCache.get(key) ?? { data: null, expiresAt: 0, pending: null };
+  avrSitesCache.set(key, entry);
 
-  if (cachedAvrSites && cachedAvrSites.key === key && Date.now() < avrSitesExpiresAt) {
-    return cachedAvrSites.data;
-  }
-  if (pendingAvrSites && pendingAvrSitesKey === key) return pendingAvrSites;
+  if (entry.data && Date.now() < entry.expiresAt) return entry.data;
+  if (entry.pending) return entry.pending;
 
   // Столбцы обходим по одному: у YouGile нет пакетного запроса, а параллельные
   // обращения легко упираются в лимиты их API.
-  const promise = (async (): Promise<AvrSitesList> => {
+  const pending = (async (): Promise<AvrSitesList> => {
     const items: AvrColumnSites[] = [];
     for (const column of columns) {
       const tasks = await fetchColumnTasks(client, column.id);
@@ -166,25 +175,19 @@ export async function getAvrSites(
     };
   })();
 
-  pendingAvrSites = promise;
-  pendingAvrSitesKey = key;
+  entry.pending = pending;
   try {
-    const data = await promise;
-    cachedAvrSites = { key, data };
-    avrSitesExpiresAt = Date.now() + avrSitesDurationMs;
+    const data = await pending;
+    entry.data = data;
+    entry.expiresAt = Date.now() + avrSitesDurationMs;
     return data;
   } finally {
-    // Запрос мог быть перекрыт другим списком столбцов — чистим только свой.
-    if (pendingAvrSites === promise) {
-      pendingAvrSites = null;
-      pendingAvrSitesKey = null;
-    }
+    entry.pending = null;
   }
 }
 
 // Смена списка столбцов АВР в конфигурации: прежний кэш считал по старым ID.
 // Вызывается из модуля portal-config сразу после сохранения нового списка.
 export function invalidateAvrSitesCache(): void {
-  cachedAvrSites = null;
-  avrSitesExpiresAt = 0;
+  avrSitesCache.clear();
 }
