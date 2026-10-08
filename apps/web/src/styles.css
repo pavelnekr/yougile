@@ -448,7 +448,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 /* ============================================================================
    Раздел «Согласование/Оповещение»: данные письма, предпросмотр, результат
    ========================================================================= */
-.coordination-form-panel, .coordination-preview-panel, .coordination-result-panel { display: grid; gap: 14px; }
+.coordination-form-panel, .coordination-preview-panel, .coordination-result-panel { display: grid; gap: 14px; padding: 16px; }
 .coordination-preview-panel, .coordination-result-panel { margin-top: 13px; }
 .coordination-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .coordination-build-button { justify-self: start; }
