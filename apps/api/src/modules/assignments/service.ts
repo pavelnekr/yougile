@@ -119,22 +119,42 @@ export async function previewAssignments(
   return { user, items };
 }
 
-function assignmentFailureMessage(error: unknown, phase: "assignment" | "comment"): string {
+// Комментарий кластера отправляется после назначения, как в n8n-воркфлоу
+// «Yougile - add users»: текст и HTML-версия уходят в чат задачи, когда в строке
+// XLSX заполнен столбец «klaster».
+function clusterMessage(siteId: string, cluster: string): { text: string; textHtml: string } {
+  const text = `Обрати внимание! Кластер: ${siteId}-${cluster}`;
+  const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return { text, textHtml: `<p>${escaped}</p>` };
+}
+
+function assignmentFailureMessage(error: unknown, phase: "assignment" | "comment" | "cluster"): string {
+  const actionByPhase: Record<typeof phase, string> = {
+    assignment: "изменение назначения",
+    comment: "отправку комментария",
+    cluster: "отправку комментария кластера"
+  };
   if (error instanceof YougileApiError) {
-    const action = phase === "comment" ? "отправку комментария" : "изменение назначения";
+    const action = actionByPhase[phase];
     if (error.statusCode === 401 || error.statusCode === 403) return `YouGile отклонил ${action}: проверьте права токена.`;
-    if (error.statusCode === 404) return phase === "comment"
-      ? "Задача найдена, но чат задачи недоступен для комментария."
-      : "Задача больше не найдена в YouGile.";
+    if (error.statusCode === 404) {
+      if (phase === "assignment") return "Задача больше не найдена в YouGile.";
+      if (phase === "cluster") return "Задача найдена, но чат задачи недоступен для комментария кластера.";
+      return "Задача найдена, но чат задачи недоступен для комментария.";
+    }
     if (error.statusCode === 400 && error.apiMessage) {
       const detail = error.apiMessage.replace(/[.!?]+$/, "");
       return `YouGile отклонил ${action} (HTTP 400): ${detail}.`;
     }
     return `YouGile отклонил ${action} (HTTP ${error.statusCode}).`;
   }
-  return phase === "comment"
-    ? "Инженер назначен, но комментарий не удалось отправить. Проверьте чат задачи в YouGile."
-    : "Не удалось обновить задачу в YouGile. Проверьте соединение и повторите попытку.";
+  if (phase === "assignment") {
+    return "Не удалось обновить задачу в YouGile. Проверьте соединение и повторите попытку.";
+  }
+  if (phase === "cluster") {
+    return "Инженер назначен, но комментарий кластера не удалось отправить. Проверьте чат задачи в YouGile.";
+  }
+  return "Инженер назначен, но комментарий не удалось отправить. Проверьте чат задачи в YouGile.";
 }
 
 export async function processAssignmentOperation(
@@ -180,11 +200,19 @@ export async function processAssignmentOperation(
         ? item.beforeData.commentText
         : fallbackComment;
       const commentText = storedComment.trim();
+      // Кластер из столбца «klaster» XLSX: если в строке есть значение, после
+      // назначения (и комментария, если он задан) в чат задачи уходит комментарий
+      // кластера — как в n8n-воркфлоу «Yougile - add users».
+      const cluster = item.beforeData && typeof item.beforeData === "object" &&
+        !Array.isArray(item.beforeData) && "cluster" in item.beforeData &&
+        typeof item.beforeData.cluster === "string"
+        ? item.beforeData.cluster.trim()
+        : "";
       let status: OperationItemStatus = OperationItemStatus.FAILED;
       let beforeData: object | undefined;
       let afterData: object | undefined;
       let errorMessage: string | undefined;
-      let phase: "assignment" | "comment" = "assignment";
+      let phase: "assignment" | "comment" | "cluster" = "assignment";
 
       try {
         if (typeof taskIdValue !== "string" || !userId) {
@@ -201,14 +229,26 @@ export async function processAssignmentOperation(
         beforeData = { taskId: task.id, title: task.title, assignedUserIds: assigned, commentText };
         let engineerAssigned = false;
         if (assigned.includes(userId)) {
-          status = commentText ? OperationItemStatus.SUCCEEDED : OperationItemStatus.SKIPPED;
-          afterData = { taskId: task.id, title: task.title, assignedUserIds: assigned, commentPosted: false };
+          status = commentText || cluster ? OperationItemStatus.SUCCEEDED : OperationItemStatus.SKIPPED;
+          afterData = {
+            taskId: task.id,
+            title: task.title,
+            assignedUserIds: assigned,
+            commentPosted: false,
+            clusterCommentPosted: false
+          };
         } else {
           const nextAssigned = [...new Set([...assigned, userId])];
           await assignTaskUsers(client, task.id, nextAssigned);
           engineerAssigned = true;
           status = OperationItemStatus.SUCCEEDED;
-          afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, commentPosted: false };
+          afterData = {
+            taskId: task.id,
+            title: task.title,
+            assignedUserIds: nextAssigned,
+            commentPosted: false,
+            clusterCommentPosted: false
+          };
         }
 
         // Пауза 4 секунды после каждой записи в YouGile: после назначения перед
@@ -225,6 +265,14 @@ export async function processAssignmentOperation(
           phase = "comment";
           await postChatMessage(client, task.id, commentText);
           afterData = { ...afterData, commentPosted: true };
+          await delayBetweenYougileActions();
+        }
+
+        if (cluster) {
+          phase = "cluster";
+          const clusterContent = clusterMessage(item.siteId, cluster);
+          await postChatMessage(client, task.id, clusterContent.text, clusterContent.textHtml);
+          afterData = { ...afterData, clusterCommentPosted: true };
           await delayBetweenYougileActions();
         }
       } catch (error) {
@@ -269,6 +317,16 @@ export async function processAssignmentOperation(
     item.status === OperationItemStatus.SKIPPED ||
     item.status === OperationItemStatus.FAILED
   ).length;
+  // Комментарии кластера отправляются по строкам XLSX со столбцом «klaster» даже
+  // без шаблона комментария — учитываем их в финальной фразе операции.
+  const clusterRequested = operation.items.some((item) => {
+    const before = item.beforeData;
+    return Boolean(
+      before && typeof before === "object" && !Array.isArray(before) &&
+      "cluster" in before && typeof (before as { cluster?: unknown }).cluster === "string" &&
+      (before as { cluster: string }).cluster.trim()
+    );
+  });
   const status = failed === 0
     ? OperationStatus.SUCCEEDED
     : failed === completed
@@ -282,7 +340,7 @@ export async function processAssignmentOperation(
       completed,
       failed,
       message: failed === 0
-        ? commentsRequested ? "Назначение и комментарии завершены." : "Назначение завершено."
+        ? commentsRequested || clusterRequested ? "Назначение и комментарии завершены." : "Назначение завершено."
         : `Не удалось обновить площадки: ${failed} из ${operation.total}.`,
       finishedAt: new Date()
     }

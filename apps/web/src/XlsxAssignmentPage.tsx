@@ -56,6 +56,7 @@ type AssignmentPreview = {
     currentUserIds: string[];
     alreadyAssigned: boolean;
     comment: string;
+    cluster: string | null;
     currentEngineers: { id: string; name: string }[];
   }[];
 };
@@ -508,13 +509,13 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
           {preview && (
             <div className="panel xlsx-assignment-preview" ref={previewStepRef}>
               <div className="assignment-panel-heading"><div><h2>3. Предпросмотр изменений</h2><p>{countRu(preview.count, siteForms)}, только из загруженного XLSX</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
-              <div className="preview-summary">Для каждой строки будет назначен инженер из XLSX, а сформированный по её дате и времени комментарий отправлен в чат задачи. Существующие ответственные сохраняются; комментарий отправится и если инженер уже назначен.</div>
+              <div className="preview-summary">Для каждой строки будет назначен инженер из XLSX, а сформированный по её дате и времени комментарий отправлен в чат задачи. Если в строке заполнен столбец «klaster», в чат дополнительно уйдёт комментарий кластера («Обрати внимание! Кластер: площадка-кластер»). Существующие ответственные сохраняются; комментарий отправится и если инженер уже назначен.</div>
               <blockquote className="comment-preview"><strong>Шаблон:</strong> {comment.trim()}</blockquote>
               <div className="xlsx-preview-list">
                 {preview.items.map((item) => (
                   <div className="xlsx-preview-row" key={item.rowNumber}>
                     <span className="site-number">{item.siteId}</span>
-                    <span className="xlsx-preview-address" title={item.address ?? ""}>{item.address ?? "Адрес не указан"}<small>Строка {item.rowNumber}</small></span>
+                    <span className="xlsx-preview-address" title={item.address ?? ""}>{item.address ?? "Адрес не указан"}<small>Строка {item.rowNumber}{item.cluster ? ` · Кластер: ${item.cluster}` : ""}</small></span>
                     <span className="xlsx-preview-engineer">{item.engineerName}<small>{item.alreadyAssigned ? "Уже назначен" : "Будет добавлен"}</small></span>
                     <span className="xlsx-preview-current" title={item.currentEngineers.map((user) => user.name).join(", ")}>
                       <span>Сейчас: {item.currentEngineers.map((user) => user.name).join(", ") || "нет ответственных"}</span>

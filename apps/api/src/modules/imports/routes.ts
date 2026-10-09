@@ -23,7 +23,7 @@ import {
 } from "../assignments/service.js";
 import { importRemovalSchema, prepareImportRemoval } from "../assignments/removal.js";
 import { getPlannedSites } from "../sites/service.js";
-import { renderCommentTemplate } from "./comment-template.js";
+import { renderCommentTemplate, getRawField } from "./comment-template.js";
 import { parsePlanWorkbook } from "./xlsx.js";
 
 const maxStoredImports = 5;
@@ -110,6 +110,11 @@ type PreparedImportItem = {
   currentUserIds: string[];
   alreadyAssigned: boolean;
   comment: string;
+  // Значение столбца «klaster» XLSX: после назначения инженера в чат задачи
+  // уходит комментарий кластера («Обрати внимание! Кластер: площадка-кластер»),
+  // как в n8n-воркфлоу «Yougile - add users». null — кластера в строке нет,
+  // комментарий не отправляется.
+  cluster: string | null;
 };
 
 function describeImportRowProblems(row: {
@@ -791,7 +796,8 @@ export async function registerImportRoutes(
           userId: user.id,
           currentUserIds: preview.currentUserIds,
           alreadyAssigned: preview.alreadyAssigned,
-          comment: renderCommentTemplate(input.commentTemplate, row.rawData)
+          comment: renderCommentTemplate(input.commentTemplate, row.rawData),
+          cluster: getRawField(row.rawData, "klaster") || null
         };
       })
     };
@@ -950,7 +956,8 @@ export async function registerImportRoutes(
                   assignedUserIds: item.currentUserIds,
                   importRowNumber: item.rowNumber,
                   engineerName: item.engineerName,
-                  commentText: item.comment
+                  commentText: item.comment,
+                  cluster: item.cluster
                 }
               }))
             }

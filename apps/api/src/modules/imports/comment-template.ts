@@ -2,7 +2,13 @@ function normalizeHeader(header: string) {
   return header.normalize("NFKC").trim().toLocaleLowerCase("ru").replace(/[^a-zа-яё0-9]/gi, "");
 }
 
-function getField(rawData: unknown, name: string) {
+/**
+ * Значение колонки XLSX по её имени (заголовок ищется без учёта регистра и
+ * лишних символов — «klaster», «Кластер» и «кл астер» считаются одной колонкой).
+ * Пустая строка, если колонки нет или значение не строка. Нужна не только для
+ * шаблонов комментариев, но и для комментария кластера при назначении.
+ */
+export function getRawField(rawData: unknown, name: string) {
   if (!rawData || typeof rawData !== "object" || Array.isArray(rawData)) return "";
 
   const field = Object.entries(rawData).find(([header]) => normalizeHeader(header) === normalizeHeader(name))?.[1];
@@ -37,9 +43,9 @@ function nextDateRange(value: string) {
 }
 
 export function renderCommentTemplate(template: string, rawData: unknown) {
-  const time = getField(rawData, "time");
-  let data = getField(rawData, "data");
-  const day = getField(rawData, "day").toLocaleLowerCase("ru");
+  const time = getRawField(rawData, "time");
+  let data = getRawField(rawData, "data");
+  const day = getRawField(rawData, "day").toLocaleLowerCase("ru");
 
   if (data && day === "ночь") data = nextDateRange(data);
 

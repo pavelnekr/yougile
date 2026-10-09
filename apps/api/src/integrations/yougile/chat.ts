@@ -199,10 +199,15 @@ export async function readLatestChatMessage(client: YougileClient, taskId: strin
   return (await readLatestChatMessageDetailed(client, taskId)).latest;
 }
 
-export async function postChatMessage(client: YougileClient, taskId: string, text: string) {
+/**
+ * Отправка сообщения в чат задачи. Текст можно дополнить `textHtml` — тогда
+ * YouGile получит оба поля, как это делал n8n-воркфлоу назначения для
+ * комментария кластера.
+ */
+export async function postChatMessage(client: YougileClient, taskId: string, text: string, textHtml?: string) {
   await client.request(`chats/${encodeURIComponent(taskId)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text })
+    body: JSON.stringify(textHtml ? { text, textHtml } : { text })
   });
 }
