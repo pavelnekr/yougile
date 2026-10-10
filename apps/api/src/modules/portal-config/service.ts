@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
+import { YougileApiError, type YougileClient } from "../../integrations/yougile/client.js";
 import type { PortalColumn } from "./schema.js";
 
 export const planColumnSettingKey = "portal-config:plan-column";
@@ -54,4 +55,28 @@ export async function loadAvrColumns(prisma: PrismaClient): Promise<PortalColumn
     if (column) columns.push(column);
   }
   return columns;
+}
+
+// Проверка, что колонка с таким ID существует в YouGile и доступна токену из
+// запроса. Один дешёвый запрос первых страниц без разбора содержимого: если
+// колонки нет, YouGile отвечает 404. Используется при сохранении конфигурации
+// (не сохранять заведомо битый ID) и для статуса рядом с полем ID.
+export type ColumnCheckResult =
+  | { status: "ok" }
+  | { status: "not_found" }
+  | { status: "error"; reason: string };
+
+export async function checkColumnInYougile(client: YougileClient, columnId: string): Promise<ColumnCheckResult> {
+  try {
+    await client.request(`task-list?columnId=${encodeURIComponent(columnId)}&limit=1&offset=0`);
+    return { status: "ok" };
+  } catch (error) {
+    if (error instanceof YougileApiError && error.statusCode === 404) {
+      return { status: "not_found" };
+    }
+    if (error instanceof YougileApiError && (error.statusCode === 401 || error.statusCode === 403)) {
+      return { status: "error", reason: "токен YouGile не даёт доступа к этому столбцу" };
+    }
+    return { status: "error", reason: "не удалось связаться с YouGile" };
+  }
 }

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Info, LoaderCircle, Plus, Save, SlidersHorizontal, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, Info, LoaderCircle, Plus, Save, SlidersHorizontal, Trash2, XCircle } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import { columnForms, countRu, recipientForms } from "./plural";
 import { PORTAL_VERSION } from "./version";
@@ -7,6 +7,16 @@ import { PORTAL_VERSION } from "./version";
 type PortalColumn = { id: string; name: string };
 type LoadState = "loading" | "ready" | "error";
 type TabKey = "filter" | "avr" | "mail";
+
+// Состояние проверки ID столбца в YouGile. «none» — проверка ещё не запускалась
+// (пустой ID), «invalid» — фронтовая проверка формата, остальное — ответ API.
+type ColumnStatusInfo =
+  | { state: "none"; message: "" }
+  | { state: "invalid"; message: string }
+  | { state: "checking"; message: "" }
+  | { state: "ok"; message: string }
+  | { state: "not_found"; message: string }
+  | { state: "error"; message: string };
 
 // Параметры SMTP из API. Пароль сервер не отдаёт — только факт, что он задан:
 // поле пароля в форме заполняется заново только при смене.
@@ -51,6 +61,68 @@ function validateColumns(columns: PortalColumn[]): string | null {
 }
 
 /**
+ * Проверяет один ID столбца в YouGile (GET /api/portal-config/column-status).
+ * Пустой ID — «проверять нечего», неверный формат ловится на месте без запроса.
+ */
+async function fetchColumnStatus(id: string, signal?: AbortSignal): Promise<ColumnStatusInfo> {
+  const trimmed = id.trim();
+  if (!trimmed) return { state: "none", message: "" };
+  if (!columnIdPattern.test(trimmed)) return { state: "invalid", message: "ID должен быть в формате UUID" };
+  try {
+    const response = await apiFetch(`/api/portal-config/column-status?id=${encodeURIComponent(trimmed)}`, { signal });
+    const data = await response.json().catch(() => null) as {
+      status?: string;
+      message?: string;
+      error?: string;
+    } | null;
+    if (!response.ok) throw new Error(data?.error ?? "Не удалось проверить столбец.");
+    switch (data?.status) {
+      case "ok":
+        return { state: "ok", message: data.message ?? "Столбец подключён" };
+      case "not_found":
+        return { state: "not_found", message: data.message ?? "Не найден в YouGile" };
+      default:
+        return { state: "error", message: data?.message ?? "Не удалось проверить столбец." };
+    }
+  } catch (reason) {
+    if (signal?.aborted) throw reason;
+    return { state: "error", message: errorMessage(reason) };
+  }
+}
+
+/** Бейдж статуса ID столбца: «Проверяем…», «Подключён» или причина ошибки. */
+function ColumnStatusBadge({ info }: { info: ColumnStatusInfo }) {
+  if (info.state === "none") return null;
+  const commonProps = { title: info.message, role: "status" as const };
+  if (info.state === "checking") {
+    return (
+      <span className="column-status column-status-checking" {...commonProps}>
+        <LoaderCircle size={12} className="template-spinner" /> Проверяем…
+      </span>
+    );
+  }
+  if (info.state === "invalid") {
+    return (
+      <span className="column-status column-status-error" {...commonProps}>
+        <XCircle size={12} /> Неверный формат
+      </span>
+    );
+  }
+  if (info.state === "ok") {
+    return (
+      <span className="column-status column-status-ok" {...commonProps}>
+        <CheckCircle2 size={12} /> Подключён
+      </span>
+    );
+  }
+  return (
+    <span className="column-status column-status-error" {...commonProps}>
+      <XCircle size={12} /> {info.state === "not_found" ? "Не найден в YouGile" : "Ошибка проверки"}
+    </span>
+  );
+}
+
+/**
  * Конфигурация портала: ID столбцов YouGile. Раздел виден только администраторам,
  * роль проверена и в меню (App.tsx), и в API (requireRole).
  *
@@ -73,6 +145,14 @@ export default function PortalConfigPage({
   const [savedPlan, setSavedPlan] = useState<PortalColumn>({ id: "", name: "" });
   const [avr, setAvr] = useState<PortalColumn[]>([]);
   const [savedAvr, setSavedAvr] = useState<PortalColumn[]>([]);
+
+  // Статусы ID столбцов в YouGile: «Подключён» или причина ошибки. Проверяются
+  // при загрузке, после сохранения и при потере фокуса полем ID.
+  const [planStatus, setPlanStatus] = useState<ColumnStatusInfo>({ state: "none", message: "" });
+  const [avrStatuses, setAvrStatuses] = useState<ColumnStatusInfo[]>([]);
+  // Отмена висящих проверок при новом вводе: ответ старого запроса не должен
+  // перезаписать статус, введённый после него. Ключ — "plan" или номер строки.
+  const statusAborters = useRef(new Map<string | number, AbortController>());
 
   const [mailRecipients, setMailRecipients] = useState<string[]>([]);
   const [savedMailRecipients, setSavedMailRecipients] = useState<string[]>([]);
@@ -109,12 +189,47 @@ export default function PortalConfigPage({
       setSavedPlan(data.plan);
       setAvr(data.avr ?? []);
       setSavedAvr(data.avr ?? []);
+      setAvrStatuses((data.avr ?? []).map(() => ({ state: "none", message: "" })));
       setLoadState("ready");
+      // Сразу проверяем сохранённые ID — статус виден ещё до редактирования.
+      if (data.plan?.id.trim()) void runColumnCheck("plan", data.plan.id);
+      (data.avr ?? []).forEach((column, index) => {
+        if (column.id.trim()) void runColumnCheck(index, column.id);
+      });
     } catch (reason) {
       if (signal?.aborted) return;
       setLoadError(errorMessage(reason));
       setLoadState("error");
     }
+  }, []);
+
+  // Запуск проверки ID столбца. Ключ «plan» — столбец «Фильтрация», число —
+  // строка списка АВР. Начало нового запуска отменяет предыдущий висящий запрос
+  // для того же ключа, чтобы устаревший ответ не перезаписал свежий статус.
+  const runColumnCheck = useCallback(async (key: "plan" | number, id: string) => {
+    statusAborters.current.get(key)?.abort();
+    const controller = new AbortController();
+    statusAborters.current.set(key, controller);
+    const apply = (value: ColumnStatusInfo) => {
+      if (key === "plan") {
+        setPlanStatus(value);
+      } else {
+        setAvrStatuses((current) => current.map((item, index) => (index === key ? value : item)));
+      }
+    };
+    apply({ state: "checking", message: "" });
+    try {
+      const result = await fetchColumnStatus(id, controller.signal);
+      if (!controller.signal.aborted) apply(result);
+    } catch {
+      // Запрос отменён новым запуском — результат устарел, ничего не делаем.
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      statusAborters.current.forEach((controller) => controller.abort());
+    };
   }, []);
 
   useEffect(() => {
@@ -207,10 +322,16 @@ export default function PortalConfigPage({
       if (!response.ok || !data.plan) throw new Error(data.error ?? "Не удалось сохранить столбец «Фильтрация».");
       setPlan(data.plan);
       setSavedPlan(data.plan);
+      setPlanStatus({ state: "ok", message: "Столбец подключён" });
       setNotice("Столбец «Фильтрация» сохранён. Обзор уже перечитывает список площадок из новой колонки.");
       onPlanColumnChanged?.();
     } catch (reason) {
       setError(errorMessage(reason));
+      // Сервер отклонил столбец (например, не найден в YouGile) — перечитываем
+      // статус, чтобы бейдж показал причину, а не устаревший «Подключён».
+      statusAborters.current.get("plan")?.abort();
+      setPlanStatus({ state: "none", message: "" });
+      if (trimmed.id.trim()) void runColumnCheck("plan", trimmed.id);
     } finally {
       setSavingPlan(false);
     }
@@ -238,12 +359,21 @@ export default function PortalConfigPage({
       if (!response.ok || !data.avr) throw new Error(data.error ?? "Не удалось сохранить столбцы АВР.");
       setAvr(data.avr);
       setSavedAvr(data.avr);
+      statusAborters.current.forEach((controller) => controller.abort());
+      setAvrStatuses(data.avr.map<ColumnStatusInfo>(() => ({ state: "ok", message: "Столбец подключён" })));
       setNotice("Столбцы АВР сохранены. Обзор и страница «Площадки АВР» перечитывают список.");
       // Столбцы изменились, значит изменился и состав площадок АВР — просим
       // обзор перечитать единый список сразу после сохранения.
       onAvrColumnsChanged?.();
     } catch (reason) {
       setError(errorMessage(reason));
+      // Сервер отклонил список (например, столбец не найден в YouGile) —
+      // перечитываем статусы строк, чтобы бейджи показали причины.
+      statusAborters.current.forEach((controller) => controller.abort());
+      setAvrStatuses(trimmed.map<ColumnStatusInfo>(() => ({ state: "none", message: "" })));
+      trimmed.forEach((column, index) => {
+        if (column.id.trim()) void runColumnCheck(index, column.id);
+      });
     } finally {
       setSavingAvr(false);
     }
@@ -253,18 +383,26 @@ export default function PortalConfigPage({
     setError("");
     setNotice("");
     setAvr((current) => current.map((column, position) => position === index ? { ...column, ...patch } : column));
+    // Смена ID делает текущий статус устаревшим: убираем его и гасим проверку.
+    if (patch.id !== undefined) {
+      statusAborters.current.get(index)?.abort();
+      setAvrStatuses((current) => current.map((item, position) => (position === index ? { state: "none", message: "" } : item)));
+    }
   };
 
   const removeAvrColumn = (index: number) => {
     setError("");
     setNotice("");
+    statusAborters.current.get(index)?.abort();
     setAvr((current) => current.filter((_, position) => position !== index));
+    setAvrStatuses((current) => current.filter((_, position) => position !== index));
   };
 
   const addAvrColumn = () => {
     setError("");
     setNotice("");
     setAvr((current) => [...current, { id: "", name: "" }]);
+    setAvrStatuses((current) => [...current, { state: "none", message: "" }]);
   };
 
   /** Первая ошибка списка получателей или null, если всё заполнено правильно. */
@@ -470,14 +608,19 @@ export default function PortalConfigPage({
                 />
               </label>
               <label className="field-label" htmlFor="portal-config-plan-id"><span>ID столбца в YouGile</span>
-                <input
-                  id="portal-config-plan-id"
-                  value={plan.id}
-                  maxLength={36}
-                  disabled={savingPlan}
-                  placeholder="11111111-1111-4111-8111-111111111111"
-                  onChange={(event) => { setPlan((current) => ({ ...current, id: event.target.value })); setNotice(""); }}
-                />
+                <span className="portal-config-column">
+                  <input
+                    id="portal-config-plan-id"
+                    aria-label="ID столбца в YouGile"
+                    value={plan.id}
+                    maxLength={36}
+                    disabled={savingPlan}
+                    placeholder="11111111-1111-4111-8111-111111111111"
+                    onChange={(event) => { setPlan((current) => ({ ...current, id: event.target.value })); setPlanStatus({ state: "none", message: "" }); setNotice(""); }}
+                    onBlur={() => void runColumnCheck("plan", plan.id)}
+                  />
+                  <ColumnStatusBadge info={planStatus} />
+                </span>
               </label>
             </div>
 
@@ -497,7 +640,14 @@ export default function PortalConfigPage({
                 <button
                   className="text-button"
                   disabled={savingPlan}
-                  onClick={() => { setPlan(savedPlan); setError(""); setNotice(""); }}
+                  onClick={() => {
+                    setPlan(savedPlan);
+                    setError("");
+                    setNotice("");
+                    statusAborters.current.get("plan")?.abort();
+                    setPlanStatus({ state: "none", message: "" });
+                    if (savedPlan.id.trim()) void runColumnCheck("plan", savedPlan.id);
+                  }}
                 >
                   Отменить
                 </button>
@@ -544,14 +694,18 @@ export default function PortalConfigPage({
                         aria-label={`Название столбца, строка ${index + 1}`}
                         onChange={(event) => updateAvrColumn(index, { name: event.target.value })}
                       />
-                      <input
-                        value={column.id}
-                        maxLength={36}
-                        disabled={savingAvr}
-                        placeholder="00000000-0000-0000-0000-000000000000"
-                        aria-label={`ID столбца, строка ${index + 1}`}
-                        onChange={(event) => updateAvrColumn(index, { id: event.target.value })}
-                      />
+                      <span className="portal-config-column">
+                        <input
+                          value={column.id}
+                          maxLength={36}
+                          disabled={savingAvr}
+                          placeholder="00000000-0000-0000-0000-000000000000"
+                          aria-label={`ID столбца, строка ${index + 1}`}
+                          onChange={(event) => updateAvrColumn(index, { id: event.target.value })}
+                          onBlur={() => void runColumnCheck(index, column.id)}
+                        />
+                        <ColumnStatusBadge info={avrStatuses[index] ?? { state: "none", message: "" }} />
+                      </span>
                       <button
                         type="button"
                         className="icon-button portal-config-row-remove"
@@ -595,7 +749,17 @@ export default function PortalConfigPage({
                 <button
                   className="text-button"
                   disabled={savingAvr}
-                  onClick={() => { setAvr(savedAvr); setError(""); setNotice(""); }}
+                  onClick={() => {
+                    setAvr(savedAvr);
+                    setError("");
+                    setNotice("");
+                    statusAborters.current.forEach((controller) => controller.abort());
+                    const statuses = savedAvr.map<ColumnStatusInfo>(() => ({ state: "none", message: "" }));
+                    setAvrStatuses(statuses);
+                    savedAvr.forEach((column, index) => {
+                      if (column.id.trim()) void runColumnCheck(index, column.id);
+                    });
+                  }}
                 >
                   Отменить
                 </button>
