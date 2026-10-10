@@ -50,5 +50,21 @@ export const mailRecipientsSchema = z.object({
     )
 });
 
+// Параметры SMTP раздела «Согласование/Оповещение». Живут в AppSetting и
+// редактируются в «Конфигурации портала» → «Оповещения»; пустой host означает,
+// что отправка отключена. Пароль в ответах API не возвращается, только флаг
+// passwordSet; пустое поле при сохранении означает «оставить текущий пароль».
+export const smtpSettingsSchema = z.object({
+  host: z.string().trim().max(255, "Сервер не должен превышать 255 символов."),
+  port: z.coerce.number()
+    .int("Порт должен быть целым числом.")
+    .min(1, "Порт должен быть от 1 до 65535.")
+    .max(65535, "Порт должен быть от 1 до 65535."),
+  user: z.string().trim().max(255, "Логин не должен превышать 255 символов."),
+  password: z.string().max(255, "Пароль не должен превышать 255 символов."),
+  from: z.string().trim().max(254, "Адрес отправителя слишком длинный.")
+});
+
 export type PreviewFields = z.infer<typeof previewFieldsSchema>;
 export type SendLetter = z.infer<typeof sendLetterSchema>;
+export type SmtpSettingsInput = z.infer<typeof smtpSettingsSchema>;

@@ -4,14 +4,17 @@ import { config } from "../../config.js";
 import { previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
 import { requireRole } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
-import { mailRecipientsSchema, previewFieldsSchema, sendLetterSchema } from "./schema.js";
+import { mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
 import {
   buildLetterFromDocx,
   describeSendError,
   isSmtpConfigured,
   loadMailRecipients,
+  loadSmtpSettings,
   saveMailRecipients,
-  sendLetter
+  saveSmtpSettings,
+  sendLetter,
+  type SmtpSettings
 } from "./service.js";
 
 // Лимиты multipart для предпросмотра: глобальная регистрация в imports/routes.ts
@@ -29,16 +32,30 @@ const previewMultipartLimits = {
  * Раздел «Согласование/Оповещение»: предпросмотр письма по DOCX-плану
  * и отправка его по SMTP. Файл разбирается на сервере (mammoth), тема и тело
  * правятся оператором в предпросмотре, отправка — только по явному нажатию.
- * Список получателей живёт в AppSetting и редактируется в «Конфигурации
- * портала», параметры SMTP — в переменных окружения.
+ * Список получателей и параметры SMTP живут в AppSetting и редактируются
+ * в «Конфигурации портала» → «Оповещения».
  */
 export async function registerCoordinationRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const adminOnly = requireRole(PortalRole.ADMIN);
 
   app.get("/api/coordination/config", async (_request, reply) => {
     try {
-      const recipients = await loadMailRecipients(prisma);
-      return { recipients, smtpConfigured: isSmtpConfigured() };
+      const [recipients, settings] = await Promise.all([
+        loadMailRecipients(prisma),
+        loadSmtpSettings(prisma)
+      ]);
+      return {
+        recipients,
+        smtpConfigured: isSmtpConfigured(settings),
+        // Пароль в ответ не попадает — только флаг, что он задан.
+        smtp: {
+          host: settings.host,
+          port: settings.port,
+          user: settings.user,
+          from: settings.from,
+          passwordSet: settings.password.length > 0
+        }
+      };
     } catch (error) {
       app.log.error({ err: error }, "Could not read coordination config");
       return reply.code(500).send({ error: "Не удалось загрузить конфигурацию оповещений." });
@@ -61,6 +78,44 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       "Mail recipients updated via portal config"
     );
     return { recipients: parsed.data.recipients };
+  });
+
+  app.put("/api/coordination/smtp", { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = smtpSettingsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте параметры SMTP." });
+    }
+    let savedPasswordSet = false;
+    try {
+      // Пустой пароль в форме означает «не менять»: берём текущий (сохранённый
+      // или из окружения), чтобы правка хоста не обнулила учётные данные.
+      const current = await loadSmtpSettings(prisma);
+      const settings: SmtpSettings = {
+        host: parsed.data.host,
+        port: parsed.data.port,
+        user: parsed.data.user,
+        from: parsed.data.from,
+        password: parsed.data.password.trim() ? parsed.data.password : current.password
+      };
+      await saveSmtpSettings(prisma, settings);
+      savedPasswordSet = settings.password.length > 0;
+    } catch (error) {
+      app.log.error({ err: error }, "Could not save SMTP settings");
+      return reply.code(500).send({ error: "Не удалось сохранить параметры SMTP." });
+    }
+    app.log.warn(
+      { actor: request.sessionUser?.login, host: parsed.data.host },
+      "SMTP settings updated via portal config"
+    );
+    return {
+      smtp: {
+        host: parsed.data.host,
+        port: parsed.data.port,
+        user: parsed.data.user,
+        from: parsed.data.from,
+        passwordSet: savedPasswordSet
+      }
+    };
   });
 
   app.post("/api/coordination/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
@@ -126,7 +181,10 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте тему и текст письма." });
     }
 
-    const recipients = await loadMailRecipients(prisma);
+    const [recipients, smtpSettings] = await Promise.all([
+      loadMailRecipients(prisma),
+      loadSmtpSettings(prisma)
+    ]);
     const actor = request.sessionUser;
     const logBase = {
       actorId: actor?.id ?? null,
@@ -139,7 +197,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     };
 
     try {
-      const result = await sendLetter(parsed.data, recipients);
+      const result = await sendLetter(parsed.data, recipients, smtpSettings);
       void recordLog(prisma, {
         ...logBase,
         action: "POST /api/coordination/send",

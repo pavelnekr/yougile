@@ -8,6 +8,16 @@ type PortalColumn = { id: string; name: string };
 type LoadState = "loading" | "ready" | "error";
 type TabKey = "filter" | "avr" | "mail";
 
+// Параметры SMTP из API. Пароль сервер не отдаёт — только факт, что он задан:
+// поле пароля в форме заполняется заново только при смене.
+type SmtpSettings = {
+  host: string;
+  port: number;
+  user: string;
+  from: string;
+  passwordSet: boolean;
+};
+
 // ID колонки YouGile — UUID. Как и на бэкенде, сверяем только форму записи,
 // без проверки версии: важен сам идентификатор, а не какая версия UUID.
 const columnIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -70,9 +80,20 @@ export default function PortalConfigPage({
   const [mailLoadError, setMailLoadError] = useState("");
   const [smtpConfigured, setSmtpConfigured] = useState(false);
 
+  const emptySmtp: SmtpSettings = { host: "", port: 465, user: "", from: "", passwordSet: false };
+  const [smtp, setSmtp] = useState<SmtpSettings>(emptySmtp);
+  const [savedSmtp, setSavedSmtp] = useState<SmtpSettings>(emptySmtp);
+  // Пароль сервер не возвращает: поле живёт отдельно и отправляется только
+  // если пользователь его заполнил. Пустая строка = «не менять пароль».
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpLoaded, setSmtpLoaded] = useState(false);
+  const [smtpError, setSmtpError] = useState("");
+  const [smtpNotice, setSmtpNotice] = useState("");
+
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingAvr, setSavingAvr] = useState(false);
   const [savingMail, setSavingMail] = useState(false);
+  const [savingSmtp, setSavingSmtp] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -102,19 +123,34 @@ export default function PortalConfigPage({
     return () => controller.abort();
   }, [load]);
 
-  // Получатели писем живут в другом API-модуле (coordination), поэтому
-  // грузятся отдельно от столбцов: сбой одной настройки не должен блокировать
-  // другую. Загрузка один раз, дальше страница работает с памятью.
+  // Получатели писем и параметры SMTP живут в другом API-модуле (coordination),
+  // поэтому грузятся отдельно от столбцов: сбой одной настройки не должен
+  // блокировать другую. Загрузка один раз, дальше страница работает с памятью.
   const loadMail = useCallback(async (signal?: AbortSignal) => {
     setMailLoadError("");
     try {
       const response = await apiFetch("/api/coordination/config", { signal });
-      const data = await response.json() as { recipients?: string[]; smtpConfigured?: boolean; error?: string };
+      const data = await response.json() as {
+        recipients?: string[];
+        smtpConfigured?: boolean;
+        smtp?: SmtpSettings;
+        error?: string;
+      };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить получателей писем.");
       const recipients = Array.isArray(data.recipients) ? data.recipients : [];
       setMailRecipients(recipients);
       setSavedMailRecipients(recipients);
       setSmtpConfigured(Boolean(data.smtpConfigured));
+      const nextSmtp: SmtpSettings = {
+        host: data.smtp?.host ?? "",
+        port: Number(data.smtp?.port) || 465,
+        user: data.smtp?.user ?? "",
+        from: data.smtp?.from ?? "",
+        passwordSet: Boolean(data.smtp?.passwordSet)
+      };
+      setSmtp(nextSmtp);
+      setSavedSmtp(nextSmtp);
+      setSmtpLoaded(true);
       setMailLoaded(true);
     } catch (reason) {
       if (signal?.aborted) return;
@@ -131,11 +167,18 @@ export default function PortalConfigPage({
   const planChanged = plan.id !== savedPlan.id || plan.name !== savedPlan.name;
   const avrChanged = JSON.stringify(avr) !== JSON.stringify(savedAvr);
   const mailChanged = JSON.stringify(mailRecipients) !== JSON.stringify(savedMailRecipients);
+  // Пароль в сравнение не входит: он не показывается, а само наличие введённой
+  // строки уже делает форму «грязной».
+  const portChanged = Number(smtp.port) !== Number(savedSmtp.port);
+  const smtpChanged = !smtpLoaded || smtp.host !== savedSmtp.host || portChanged ||
+    smtp.user !== savedSmtp.user || smtp.from !== savedSmtp.from || smtpPassword !== "";
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
     setError("");
     setNotice("");
+    setSmtpError("");
+    setSmtpNotice("");
   };
 
   const savePlan = async () => {
@@ -284,6 +327,58 @@ export default function PortalConfigPage({
     setError("");
     setNotice("");
     setMailRecipients((current) => current.length >= 20 ? current : [...current, ""]);
+  };
+
+  const updateSmtpField = (patch: Partial<Omit<SmtpSettings, "passwordSet">>) => {
+    setSmtpError("");
+    setSmtpNotice("");
+    setSmtp((current) => ({ ...current, ...patch }));
+  };
+
+  const saveSmtp = async () => {
+    if (savingSmtp || !smtpChanged) return;
+    const host = smtp.host.trim();
+    const port = Number(smtp.port);
+    const user = smtp.user.trim();
+    const from = smtp.from.trim();
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setSmtpNotice("");
+      setSmtpError("Порт должен быть целым числом от 1 до 65535.");
+      return;
+    }
+    if (from && !emailPattern.test(from)) {
+      setSmtpNotice("");
+      setSmtpError("Проверьте адрес отправителя (поле «От кого»).");
+      return;
+    }
+    setSavingSmtp(true);
+    setSmtpError("");
+    setSmtpNotice("");
+    try {
+      const response = await apiFetch("/api/coordination/smtp", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host, port, user, from, password: smtpPassword })
+      });
+      const data = await response.json() as { smtp?: SmtpSettings; error?: string };
+      if (!response.ok || !data.smtp) throw new Error(data.error ?? "Не удалось сохранить параметры SMTP.");
+      const nextSmtp: SmtpSettings = {
+        host: data.smtp.host,
+        port: Number(data.smtp.port) || 465,
+        user: data.smtp.user,
+        from: data.smtp.from,
+        passwordSet: Boolean(data.smtp.passwordSet)
+      };
+      setSmtp(nextSmtp);
+      setSavedSmtp(nextSmtp);
+      setSmtpPassword("");
+      setSmtpConfigured(nextSmtp.host.length > 0);
+      setSmtpNotice(nextSmtp.host ? "Настройки SMTP сохранены: отправка писем включена." : "Настройки SMTP сохранены: отправка писем отключена.");
+    } catch (reason) {
+      setSmtpError(errorMessage(reason));
+    } finally {
+      setSavingSmtp(false);
+    }
   };
 
   return (
@@ -574,8 +669,8 @@ export default function PortalConfigPage({
               <Info size={14} />
               <span>
                 {smtpConfigured
-                  ? "SMTP настроен: письма отправляет сервер портала, параметры подключения (SMTP_HOST и другие) задаются в переменных окружения."
-                  : "SMTP не настроен: предпросмотр писем доступен, но отправка будет отклоняться, пока в настройках портала не задан SMTP_HOST."}
+                  ? "SMTP настроен: письма отправляет сервер портала. Параметры подключения хранятся в этом разделе ниже."
+                  : "SMTP не настроен: предпросмотр писем доступен, но отправка будет отклоняться, пока вы не укажете SMTP-сервер в подразделе ниже."}
               </span>
             </div>
 
@@ -606,6 +701,109 @@ export default function PortalConfigPage({
                 >
                   Отменить
                 </button>
+              )}
+            </div>
+
+            <div className="portal-config-subsection">
+              <div className="portal-config-section-heading">
+                <div>
+                  <h2>SMTP-сервер</h2>
+                  <p>Параметры подключения к почтовому серверу, которым отправляются письма согласования. Пустой сервер означает, что отправка отключена.</p>
+                </div>
+                <span className={`portal-config-save-state ${smtpChanged ? "portal-config-save-state-dirty" : ""}`}>
+                  {smtpChanged ? "Есть несохранённые изменения" : smtpConfigured ? "Подключение задано" : "Отправка отключена"}
+                </span>
+              </div>
+
+              {!smtpLoaded ? (
+                <div className="portal-config-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем параметры SMTP…</div>
+              ) : (
+                <>
+                  <div className="portal-config-fields">
+                    <label className="field-label" htmlFor="portal-config-smtp-host"><span>SMTP-сервер</span>
+                      <input
+                        id="portal-config-smtp-host"
+                        value={smtp.host}
+                        maxLength={255}
+                        disabled={savingSmtp}
+                        placeholder="mail.example.ru"
+                        onChange={(event) => updateSmtpField({ host: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label" htmlFor="portal-config-smtp-port"><span>Порт (465 — TLS, 587/25 — STARTTLS)</span>
+                      <input
+                        id="portal-config-smtp-port"
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={smtp.port}
+                        disabled={savingSmtp}
+                        onChange={(event) => updateSmtpField({ port: Number(event.target.value) })}
+                      />
+                    </label>
+                    <label className="field-label" htmlFor="portal-config-smtp-user"><span>Логин (пусто — сервер без аутентификации)</span>
+                      <input
+                        id="portal-config-smtp-user"
+                        value={smtp.user}
+                        maxLength={255}
+                        disabled={savingSmtp}
+                        placeholder="agent@example.ru"
+                        onChange={(event) => updateSmtpField({ user: event.target.value })}
+                      />
+                    </label>
+                    <label className="field-label" htmlFor="portal-config-smtp-password"><span>Пароль</span>
+                      <input
+                        id="portal-config-smtp-password"
+                        type="password"
+                        maxLength={255}
+                        disabled={savingSmtp}
+                        autoComplete="new-password"
+                        placeholder={smtp.passwordSet ? "•••••••• (не меняется)" : "Оставьте пустым, если не требуется"}
+                        value={smtpPassword}
+                        onChange={(event) => { setSmtpPassword(event.target.value); setSmtpError(""); setSmtpNotice(""); }}
+                      />
+                    </label>
+                    <label className="field-label" htmlFor="portal-config-smtp-from"><span>От кого (пусто — берётся логин)</span>
+                      <input
+                        id="portal-config-smtp-from"
+                        type="email"
+                        value={smtp.from}
+                        maxLength={254}
+                        disabled={savingSmtp}
+                        placeholder="daps-agent@dcoa.ru"
+                        onChange={(event) => updateSmtpField({ from: event.target.value })}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="portal-config-note">
+                    <Info size={14} />
+                    <span>Пароль хранится в настройках портала и не показывается в интерфейсе. Пустое поле при сохранении оставляет текущий пароль без изменений.</span>
+                  </div>
+
+                  {smtpError && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{smtpError}</div>}
+                  {smtpNotice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{smtpNotice}</div>}
+
+                  <div className="portal-config-actions">
+                    <button
+                      className="btn-primary"
+                      disabled={savingSmtp || !smtpChanged}
+                      onClick={() => void saveSmtp()}
+                    >
+                      {savingSmtp ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
+                      {savingSmtp ? "Сохраняем…" : "Сохранить"}
+                    </button>
+                    {smtpChanged && (
+                      <button
+                        className="text-button"
+                        disabled={savingSmtp}
+                        onClick={() => { setSmtp(savedSmtp); setSmtpPassword(""); setSmtpError(""); setSmtpNotice(""); }}
+                      >
+                        Отменить
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>

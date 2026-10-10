@@ -42,8 +42,68 @@ export async function saveMailRecipients(prisma: PrismaClient, recipients: strin
   });
 }
 
-export function isSmtpConfigured(): boolean {
-  return config.SMTP_HOST.length > 0;
+// Параметры SMTP тоже живут в AppSetting (см. smtpSettingsSettingKey) и
+// редактируются в «Конфигурации портала» → «Оповещения», а не в файлах
+// окружения. Пароль хранится в БД как есть и никуда не возвращается через API.
+export type SmtpSettings = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  from: string;
+};
+
+// Ключ настройки параметров SMTP.
+export const smtpSettingsSettingKey = "coordination:smtp-settings";
+
+// Значение по умолчанию — переменные окружения SMTP_*: пока администратор ничего
+// не сохранил в «Конфигурации портала», портал работает ровно как раньше.
+export const defaultSmtpSettings: SmtpSettings = {
+  host: config.SMTP_HOST,
+  port: config.SMTP_PORT,
+  user: config.SMTP_USER,
+  password: config.SMTP_PASSWORD,
+  from: config.SMTP_FROM
+};
+
+function normalizePort(value: unknown): number {
+  const port = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : 465;
+}
+
+// Повреждённая запись не роняет сервис: параметры остаются на значении по умолчанию.
+function readSmtpSettings(value: unknown): SmtpSettings | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.host !== "string") return null;
+  return {
+    host: candidate.host.trim(),
+    port: normalizePort(candidate.port),
+    user: typeof candidate.user === "string" ? candidate.user.trim() : "",
+    password: typeof candidate.password === "string" ? candidate.password : "",
+    from: typeof candidate.from === "string" ? candidate.from.trim() : ""
+  };
+}
+
+export async function loadSmtpSettings(prisma: PrismaClient): Promise<SmtpSettings> {
+  try {
+    const setting = await prisma.appSetting.findUnique({ where: { key: smtpSettingsSettingKey } });
+    return readSmtpSettings(setting?.value) ?? defaultSmtpSettings;
+  } catch {
+    return defaultSmtpSettings;
+  }
+}
+
+export async function saveSmtpSettings(prisma: PrismaClient, settings: SmtpSettings): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key: smtpSettingsSettingKey },
+    create: { key: smtpSettingsSettingKey, value: settings },
+    update: { value: settings }
+  });
+}
+
+export function isSmtpConfigured(settings: SmtpSettings): boolean {
+  return settings.host.length > 0;
 }
 
 /**
@@ -62,23 +122,24 @@ export type SendResult = {
 };
 
 /**
- * Отправляет письмо по SMTP. Ошибки транспорта оборачиваются в понятный
- * русский текст для оператора, детали уходят в лог сервера.
+ * Отправляет письмо по SMTP. Настройки передаются из AppSetting (или значений по
+ * умолчанию из окружения). Ошибки транспорта оборачиваются в понятный русский
+ * текст для оператора, детали уходят в лог сервера.
  */
-export async function sendLetter(letter: SendLetter, recipients: string[]): Promise<SendResult> {
-  if (!isSmtpConfigured()) {
-    throw new Error("SMTP не настроен: укажите SMTP_HOST в переменных окружения портала.");
+export async function sendLetter(letter: SendLetter, recipients: string[], settings: SmtpSettings): Promise<SendResult> {
+  if (!isSmtpConfigured(settings)) {
+    throw new Error("SMTP не настроен: укажите SMTP_HOST в настройках портала.");
   }
   if (recipients.length === 0) {
     throw new Error("Нет получателей: добавьте адреса в разделе «Конфигурация портала».");
   }
 
   const transport = nodemailer.createTransport({
-    host: config.SMTP_HOST,
-    port: config.SMTP_PORT,
-    secure: config.SMTP_PORT === 465,
-    ...(config.SMTP_USER
-      ? { auth: { user: config.SMTP_USER, pass: config.SMTP_PASSWORD } }
+    host: settings.host,
+    port: settings.port,
+    secure: settings.port === 465,
+    ...(settings.user
+      ? { auth: { user: settings.user, pass: settings.password } }
       : {}),
     connectionTimeout: 15_000,
     greetingTimeout: 10_000,
@@ -87,7 +148,7 @@ export async function sendLetter(letter: SendLetter, recipients: string[]): Prom
 
   try {
     const info = await transport.sendMail({
-      from: config.SMTP_FROM || config.SMTP_USER,
+      from: settings.from || settings.user,
       to: recipients.join(", "),
       subject: letter.subject,
       html: letter.body

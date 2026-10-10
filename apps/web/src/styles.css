@@ -1121,6 +1121,9 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 /* У секций не задаём display: скрытая вкладка работает через атрибут hidden,
    и любое display в классе его перебило бы. */
 .portal-config-section { padding-top: 17px; }
+/* Подраздел внутри вкладки (например, SMTP в «Оповещениях»): отделён чертой,
+   чтобы два блока настроек не сливались. */
+.portal-config-subsection { margin-top: 26px; padding-top: 20px; border-top: 1px solid #eff1f5; }
 .portal-config-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 15px; }
 .portal-config-section-heading h2 { margin: 0; color: #354056; font-size: 15px; }
 .portal-config-section-heading p { margin: 5px 0 0; color: #8b95a5; font-size: 9px; line-height: 1.5; }

@@ -352,7 +352,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
                   Изменить данные
                 </button>
               </div>
-              {!smtpReady && <span className="coordination-form-hint">Отправка включается переменной SMTP_HOST в настройках портала.</span>}
+              {!smtpReady && <span className="coordination-form-hint">Отправка включается настройкой SMTP-сервера в «Конфигурация портала» → «Оповещения».</span>}
             </div>
           )}
         </>
