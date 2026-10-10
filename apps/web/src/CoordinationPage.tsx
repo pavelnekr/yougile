@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -34,6 +34,12 @@ type LetterPreview = {
   warnings: string[];
 };
 type SentLetter = { recipients: string[]; subject: string };
+// Состояние панели правки таблицы: она видна, пока курсор над таблицей.
+// Счётчики нужны, чтобы гасить кнопки удаления, когда строка/столбец последний.
+type TableToolbarState = {
+  rowCount: number;
+  columnCount: number;
+};
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось выполнить запрос.";
@@ -60,6 +66,8 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
 
   const [preview, setPreview] = useState<LetterPreview | null>(null);
   const [bodyMode, setBodyMode] = useState<"rendered" | "source">("rendered");
+  const [bodyRevision, setBodyRevision] = useState(0);
+  const [tableToolbar, setTableToolbar] = useState<TableToolbarState | null>(null);
   const [sent, setSent] = useState<SentLetter | null>(null);
 
   const [busy, setBusy] = useState(false);
@@ -68,6 +76,14 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
 
   const previewStepRef = useRef<HTMLDivElement>(null);
   const sentStepRef = useRef<HTMLDivElement>(null);
+  const letterRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const latestBodyRef = useRef("");
+  latestBodyRef.current = preview?.body ?? "";
+  const hoverTableRef = useRef<HTMLTableElement | null>(null);
+  const hoverRowRef = useRef<HTMLTableRowElement | null>(null);
+  const hoverCellRef = useRef<HTMLTableCellElement | null>(null);
   const stepKey = sent ? "sent" : preview ? "preview" : null;
   const stepRef = stepKey === "sent" ? sentStepRef : previewStepRef;
   useStepScroll(stepKey, stepRef);
@@ -117,6 +133,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
       }
       setPreview(data);
       setBodyMode("rendered");
+      setBodyRevision((value) => value + 1);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -162,6 +179,172 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
 
   const updateBody = (nextBody: string) => {
     if (preview) setPreview({ ...preview, body: nextBody });
+  };
+
+  // В режиме «Просмотр» текст письма правится на месте (contentEditable). React не
+  // должен переписывать его содержимое на каждый ввод — иначе слетает каретка, —
+  // поэтому innerHTML выставляется только при сборке письма и при возврате из
+  // режима «HTML-код». Сам ввод уходит в preview.body через onInput.
+  useLayoutEffect(() => {
+    hoverTableRef.current = null;
+    hoverRowRef.current = null;
+    hoverCellRef.current = null;
+    setTableToolbar(null);
+    if (bodyMode !== "rendered") return;
+    const element = letterRef.current;
+    if (element) element.innerHTML = latestBodyRef.current;
+  }, [bodyMode, bodyRevision]);
+
+  // Панель показывается, пока курсор над таблицей. Позицию меняем только через
+  // ref (style), без состояния: иначе mousemove перерисовывал бы страницу на
+  // каждом пикселе. Счётчики в состоянии нужны лишь для гашения кнопок удаления.
+  const refreshTableToolbar = (table: HTMLTableElement, row: HTMLTableRowElement) => {
+    const rowCount = table.rows.length;
+    const columnCount = row.cells.length;
+    setTableToolbar((prev) =>
+      prev && prev.rowCount === rowCount && prev.columnCount === columnCount
+        ? prev
+        : { rowCount, columnCount }
+    );
+  };
+
+  // Панель встаёт над наведённой ячейкой (для шапки — под ней), по центру
+  // курсора. Так она не оказывается под курсором и не мешает ткнуть в ячейку, а
+  // подъём на панель не задевает соседнюю строку — операция идёт по той ячейке,
+  // которую пользователь видит.
+  const positionToolbar = (event?: { clientX: number }) => {
+    const toolbar = toolbarRef.current;
+    const frame = frameRef.current;
+    const cell = hoverCellRef.current;
+    if (!toolbar || !frame || !cell) return;
+    const frameRect = frame.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
+    const row = cell.parentElement as HTMLTableRowElement;
+    const above = row.rowIndex > 0;
+    const width = toolbar.offsetWidth;
+    const centerX = (event ? event.clientX : cellRect.left + cellRect.width / 2) - frameRect.left + frame.scrollLeft;
+    const minLeft = frame.scrollLeft + 4;
+    const maxLeft = frame.scrollLeft + frame.clientWidth - width - 4;
+    const left = Math.max(minLeft, Math.min(centerX - width / 2, Math.max(minLeft, maxLeft)));
+    const cellTop = cellRect.top - frameRect.top + frame.scrollTop;
+    const cellBottom = cellRect.bottom - frameRect.top + frame.scrollTop;
+    toolbar.style.left = `${left}px`;
+    toolbar.style.top = `${above ? cellTop + 2 : cellBottom - 2}px`;
+    toolbar.style.transform = above ? "translateY(-100%)" : "none";
+  };
+
+  const clearTableHover = () => {
+    hoverTableRef.current = null;
+    hoverRowRef.current = null;
+    hoverCellRef.current = null;
+    setTableToolbar(null);
+  };
+
+  const handleLetterMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const cell = (event.target as HTMLElement).closest("td, th") as HTMLTableCellElement | null;
+    const table = cell?.closest("table") as HTMLTableElement | null;
+    const row = cell?.parentElement as HTMLTableRowElement | null;
+    if (!cell || !table || !row) {
+      if (hoverTableRef.current) clearTableHover();
+      return;
+    }
+    hoverTableRef.current = table;
+    hoverRowRef.current = row;
+    hoverCellRef.current = cell;
+    refreshTableToolbar(table, row);
+    positionToolbar(event);
+  };
+
+  // Правки идут прямо в DOM письма, после чего innerHTML целиком уходит в
+  // preview.body — тот же путь, что и при обычном вводе в contentEditable.
+  const syncLetterBody = () => {
+    const element = letterRef.current;
+    if (element) updateBody(element.innerHTML);
+  };
+
+  // Панель монтируется после того, как состояние стало непустым: ставим её на
+  // место сразу, не дожидаясь следующего движения мыши.
+  useLayoutEffect(() => {
+    if (tableToolbar) positionToolbar();
+  }, [tableToolbar]);
+
+  const copyCellShell = (reference: HTMLTableCellElement): HTMLTableCellElement => {
+    const cell = document.createElement(reference.tagName.toLowerCase()) as HTMLTableCellElement;
+    const className = reference.getAttribute("class");
+    if (className) cell.setAttribute("class", className);
+    const style = reference.getAttribute("style");
+    if (style) cell.setAttribute("style", style);
+    cell.appendChild(document.createElement("br"));
+    return cell;
+  };
+
+  const addTableRow = () => {
+    const table = hoverTableRef.current;
+    const row = hoverRowRef.current;
+    if (!table || !row) return;
+    const newRow = document.createElement("tr");
+    Array.from(row.cells).forEach((reference) => newRow.appendChild(copyCellShell(reference)));
+    row.after(newRow);
+    syncLetterBody();
+    if (hoverRowRef.current) {
+      refreshTableToolbar(table, hoverRowRef.current);
+      positionToolbar();
+    }
+  };
+
+  const removeTableRow = () => {
+    const table = hoverTableRef.current;
+    const row = hoverRowRef.current;
+    if (!table || !row || table.rows.length <= 1) return;
+    const rowIndex = row.rowIndex;
+    const columnIndex = hoverCellRef.current?.cellIndex ?? 0;
+    row.remove();
+    const rows = table.rows;
+    const nextRow = rows[Math.min(rowIndex, rows.length - 1)];
+    hoverRowRef.current = nextRow;
+    hoverCellRef.current = nextRow.cells[Math.min(columnIndex, nextRow.cells.length - 1)] ?? null;
+    syncLetterBody();
+    if (hoverRowRef.current) {
+      refreshTableToolbar(table, hoverRowRef.current);
+      positionToolbar();
+    } else {
+      clearTableHover();
+    }
+  };
+
+  const addTableColumn = () => {
+    const table = hoverTableRef.current;
+    const cell = hoverCellRef.current;
+    if (!table || !cell) return;
+    const columnIndex = cell.cellIndex;
+    const targetRow = hoverRowRef.current;
+    Array.from(table.rows).forEach((row) => {
+      const reference = row.cells[columnIndex];
+      if (!reference) return;
+      const newCell = copyCellShell(reference);
+      reference.after(newCell);
+      if (row === targetRow) hoverCellRef.current = newCell;
+    });
+    syncLetterBody();
+    if (hoverRowRef.current) {
+      refreshTableToolbar(table, hoverRowRef.current);
+      positionToolbar();
+    }
+  };
+
+  const removeTableColumn = () => {
+    const table = hoverTableRef.current;
+    const targetRow = hoverRowRef.current;
+    if (!table || !targetRow || targetRow.cells.length <= 1) return;
+    const columnIndex = hoverCellRef.current?.cellIndex ?? 0;
+    Array.from(table.rows).forEach((row) => {
+      const target = row.cells[columnIndex];
+      if (target && row.cells.length > 1) target.remove();
+    });
+    hoverCellRef.current = targetRow.cells[Math.min(columnIndex, targetRow.cells.length - 1)] ?? null;
+    syncLetterBody();
+    refreshTableToolbar(table, targetRow);
+    positionToolbar();
   };
 
   return (
@@ -265,7 +448,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
               <div className="assignment-panel-heading">
                 <div>
                   <h2>2. Предпросмотр письма</h2>
-                  <p>{preview.fileName} · тему и текст можно отредактировать перед отправкой</p>
+                  <p>{preview.fileName} · тему и текст можно отредактировать перед отправкой, а таблицу — дополнить строками и столбцами</p>
                 </div>
                 <span className="preview-valid-label"><CheckCircle2 size={14} /> Готово к отправке</span>
               </div>
@@ -328,7 +511,46 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
               </div>
 
               {bodyMode === "rendered" ? (
-                <div className="coordination-letter" dangerouslySetInnerHTML={{ __html: preview.body }} />
+                <div className="coordination-letter-frame" ref={frameRef} onMouseLeave={clearTableHover}>
+                  <div
+                    ref={letterRef}
+                    className="coordination-letter coordination-letter-editable"
+                    contentEditable
+                    suppressContentEditableWarning
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-label="Текст письма"
+                    onInput={(event) => updateBody(event.currentTarget.innerHTML)}
+                    onMouseMove={handleLetterMouseMove}
+                  />
+                  {tableToolbar && (
+                    <div
+                      ref={toolbarRef}
+                      className="coordination-table-toolbar"
+                      role="toolbar"
+                      aria-label="Правка таблицы письма"
+                    >
+                      <button type="button" title="Добавить строку ниже" onClick={addTableRow}>+ строка</button>
+                      <button
+                        type="button"
+                        title="Удалить строку"
+                        disabled={tableToolbar.rowCount <= 1}
+                        onClick={removeTableRow}
+                      >
+                        − строка
+                      </button>
+                      <button type="button" title="Добавить столбец справа" onClick={addTableColumn}>+ столбец</button>
+                      <button
+                        type="button"
+                        title="Удалить столбец"
+                        disabled={tableToolbar.columnCount <= 1}
+                        onClick={removeTableColumn}
+                      >
+                        − столбец
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <textarea
                   className="coordination-body-source"

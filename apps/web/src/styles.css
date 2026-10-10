@@ -470,8 +470,15 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .coordination-mode-switch { display: flex; gap: 7px; }
 .coordination-mode-switch button { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid #e5e9f0; border-radius: 7px; color: #758095; background: #fff; font-size: 9px; cursor: pointer; }
 .coordination-mode-switch .coordination-mode-active { border-color: #cfd8f8; color: #526bc6; background: #f4f6ff; }
-.coordination-letter { max-height: 430px; overflow: auto; padding: 16px; border: 1px solid #e4e8f0; border-radius: 8px; color: #1e2430; background: #fff; font-size: 11px; line-height: 1.55; overscroll-behavior: contain; }
+.coordination-letter-frame { position: relative; max-height: 430px; overflow: auto; border: 1px solid #e4e8f0; border-radius: 8px; background: #fff; overscroll-behavior: contain; }
+.coordination-letter-frame:focus-within { border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; }
+.coordination-letter { padding: 16px; color: #1e2430; font-size: 11px; line-height: 1.55; }
 .coordination-letter table { max-width: 100%; }
+.coordination-letter-editable { cursor: text; outline: none; }
+.coordination-letter-editable:empty:before { content: "Введите текст письма"; color: #b3bccb; }
+.coordination-table-toolbar { position: absolute; z-index: 3; display: flex; gap: 2px; padding: 2px; border: 1px solid #dfe4ee; border-radius: 6px; background: #fff; box-shadow: 0 5px 14px rgba(30, 36, 48, 0.14); }
+.coordination-table-toolbar button { display: inline-flex; min-height: 16px; align-items: center; padding: 0 4px; border: 0; border-radius: 4px; color: #526bc6; background: #f4f6ff; font-size: 7px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.coordination-table-toolbar button:disabled { color: #aeb6c6; background: #f4f6f9; cursor: default; }
 .coordination-body-source { width: 100%; min-height: 340px; padding: 12px; border: 1px solid #e4e8f0; border-radius: 8px; color: #394457; background: #fbfcfe; font: 10px/1.6 Consolas, "Courier New", monospace; resize: vertical; }
 .coordination-body-source:focus { border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; outline: none; }
 .coordination-preview-actions { display: flex; align-items: center; gap: 10px; }
@@ -1253,6 +1260,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .portal-config-tab:not(.portal-config-tab-active):hover { border-color: #ccd6f4; color: #405fce; }
   .avr-column-chip:not(.avr-column-chip-active):hover { border-color: #ccd6f4; color: #405fce; }
   .coordination-mode-switch button:not(.coordination-mode-active):hover { border-color: #c8d1ef; color: #526bc6; }
+  .coordination-table-toolbar button:not(:disabled):hover { background: #e8ecff; }
 }
 
 /* У этих кнопок не было своего перехода: добавляем переход цвета и отклик на нажатие.
@@ -1261,7 +1269,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .icon-button, .nav-link, .outline-button, .text-button, .profile, .login-password-toggle,
 .login-preview button, .removal-source-switch button, .removal-history-item,
 .history-period button, .sites-pagination button, .history-pagination button,
-.portal-config-tab, .coordination-mode-switch button {
+.portal-config-tab, .coordination-mode-switch button, .coordination-table-toolbar button {
   transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
 }
 .avr-column-chip {
