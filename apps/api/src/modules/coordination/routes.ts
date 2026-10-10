@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { PortalRole, type PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
+import { YougileTokenEncryptionKeyError } from "../../integrations/yougile/token-crypto.js";
 import { previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
 import { requireRole } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
@@ -42,7 +43,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     try {
       const [recipients, settings] = await Promise.all([
         loadMailRecipients(prisma),
-        loadSmtpSettings(prisma)
+        loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message))
       ]);
       return {
         recipients,
@@ -100,6 +101,12 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       await saveSmtpSettings(prisma, settings);
       savedPasswordSet = settings.password.length > 0;
     } catch (error) {
+      if (error instanceof YougileTokenEncryptionKeyError) {
+        app.log.error({ actor: request.sessionUser?.login }, "SMTP password encryption key is not configured");
+        return reply.code(503).send({
+          error: "На сервере не задан ключ шифрования (YOUGILE_TOKEN_ENCRYPTION_KEY) — пароль SMTP нельзя сохранить зашифрованным."
+        });
+      }
       app.log.error({ err: error }, "Could not save SMTP settings");
       return reply.code(500).send({ error: "Не удалось сохранить параметры SMTP." });
     }
@@ -183,7 +190,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
 
     const [recipients, smtpSettings] = await Promise.all([
       loadMailRecipients(prisma),
-      loadSmtpSettings(prisma)
+      loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message))
     ]);
     const actor = request.sessionUser;
     const logBase = {

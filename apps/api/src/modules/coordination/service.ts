@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import mammoth from "mammoth";
 import nodemailer from "nodemailer";
 import { config } from "../../config.js";
+import { decryptSmtpPassword, encryptSmtpPassword } from "../../integrations/yougile/token-crypto.js";
 import { buildLetter, parseLetterSource, type BuiltLetter } from "./letter.js";
 import type { PreviewFields, SendLetter } from "./schema.js";
 
@@ -44,13 +45,29 @@ export async function saveMailRecipients(prisma: PrismaClient, recipients: strin
 
 // Параметры SMTP тоже живут в AppSetting (см. smtpSettingsSettingKey) и
 // редактируются в «Конфигурации портала» → «Оповещения», а не в файлах
-// окружения. Пароль хранится в БД как есть и никуда не возвращается через API.
+// окружения. Пароль никуда не возвращается через API, а в БД хранится
+// зашифрованным AES-256-GCM тем же ключом, что и токены YouGile.
 export type SmtpSettings = {
   host: string;
   port: number;
   user: string;
   password: string;
   from: string;
+};
+
+// Как пароль лежит в AppSetting: зашифрованным (новые сохранения) или открытым
+// (легаси-записи, сохранённые до появления шифрования). Открытый пароль
+// перешифровывается при следующем сохранении.
+export type StoredSmtpPassword =
+  | { kind: "encrypted"; value: string }
+  | { kind: "plain"; value: string };
+
+export type StoredSmtpSettings = {
+  host: string;
+  port: number;
+  user: string;
+  from: string;
+  password: StoredSmtpPassword | null;
 };
 
 // Ключ настройки параметров SMTP.
@@ -72,33 +89,77 @@ function normalizePort(value: unknown): number {
 }
 
 // Повреждённая запись не роняет сервис: параметры остаются на значении по умолчанию.
-function readSmtpSettings(value: unknown): SmtpSettings | null {
+function readStoredSmtpSettings(value: unknown): StoredSmtpSettings | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.host !== "string") return null;
+
+  let password: StoredSmtpPassword | null = null;
+  const rawPassword = candidate.password;
+  if (typeof rawPassword === "string" && rawPassword.length > 0) {
+    // Легаси: до появления шифрования пароль сохранялся открытой строкой.
+    password = { kind: "plain", value: rawPassword };
+  } else if (rawPassword && typeof rawPassword === "object" && !Array.isArray(rawPassword)) {
+    const stored = rawPassword as Record<string, unknown>;
+    if (stored.kind === "encrypted" && typeof stored.value === "string" && stored.value.length > 0) {
+      password = { kind: "encrypted", value: stored.value };
+    }
+  }
+
   return {
     host: candidate.host.trim(),
     port: normalizePort(candidate.port),
     user: typeof candidate.user === "string" ? candidate.user.trim() : "",
-    password: typeof candidate.password === "string" ? candidate.password : "",
-    from: typeof candidate.from === "string" ? candidate.from.trim() : ""
+    from: typeof candidate.from === "string" ? candidate.from.trim() : "",
+    password
   };
 }
 
-export async function loadSmtpSettings(prisma: PrismaClient): Promise<SmtpSettings> {
+function decodeStoredPassword(stored: StoredSmtpPassword | null, log?: (message: string) => void): string {
+  if (!stored) return "";
+  if (stored.kind === "plain") return stored.value;
+  try {
+    return decryptSmtpPassword(stored.value);
+  } catch (error) {
+    log?.(`Could not decrypt stored SMTP password: ${error instanceof Error ? error.message : String(error)}`);
+    return "";
+  }
+}
+
+export async function loadSmtpSettings(prisma: PrismaClient, log?: (message: string) => void): Promise<SmtpSettings> {
   try {
     const setting = await prisma.appSetting.findUnique({ where: { key: smtpSettingsSettingKey } });
-    return readSmtpSettings(setting?.value) ?? defaultSmtpSettings;
+    const stored = readStoredSmtpSettings(setting?.value);
+    if (!stored) return defaultSmtpSettings;
+    return {
+      host: stored.host,
+      port: stored.port,
+      user: stored.user,
+      from: stored.from,
+      password: decodeStoredPassword(stored.password, log)
+    };
   } catch {
     return defaultSmtpSettings;
   }
 }
 
+// Пароль шифруется перед записью. Если ключ шифрования (YOUGILE_TOKEN_ENCRYPTION_KEY)
+// не задан, бросается YougileTokenEncryptionKeyError — маршрут отдаёт понятную
+// ошибку, чтобы секрет не ушёл в БД открытым текстом.
 export async function saveSmtpSettings(prisma: PrismaClient, settings: SmtpSettings): Promise<void> {
+  const stored: StoredSmtpSettings = {
+    host: settings.host,
+    port: settings.port,
+    user: settings.user,
+    from: settings.from,
+    password: settings.password
+      ? { kind: "encrypted", value: encryptSmtpPassword(settings.password) }
+      : null
+  };
   await prisma.appSetting.upsert({
     where: { key: smtpSettingsSettingKey },
-    create: { key: smtpSettingsSettingKey, value: settings },
-    update: { value: settings }
+    create: { key: smtpSettingsSettingKey, value: stored },
+    update: { value: stored }
   });
 }
 

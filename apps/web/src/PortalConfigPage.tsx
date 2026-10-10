@@ -778,7 +778,7 @@ export default function PortalConfigPage({
 
                   <div className="portal-config-note">
                     <Info size={14} />
-                    <span>Пароль хранится в настройках портала и не показывается в интерфейсе. Пустое поле при сохранении оставляет текущий пароль без изменений.</span>
+                    <span>Пароль шифруется и хранится в зашифрованном виде — в интерфейсе он не показывается. Пустое поле при сохранении оставляет текущий пароль без изменений.</span>
                   </div>
 
                   {smtpError && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{smtpError}</div>}

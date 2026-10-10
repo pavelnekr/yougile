@@ -201,7 +201,7 @@ npm run dev --workspace @portal/api
 | `UPLOAD_MAX_BYTES` | Максимальный размер XLSX в байтах; по умолчанию 10 МБ |
 | `SMTP_HOST` | SMTP-сервер для писем согласования — значение по умолчанию; задать можно и в «Конфигурация портала» → «Оповещения». Пусто — отправка отключена, предпросмотр работает |
 | `SMTP_PORT` | Порт SMTP; по умолчанию `465` (TLS), `25`/`587` используют STARTTLS |
-| `SMTP_USER`, `SMTP_PASSWORD` | Учётные данные SMTP; пустые — сервер без аутентификации |
+| `SMTP_USER`, `SMTP_PASSWORD` | Учётные данные SMTP; пустые — сервер без аутентификации. Пароль в БД хранится зашифрованным (AES-256-GCM, тот же ключ `YOUGILE_TOKEN_ENCRYPTION_KEY`, что и для токенов YouGile) |
 | `SMTP_FROM` | Адрес отправителя; пусто — используется `SMTP_USER` |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Настройки PostgreSQL в production Compose |
 | `WEB_PORT` | Порт production web на хосте |
