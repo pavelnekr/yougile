@@ -1264,6 +1264,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .preset-btn:not(.preset-btn-on):hover { background: #f5f7fa; border-color: #cdd6e4; }
   .chip:not(.chip-on):hover { background: #f5f7fa; border-color: #cdd6e4; }
   .plan-th-button:hover { background: #eef1f7; color: #1e2a3a; }
+  .planning-filters-toggle:hover { color: #3f5ac2; }
   .icon-button-danger:hover:not(:disabled) { background: #fbeaea; color: #a13b3b; }
 }
 
@@ -1297,7 +1298,9 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .overview-active-card:active,
 .sites-pagination button:active:not(:disabled), .history-pagination button:active:not(:disabled),
 .coordination-mode-switch button:not(.coordination-mode-active):active,
-.avr-column-chip:not(.avr-column-chip-active):active {
+.avr-column-chip:not(.avr-column-chip-active):active,
+.preset-btn:active, .chip:not(.chip-on):active,
+.plan-th-button:active, .planning-filters-toggle:active {
   transform: scale(var(--press-scale));
 }
 
@@ -1373,17 +1376,22 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
 }
 
-.planning-filters-header h3 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #2b3549;
-  margin: 0;
+.planning-filters-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2b3549;
+  cursor: pointer;
+  transition: color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
 }
 
 .filter-badge {
@@ -1396,6 +1404,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 }
 
 .planning-filters-grid {
+  margin-top: 10px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 10px 14px;
@@ -1464,7 +1473,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   font-size: 0.75rem;
   color: #4a5a70;
   cursor: pointer;
-  transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease;
+  transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
 }
 
 .preset-btn-on {
@@ -1524,7 +1533,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   font-size: 0.75rem;
   color: #4a5a70;
   cursor: pointer;
-  transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease;
+  transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
   user-select: none;
 }
 
@@ -1607,7 +1616,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   font-weight: 600;
   color: #2b3549;
   cursor: pointer;
-  transition: background-color var(--dur-ui) ease, color var(--dur-ui) ease;
+  transition: background-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
 }
 
 .plan-th-actions {
@@ -1700,7 +1709,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .profile, .xlsx-dropzone, .removal-source-switch button, .removal-history-item,
   .history-period button, .sites-pagination button, .history-pagination button,
   .portal-config-tab, .overview-active-card, .dialog-box, .avr-column-chip,
-  .coordination-mode-switch button {
+  .coordination-mode-switch button, .preset-btn, .chip, .plan-th-button,
+  .planning-filters-toggle {
     transform: none !important;
     transition-property: opacity, background-color, border-color, color, box-shadow, filter;
   }

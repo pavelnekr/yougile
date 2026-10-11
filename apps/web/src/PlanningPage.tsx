@@ -151,6 +151,9 @@ export default function PlanningPage({ canEdit = true }: { canEdit?: boolean } =
   const [total, setTotal] = useState(0);
   const [filtered, setFiltered] = useState(0);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  // Панель фильтров по умолчанию свёрнута: она занимает много места, а нужна
+  // не в каждом сценарии. Пользователь раскрывает её, когда понадобится.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -382,12 +385,23 @@ export default function PlanningPage({ canEdit = true }: { canEdit?: boolean } =
   const filterPanel = (
     <section className="planning-filters">
       <div className="planning-filters-header">
-        <h3><Filter size={16} /> Фильтры {activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}</h3>
+        <button
+          type="button"
+          className="planning-filters-toggle"
+          onClick={() => setFiltersOpen((open) => !open)}
+          aria-expanded={filtersOpen}
+        >
+          <Filter size={16} />
+          Фильтры
+          {activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}
+          {filtersOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
         <button type="button" className="text-button" onClick={() => setFilters(EMPTY_FILTERS)} disabled={filtersAreEmpty(filters)}>
           <X size={14} /> Сбросить
         </button>
       </div>
 
+      {filtersOpen && (
       <div className="planning-filters-grid">
         <div className="filter-group filter-group-wide">
           <label htmlFor="plan-q">Поиск по всем полям</label>
@@ -471,6 +485,7 @@ export default function PlanningPage({ canEdit = true }: { canEdit?: boolean } =
           </div>
         </div>
       </div>
+      )}
     </section>
   );
 
