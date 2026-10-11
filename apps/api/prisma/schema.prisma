@@ -71,6 +71,7 @@ model PortalUser {
   yougileTokenEncrypted String?
   operations            Operation[]     @relation("CreatedOperations")
   imports               ImportBatch[]
+  planRows              PlanRow[]       @relation("CreatedPlanRows")
   sessions              PortalSession[]
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
@@ -245,4 +246,47 @@ model PortalLog {
   @@index([level, createdAt])
   @@index([actorLogin, createdAt])
   @@index([action])
+}
+
+// Строка плана работ (раздел «Планирование Работ»).
+//
+// Портал — основной источник истины по работам: строки заводят и правят прямо
+// в интерфейсе, а не загружают файлом. Набор столбцов повторяет прежний
+// XLSX-план, который вели вручную: дата, смена, окно времени, площадка, тип
+// работ (PO), комментарий, инженер, статус, кластер и три резервных столбца.
+//
+// Все поля, кроме даты, — необязательные строки. Их держат строками, а не
+// enum-ами, потому что значения задают операторы: фильтры строятся по
+// фактически встречающимся значениям (см. planFilterOptions), а не по
+// заранее известному списку.
+model PlanRow {
+  id          String      @id @default(cuid())
+  planDate    DateTime?   @db.Date
+  shift       String?
+  timeWindow  String?
+  siteId      String?
+  address     String?
+  po          String?
+  comment     String?
+  engineer    String?
+  comment2    String?
+  status      String?
+  cluster     String?
+  free1       String?
+  free2       String?
+  free3       String?
+  // Стабильный порядок строк: createdAt у пачки, созданной в одной транзакции,
+  // одинаковый, поэтому сортировать только по нему нельзя.
+  sortOrder   Int         @default(0)
+  createdById String?
+  createdBy   PortalUser? @relation("CreatedPlanRows", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([planDate])
+  @@index([siteId])
+  @@index([engineer])
+  @@index([status])
+  @@index([cluster])
+  @@index([sortOrder])
 }

@@ -4,7 +4,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { PortalRole, PrismaClient } from "@prisma/client";
+import { PortalRole, type PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
 
 const scryptAsync = promisify(scrypt) as (
@@ -260,7 +260,12 @@ export function requireRole(...allowed: PortalRole[]) {
       return reply.code(401).send({ error: "Требуется вход в портал." });
     }
     if (!allowed.includes(role)) {
-      return reply.code(403).send({ error: "Этот раздел доступен только администраторам." });
+      const adminOnly = allowed.length === 1 && allowed[0] === PortalRole.ADMIN;
+      return reply.code(403).send({
+        error: adminOnly
+          ? "Этот раздел доступен только администраторам."
+          : "Недостаточно прав для этого действия."
+      });
     }
   };
 }

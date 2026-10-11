@@ -35,7 +35,7 @@ import CommentPage from "./CommentPage.js";
 import CoordinationPage from "./CoordinationPage.js";
 import CoordinationLandingPage from "./CoordinationLandingPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
-import UnderDevelopmentPage from "./UnderDevelopmentPage.js";
+import PlanningPage from "./PlanningPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js";
 import HistoryPage from "./HistoryPage.js";
@@ -403,11 +403,7 @@ function App() {
           ) : activeSection === "Согласование АВР" ? (
             <CoordinationPage onBack={() => chooseSection("Согласование/Оповещение")} />
           ) : activeSection === "Планирование Работ" ? (
-            <UnderDevelopmentPage
-              icon={CalendarDays}
-              title="Планирование Работ"
-              description="Планирование работ по площадкам и подготовка планов к выполнению."
-            />
+            <PlanningPage canEdit={sessionUser?.role !== "VIEWER"} />
           ) : activeSection === "Площадки" ? (
             <SitesPage sites={sites} loadState={siteLoadState} error={siteError} />
           ) : activeSection === "Площадки АВР" ? (
