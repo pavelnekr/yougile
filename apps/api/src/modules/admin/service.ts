@@ -15,7 +15,7 @@ export type AdminUserStats = {
   sitesSucceeded: number;
   sitesFailed: number;
   imports: number;
-  byType: { ASSIGN: number; REMOVE: number; COMMENT: number };
+  byType: { ASSIGN: number; REMOVE: number; COMMENT: number; WORK_CHECK: number };
   lastOperationAt: string | null;
 };
 
@@ -44,7 +44,7 @@ function emptyStats(): AdminUserStats {
     sitesSucceeded: 0,
     sitesFailed: 0,
     imports: 0,
-    byType: { ASSIGN: 0, REMOVE: 0, COMMENT: 0 },
+    byType: { ASSIGN: 0, REMOVE: 0, COMMENT: 0, WORK_CHECK: 0 },
     lastOperationAt: null
   };
 }
@@ -143,6 +143,7 @@ export async function listUsersWithStats(prisma: PrismaClient, period: StatsPeri
     if (row.type === "ASSIGN") stats.byType.ASSIGN += count;
     else if (row.type === "REMOVE") stats.byType.REMOVE += count;
     else if (row.type === "COMMENT") stats.byType.COMMENT += count;
+    else if (row.type === "WORK_CHECK") stats.byType.WORK_CHECK += count;
   }
 
   for (const row of imports) {

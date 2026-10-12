@@ -1094,6 +1094,17 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   font-weight: 600;
   white-space: nowrap;
 }
+.completed-operations-panel .section-heading { margin-top: 22px; }
+.completed-operations-empty { margin: 0; padding: 14px; border: 1px dashed #e2e7ef; border-radius: 8px; color: #929aaa; background: #fff; font-size: 10px; }
+.completed-operations-error { border-color: #f0d3ca; color: #ad5f4a; background: #fff8f6; }
+.completed-operation-icon { color: #4f9779; background: #eaf5ee; }
+.completed-operation-partial { color: #a4814c; background: #fcf5e8; }
+.completed-operation-failed { color: #ad5f4a; background: #fff0ec; }
+.completed-operation-expiry { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: #929aaa; font-size: 10px; font-variant-numeric: tabular-nums; }
+.completed-operation-dialog { width: min(900px, 100%); max-height: 85vh; }
+.completed-operation-dialog-body { display: grid; min-height: 0; max-height: 65vh; gap: 12px; overflow: auto; }
+.completed-operation-summary { margin: 0; color: #68768c; font-size: 10px; line-height: 1.5; }
+.completed-work-check-table-wrap { max-height: 55vh; }
 
 /* ============================================================================
    Конфигурация портала

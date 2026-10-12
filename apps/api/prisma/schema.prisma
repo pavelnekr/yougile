@@ -23,6 +23,7 @@ enum OperationType {
   ASSIGN
   REMOVE
   COMMENT
+  WORK_CHECK
   REASSIGN
   AUDIT
   USER_SYNC

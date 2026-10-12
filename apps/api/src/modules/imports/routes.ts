@@ -235,6 +235,7 @@ export async function registerImportRoutes(
     // чатов и так идёт по площадке с паузой 4 секунды, а параллельный обход
     // колонок плана/АВР добавляет запросы и провоцирует HTTP 429.
     beginWorkCheck();
+    const operationStartedAt = new Date();
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       const batch = await prisma.importBatch.findUnique({
@@ -456,21 +457,58 @@ export async function registerImportRoutes(
         entityId: batch.id
       });
 
+      const resultItems = batch.rows.map((row) => {
+        const result = row.yougileTaskId ? latestByTaskId.get(row.yougileTaskId) : undefined;
+        return {
+          rowNumber: row.rowNumber,
+          siteId: row.siteId,
+          comment: result?.text ?? null,
+          commentedAt: result?.timestamp != null ? new Date(result.timestamp).toISOString() : null,
+          message: result?.error ?? (result?.text
+            ? "Последний комментарий найден."
+            : row.yougileTaskId ? "Комментариев пока нет." : "Площадка не найдена в YouGile.")
+        };
+      });
+      const finishedAt = new Date();
+      const workCheckFailures = batch.rows.filter((row) => row.yougileTaskId && latestByTaskId.get(row.yougileTaskId)?.error).length;
+      const operation = await prisma.operation.create({
+        data: {
+          type: OperationType.WORK_CHECK,
+          status: workCheckFailures > 0 ? OperationStatus.PARTIAL : OperationStatus.SUCCEEDED,
+          createdById: request.sessionUser?.id ?? null,
+          total: batch.rows.length,
+          completed: batch.rows.length - workCheckFailures,
+          failed: workCheckFailures,
+          message: `Проверка работ «${batch.fileName}»: комментариев найдено ${foundComments}, без комментариев ${noComments}, ошибок ${errors}.`,
+          startedAt: operationStartedAt,
+          finishedAt,
+          metadata: { importBatchId: batch.id, fileName: batch.fileName },
+          items: {
+            create: batch.rows.map((row, index) => {
+              const result = row.yougileTaskId ? latestByTaskId.get(row.yougileTaskId) : undefined;
+              const item = resultItems[index]!;
+              return {
+                siteId: `work-check-row-${row.rowNumber}`,
+                sortOrder: index,
+                beforeData: { title: row.siteId ?? `Строка ${row.rowNumber}`, rowNumber: row.rowNumber },
+                status: result?.error
+                  ? "FAILED"
+                  : result?.text
+                    ? "SUCCEEDED"
+                    : "SKIPPED",
+                errorMessage: result?.error ?? null,
+                afterData: { comment: item.comment, commentedAt: item.commentedAt, message: item.message }
+              };
+            })
+          }
+        }
+      });
+
       return {
+        operationId: operation.id,
         importId: batch.id,
         fileName: batch.fileName,
-        items: batch.rows.map((row) => {
-          const result = row.yougileTaskId ? latestByTaskId.get(row.yougileTaskId) : undefined;
-          return {
-            rowNumber: row.rowNumber,
-            siteId: row.siteId,
-            comment: result?.text ?? null,
-            commentedAt: result?.timestamp != null ? new Date(result.timestamp).toISOString() : null,
-            message: result?.error ?? (result?.text
-              ? "Последний комментарий найден."
-              : row.yougileTaskId ? "Комментариев пока нет." : "Площадка не найдена в YouGile.")
-          };
-        })
+        items: resultItems
       };
     } catch (error) {
       if (error instanceof UserYougileCredentialError) {

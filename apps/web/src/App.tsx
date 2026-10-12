@@ -51,6 +51,7 @@ import { useStepScroll } from "./useStepScroll.js";
 import { countRu, siteForms, taskForms } from "./plural.js";
 import { avatarInitial } from "./avatar.js";
 import ActiveOperationsPanel from "./ActiveOperationsPanel.js";
+import CompletedOperationsPanel from "./CompletedOperationsPanel.js";
 import { PORTAL_VERSION } from "./version";
 
 type Health = "loading" | "ok" | "error";
@@ -627,6 +628,7 @@ function Overview({
       )}
 
       <ActiveOperationsPanel onNavigate={onNavigate} />
+      <CompletedOperationsPanel />
 
       <section className="stats-grid" aria-label="Сводка">
         <StatCard

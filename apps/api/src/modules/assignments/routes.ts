@@ -14,7 +14,8 @@ import {
 const visibleOperationTypes: OperationType[] = [
   OperationType.ASSIGN,
   OperationType.REMOVE,
-  OperationType.COMMENT
+  OperationType.COMMENT,
+  OperationType.WORK_CHECK
 ];
 
 // Название площадки для списка: для XLSX-строк это адрес (title в beforeData),
@@ -92,6 +93,7 @@ export async function registerAssignmentRoutes(
   });
 
   app.get<{ Params: { id: string } }>("/api/operations/:id", { preHandler: readAccess }, async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
     const operation = await prisma.operation.findUnique({
       where: { id: request.params.id },
       include: { items: { orderBy: { sortOrder: "asc" } } }
@@ -99,6 +101,13 @@ export async function registerAssignmentRoutes(
     if (!operation) return reply.code(404).send({ error: "Операция не найдена." });
     if (!visibleOperationTypes.includes(operation.type)) {
       return reply.code(400).send({ error: "Неизвестный тип операции." });
+    }
+    if (
+      operation.type === OperationType.WORK_CHECK &&
+      operation.finishedAt &&
+      operation.finishedAt.getTime() < Date.now() - 10 * 60 * 1000
+    ) {
+      return reply.code(410).send({ error: "Срок хранения результата проверки работ истёк." });
     }
 
     return {
@@ -115,7 +124,54 @@ export async function registerAssignmentRoutes(
         status: item.status,
         errorMessage: item.errorMessage,
         label: operationItemLabel(item.beforeData, item.siteId),
+        rowNumber: item.beforeData && typeof item.beforeData === "object" && !Array.isArray(item.beforeData) && "rowNumber" in item.beforeData
+          ? (item.beforeData as { rowNumber?: number }).rowNumber ?? null
+          : null,
+        comment: operation.type === OperationType.WORK_CHECK && item.afterData && typeof item.afterData === "object" && !Array.isArray(item.afterData) && "comment" in item.afterData
+          ? (item.afterData as { comment?: string | null }).comment ?? null
+          : null,
+        commentedAt: operation.type === OperationType.WORK_CHECK && item.afterData && typeof item.afterData === "object" && !Array.isArray(item.afterData) && "commentedAt" in item.afterData
+          ? (item.afterData as { commentedAt?: string | null }).commentedAt ?? null
+          : null,
+        resultMessage: operation.type === OperationType.WORK_CHECK && item.afterData && typeof item.afterData === "object" && !Array.isArray(item.afterData) && "message" in item.afterData
+          ? (item.afterData as { message?: string }).message ?? null
+          : null,
         details: errorDetailsFrom(item.afterData)
+      }))
+    };
+  });
+
+  app.get("/api/operations/recent", { preHandler: readAccess }, async (_request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const now = new Date();
+    const retainedSince = new Date(now.getTime() - 10 * 60 * 1000);
+    const operations = await prisma.operation.findMany({
+      where: {
+        type: { in: visibleOperationTypes },
+        status: { in: [OperationStatus.SUCCEEDED, OperationStatus.PARTIAL, OperationStatus.FAILED] },
+        finishedAt: { gte: retainedSince }
+      },
+      orderBy: { finishedAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        total: true,
+        completed: true,
+        failed: true,
+        message: true,
+        finishedAt: true
+      }
+    });
+
+    return {
+      items: operations.map((operation) => ({
+        ...operation,
+        finishedAt: operation.finishedAt?.toISOString() ?? null,
+        expiresAt: operation.finishedAt
+          ? new Date(operation.finishedAt.getTime() + 10 * 60 * 1000).toISOString()
+          : null
       }))
     };
   });

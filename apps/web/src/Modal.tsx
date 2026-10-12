@@ -5,6 +5,7 @@ type ModalProps = {
   labelledBy: string;
   onDismiss: () => void;
   children: ReactNode;
+  className?: string;
 };
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -19,7 +20,7 @@ function focusableWithin(root: HTMLElement): HTMLElement[] {
  * в styles.css, для этого JavaScript не нужен. Исчезновение мгновенное —
  * чтобы его анимировать, пришлось бы держать узел в DOM после закрытия.
  */
-export default function Modal({ labelledBy, onDismiss, children }: ModalProps) {
+export default function Modal({ labelledBy, onDismiss, children, className }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   // Обработчику клавиш всегда нужен свежий onDismiss, но переподписывать
   // слушатель на каждый рендер нельзя: тогда фокус прыгал бы на первый элемент.
@@ -73,7 +74,7 @@ export default function Modal({ labelledBy, onDismiss, children }: ModalProps) {
       aria-labelledby={labelledBy}
       onMouseDown={(event) => { if (event.target === event.currentTarget) onDismiss(); }}
     >
-      <div className="dialog-box">{children}</div>
+      <div className={`dialog-box${className ? ` ${className}` : ""}`}>{children}</div>
     </div>
   );
 }

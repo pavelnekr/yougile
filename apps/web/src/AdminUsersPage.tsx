@@ -32,7 +32,7 @@ type AdminUserStats = {
   sitesSucceeded: number;
   sitesFailed: number;
   imports: number;
-  byType: { ASSIGN: number; REMOVE: number; COMMENT: number };
+  byType: { ASSIGN: number; REMOVE: number; COMMENT: number; WORK_CHECK: number };
   lastOperationAt: string | null;
 };
 
@@ -78,7 +78,8 @@ const workspaces = [
 const operationTypeLabels: Record<string, string> = {
   ASSIGN: "назначений",
   REMOVE: "снятий",
-  COMMENT: "комментариев"
+  COMMENT: "комментариев",
+  WORK_CHECK: "проверок работ"
 };
 
 const minPasswordLength = 8;
@@ -635,7 +636,7 @@ export default function AdminUsersPage({
                           успешно {formatNumber(user.stats.succeeded + user.stats.partial)} · ошибок {formatNumber(user.stats.failed)}
                         </span>
                         <span className="admin-cell-note">
-                          {user.stats.byType.ASSIGN} {operationTypeLabels.ASSIGN} · {user.stats.byType.REMOVE} {operationTypeLabels.REMOVE} · {user.stats.byType.COMMENT} {operationTypeLabels.COMMENT}
+                          {user.stats.byType.ASSIGN} {operationTypeLabels.ASSIGN} · {user.stats.byType.REMOVE} {operationTypeLabels.REMOVE} · {user.stats.byType.COMMENT} {operationTypeLabels.COMMENT} · {user.stats.byType.WORK_CHECK} {operationTypeLabels.WORK_CHECK}
                         </span>
                       </td>
                       <td>
