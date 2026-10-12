@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
+import { requireWorkspaceAccess } from "../auth/service.js";
 import { randomUUID } from "node:crypto";
 import { builtInCommentTemplateTypeSchema, commentTemplateSchema, createCommentTemplateSchema } from "./schema.js";
 
@@ -35,7 +36,9 @@ function customTemplateFromSetting(setting: { key: string; value: unknown; updat
 }
 
 export async function registerSettingsRoutes(app: FastifyInstance, prisma: PrismaClient) {
-  app.get("/api/settings/comment-templates", async (_request, reply) => {
+  const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
+  const writeAccess = requireWorkspaceAccess("WORK_MANAGEMENT", true);
+  app.get("/api/settings/comment-templates", { preHandler: readAccess }, async (_request, reply) => {
     try {
       const [saved, customSaved] = await Promise.all([
         prisma.appSetting.findMany({
@@ -67,7 +70,7 @@ export async function registerSettingsRoutes(app: FastifyInstance, prisma: Prism
     }
   });
 
-  app.post("/api/settings/comment-templates", async (request, reply) => {
+  app.post("/api/settings/comment-templates", { preHandler: writeAccess }, async (request, reply) => {
     const input = createCommentTemplateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Некорректные данные шаблона." });
@@ -87,7 +90,7 @@ export async function registerSettingsRoutes(app: FastifyInstance, prisma: Prism
     }
   });
 
-  app.put<{ Params: { type: string } }>("/api/settings/comment-templates/:type", async (request, reply) => {
+  app.put<{ Params: { type: string } }>("/api/settings/comment-templates/:type", { preHandler: writeAccess }, async (request, reply) => {
     const input = commentTemplateSchema.safeParse(request.body);
     if (!input.success) return reply.code(400).send({ error: "Шаблон не должен превышать 10 000 символов." });
 
@@ -136,7 +139,7 @@ export async function registerSettingsRoutes(app: FastifyInstance, prisma: Prism
     }
   });
 
-  app.delete<{ Params: { type: string } }>("/api/settings/comment-templates/:type", async (request, reply) => {
+  app.delete<{ Params: { type: string } }>("/api/settings/comment-templates/:type", { preHandler: writeAccess }, async (request, reply) => {
     const customId = request.params.type.startsWith(customTypePrefix)
       ? request.params.type.slice(customTypePrefix.length)
       : null;

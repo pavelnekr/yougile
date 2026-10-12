@@ -13,6 +13,12 @@ enum PortalRole {
   VIEWER
 }
 
+enum PortalWorkspace {
+  WORK_MANAGEMENT
+  COORDINATION
+  WORK_PLANNING
+}
+
 enum OperationType {
   ASSIGN
   REMOVE
@@ -72,8 +78,19 @@ model PortalUser {
   operations            Operation[]     @relation("CreatedOperations")
   imports               ImportBatch[]
   sessions              PortalSession[]
+  workspaceAccess       PortalUserWorkspace[]
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
+}
+
+model PortalUserWorkspace {
+  userId    String
+  workspace PortalWorkspace
+  user      PortalUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+
+  @@id([userId, workspace])
+  @@index([workspace])
 }
 
 // Сессия входа: сам токен живёт только в httpOnly-cookie, в базе хранится его SHA-256.

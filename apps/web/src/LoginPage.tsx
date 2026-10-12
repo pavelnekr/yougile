@@ -8,6 +8,7 @@ export type PortalUser = {
   login: string;
   displayName: string;
   role: string;
+  workspaces: string[];
   yougileTokenConfigured: boolean;
 };
 

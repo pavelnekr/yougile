@@ -114,6 +114,22 @@ const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: bo
   { label: "Конфигурация портала", icon: SlidersHorizontal, adminOnly: true }
 ];
 
+const workspaceBySection: Partial<Record<Section, string>> = {
+  "Управление работами в YouGile": "WORK_MANAGEMENT",
+  "Площадки": "WORK_MANAGEMENT",
+  "Площадки АВР": "WORK_MANAGEMENT",
+  "Назначить инженера": "WORK_MANAGEMENT",
+  "Снять инженеров": "WORK_MANAGEMENT",
+  "Написать комментарий": "WORK_MANAGEMENT",
+  "Проверить работы": "WORK_MANAGEMENT",
+  "Аудит": "WORK_MANAGEMENT",
+  "История": "WORK_MANAGEMENT",
+  "Настройки": "WORK_MANAGEMENT",
+  "Согласование/Оповещение": "COORDINATION",
+  "Согласование АВР": "COORDINATION",
+  "Планирование Работ": "WORK_PLANNING"
+};
+
 const actions = [
   {
     number: "01",
@@ -323,8 +339,12 @@ function App() {
 
   const isAdmin = sessionUser?.role === "ADMIN";
   const visibleNavigation = useMemo(
-    () => navigation.filter((item) => !item.adminOnly || isAdmin),
-    [isAdmin]
+    () => navigation.filter((item) => {
+      if (item.adminOnly) return isAdmin;
+      const workspace = workspaceBySection[item.label];
+      return isAdmin || !workspace || sessionUser?.workspaces.includes(workspace);
+    }),
+    [isAdmin, sessionUser]
   );
   // Если роль сменили, пока пользователь сидел в портале, раздел мог остаться
   // открытым — возвращаем на обзор, а не показываем ошибку 403.
@@ -332,8 +352,13 @@ function App() {
   // роль ещё неизвестна, и иначе глубокая ссылка /admin/users потерялась бы при
   // первом рендере. Гость админ-раздел тоже увидеть не может, но форму входа
   // показываем по любой ссылке: после входа раздел откроется, если права есть.
-  const activeSection: Section = sessionUser && !isAdmin && navigation.some((item) => item.label === section && item.adminOnly)
-    ? "Управление работами в YouGile"
+  const isSectionAllowed = (value: Section) => {
+    const item = navigation.find((candidate) => candidate.label === value);
+    const workspace = workspaceBySection[value];
+    return (!item?.adminOnly || isAdmin) && (isAdmin || !workspace || sessionUser?.workspaces.includes(workspace));
+  };
+  const activeSection: Section = sessionUser && !isSectionAllowed(section)
+    ? (visibleNavigation[0]?.label ?? "Управление работами в YouGile")
     : section;
   // «Согласование АВР» — подраздел раздела «Согласование/Оповещение»: карточка
   // на странице раздела открывает его по собственному адресу. Подсветка меню

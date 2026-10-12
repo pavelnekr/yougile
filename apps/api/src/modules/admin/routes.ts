@@ -39,7 +39,7 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
       return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные учётной записи." });
     }
 
-    const { login, displayName, password, role } = parsed.data;
+    const { login, displayName, password, role, workspaces } = parsed.data;
     const existing = await prisma.portalUser.findUnique({ where: { login } });
     if (existing) {
       return reply.code(409).send({ error: "Пользователь с таким логином уже существует." });
@@ -51,7 +51,8 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
           login,
           passwordHash: await hashPassword(password),
           displayName: displayName ?? login,
-          role: role ?? PortalRole.OPERATOR
+          role: role ?? PortalRole.OPERATOR,
+          workspaceAccess: { create: workspaces.map((workspace) => ({ workspace })) }
         }
       });
 
@@ -78,7 +79,7 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
     if (!target) return reply.code(404).send({ error: "Учётная запись не найдена." });
 
     const actorId = request.sessionUser?.id;
-    const { displayName, role, active } = parsed.data;
+    const { displayName, role, active, workspaces } = parsed.data;
 
     // Администратор не может закрыть себе доступ и не может снять с себя права.
     if (target.id === actorId) {
@@ -107,6 +108,12 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
         where: { id: target.id },
         data: { ...(displayName !== undefined ? { displayName } : {}), ...(role ? { role } : {}), ...(active !== undefined ? { active } : {}) }
       });
+      if (workspaces !== undefined) {
+        await transaction.portalUserWorkspace.deleteMany({ where: { userId: user.id } });
+        if (workspaces.length) {
+          await transaction.portalUserWorkspace.createMany({ data: workspaces.map((workspace) => ({ userId: user.id, workspace })) });
+        }
+      }
       // Блокировка сразу завершает сессии, иначе пользователь продолжит работать
       // до истечения cookie.
       const sessions = active === false
@@ -119,14 +126,14 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
       {
         actor: request.sessionUser?.login,
         target: updated.user.login,
-        changes: { displayName, role, active },
+        changes: { displayName, role, active, workspaces },
         revokedSessions: updated.revokedSessions
       },
       "Portal account updated by admin"
     );
 
     return {
-      user: publicAccount(updated.user),
+      user: { ...publicAccount(updated.user), ...(workspaces !== undefined ? { workspaces } : {}) },
       revokedSessions: updated.revokedSessions
     };
   });

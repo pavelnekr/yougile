@@ -24,6 +24,7 @@ export type AdminUserRow = {
   login: string;
   displayName: string;
   role: string;
+  workspaces: string[];
   active: boolean;
   yougileTokenConfigured: boolean;
   createdAt: string;
@@ -75,6 +76,7 @@ export async function listUsersWithStats(prisma: PrismaClient, period: StatsPeri
   const users = await prisma.portalUser.findMany({
     orderBy: [{ role: "asc" }, { login: "asc" }],
     include: {
+      workspaceAccess: { select: { workspace: true } },
       // Протухшие сессии в активности не показываем.
       sessions: { where: { expiresAt: { gt: now } }, select: { lastSeenAt: true } }
     }
@@ -159,6 +161,7 @@ export async function listUsersWithStats(prisma: PrismaClient, period: StatsPeri
       login: user.login,
       displayName: user.displayName,
       role: user.role,
+      workspaces: user.workspaceAccess.map(({ workspace }) => workspace),
       active: user.active,
       yougileTokenConfigured: Boolean(user.yougileTokenEncrypted),
       createdAt: user.createdAt.toISOString(),

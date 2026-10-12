@@ -903,6 +903,10 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .admin-role-select { min-height: 27px; padding: 0 6px; border: 1px solid #e7ebf1; border-radius: 5px; outline: 0; color: #59667b; background: #fff; font: 8px "Segoe UI", sans-serif; cursor: pointer; }
 .admin-role-select:focus { border-color: #b5c1eb; box-shadow: 0 0 0 2px #eef1ff; }
 .admin-role-select:disabled { opacity: .5; cursor: not-allowed; }
+.admin-workspace-access { display: grid; gap: 5px; min-width: 150px; }
+.admin-workspace-access label { display: flex; align-items: flex-start; gap: 5px; color: #657086; font-size: 8px; line-height: 1.25; cursor: pointer; }
+.admin-workspace-access input { width: 12px; height: 12px; margin: 0; accent-color: #5268c7; flex: 0 0 auto; }
+.admin-workspace-access input:disabled { cursor: not-allowed; }
 .admin-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 5px; font-size: 7px; font-weight: 650; }
 .admin-badge-active { color: #4a9275; background: #eaf6ef; }
 .admin-badge-blocked { color: #ad5f4a; background: #fbefec; }

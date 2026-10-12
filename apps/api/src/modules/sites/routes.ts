@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
+import { requireWorkspaceAccess } from "../auth/service.js";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { isYougileBusy } from "../../lib/yougile-activity.js";
 import { loadAvrColumns } from "../portal-config/service.js";
@@ -25,7 +26,8 @@ function avrResponse(result: AvrSitesList, paused: boolean) {
 }
 
 export async function registerSiteRoutes(app: FastifyInstance, prisma: PrismaClient) {
-  app.get("/api/sites/in-plan", async (request, reply) => {
+  const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
+  app.get("/api/sites/in-plan", { preHandler: readAccess }, async (request, reply) => {
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
 
@@ -64,7 +66,7 @@ export async function registerSiteRoutes(app: FastifyInstance, prisma: PrismaCli
   // Единая таблица площадок АВР: столбцы из «Конфигурация портала» → «АВР»,
   // к каждому столбцу — его площадки. Карточка и страница «Площадки АВР»
   // используют один и тот же ответ, поэтому у них всегда одни и те же числа.
-  app.get("/api/sites/in-avr", async (request, reply) => {
+  app.get("/api/sites/in-avr", { preHandler: readAccess }, async (request, reply) => {
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       const configured = await loadAvrColumns(prisma);

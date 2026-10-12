@@ -4,6 +4,7 @@ import { UserYougileCredentialError, getUserYougileClient } from "../../integrat
 import { operationQueue } from "../../jobs/queue.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
+import { requireWorkspaceAccess } from "../auth/service.js";
 import {
   assignmentPreviewBodySchema,
   AssignmentValidationError,
@@ -53,7 +54,9 @@ export async function registerAssignmentRoutes(
   app: FastifyInstance,
   prisma: PrismaClient
 ) {
-  app.get("/api/users", async (request, reply) => {
+  const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
+  const writeAccess = requireWorkspaceAccess("WORK_MANAGEMENT", true);
+  app.get("/api/users", { preHandler: readAccess }, async (request, reply) => {
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const items = await getAssignmentUsers(yougile);
@@ -67,7 +70,7 @@ export async function registerAssignmentRoutes(
     }
   });
 
-  app.post("/api/assignments/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
+  app.post("/api/assignments/preview", { preHandler: [readAccess, rateLimitPerUser(previewRateLimit)] }, async (request, reply) => {
     const parsed = assignmentPreviewBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "Выберите уникальные площадки и одного инженера." });
@@ -88,7 +91,7 @@ export async function registerAssignmentRoutes(
     }
   });
 
-  app.get<{ Params: { id: string } }>("/api/operations/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/api/operations/:id", { preHandler: readAccess }, async (request, reply) => {
     const operation = await prisma.operation.findUnique({
       where: { id: request.params.id },
       include: { items: { orderBy: { sortOrder: "asc" } } }
@@ -121,7 +124,7 @@ export async function registerAssignmentRoutes(
   // детальный список площадок страница получает по GET /api/operations/:id,
   // когда открывает операцию. Операция активна, пока стоит в очереди или
   // выполняется воркером в фоне.
-  app.get("/api/operations/active", async () => {
+  app.get("/api/operations/active", { preHandler: readAccess }, async () => {
     const operations = await prisma.operation.findMany({
       where: { status: { in: [OperationStatus.QUEUED, OperationStatus.RUNNING] } },
       orderBy: { createdAt: "asc" },
@@ -151,7 +154,7 @@ export async function registerAssignmentRoutes(
     };
   });
 
-  app.post("/api/assignments", async (request, reply) => {
+  app.post("/api/assignments", { preHandler: writeAccess }, async (request, reply) => {
     const parsed = assignmentPreviewBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "Некорректные данные назначения." });

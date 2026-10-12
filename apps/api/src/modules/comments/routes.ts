@@ -4,13 +4,16 @@ import { UserYougileCredentialError, getUserYougileClient } from "../../integrat
 import { operationQueue } from "../../jobs/queue.js";
 import { AssignmentValidationError } from "../assignments/service.js";
 import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
+import { requireWorkspaceAccess } from "../auth/service.js";
 import { commentRequestBodySchema, previewComments } from "./service.js";
 
 export async function registerCommentRoutes(
   app: FastifyInstance,
   prisma: PrismaClient
 ) {
-  app.post("/api/comments/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
+  const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
+  const writeAccess = requireWorkspaceAccess("WORK_MANAGEMENT", true);
+  app.post("/api/comments/preview", { preHandler: [readAccess, rateLimitPerUser(previewRateLimit)] }, async (request, reply) => {
     const parsed = commentRequestBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({
@@ -33,7 +36,7 @@ export async function registerCommentRoutes(
     }
   });
 
-  app.post("/api/comments", async (request, reply) => {
+  app.post("/api/comments", { preHandler: writeAccess }, async (request, reply) => {
     const parsed = commentRequestBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({

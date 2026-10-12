@@ -54,6 +54,7 @@ function publicUser(user: {
   login: string;
   displayName: string;
   role: string;
+  workspaces: string[];
   yougileTokenEncrypted?: string | null;
 }) {
   return {
@@ -61,6 +62,7 @@ function publicUser(user: {
     login: user.login,
     displayName: user.displayName,
     role: user.role,
+    workspaces: user.workspaces,
     yougileTokenConfigured: Boolean(user.yougileTokenEncrypted)
   };
 }
@@ -111,7 +113,8 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     }
 
     const user = await prisma.portalUser.findUnique({
-      where: { login: parsed.data.login }
+      where: { login: parsed.data.login },
+      include: { workspaceAccess: { select: { workspace: true } } }
     });
 
     // Считаем пароль даже для несуществующего логина, чтобы по времени ответа
@@ -171,7 +174,7 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     // Без этой строки журнал показал бы лишь «POST /api/auth/login → 200»:
     // сессия в ответе есть, а вот каким логином вошли — нет.
     annotateLog(request, { message: "Вход в портал выполнен", entityId: user.id });
-    return { user: publicUser(user), expiresAt: expiresAt.toISOString(), rememberMe };
+    return { user: publicUser({ ...user, workspaces: user.workspaceAccess.map(({ workspace }) => workspace) }), expiresAt: expiresAt.toISOString(), rememberMe };
   });
 
   // Самостоятельная регистрация по ключу администратора. Сессия выдаётся сразу,
@@ -244,7 +247,7 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
 
     request.log.info({ login: user.login, role: user.role }, "Portal account registered");
     annotateLog(request, { message: "Регистрация завершена", entityId: user.id });
-    return reply.code(201).send({ user: publicUser(user), expiresAt: expiresAt.toISOString() });
+    return reply.code(201).send({ user: publicUser({ ...user, workspaces: [] }), expiresAt: expiresAt.toISOString() });
   });
 
   // Маршруты входа и выхода намеренно изолированы: Fastify отвечает 415 на POST

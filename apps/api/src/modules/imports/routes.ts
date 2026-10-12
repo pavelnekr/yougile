@@ -15,6 +15,7 @@ import { describeError } from "../../lib/error-details.js";
 import { beginWorkCheck, endWorkCheck } from "../../lib/yougile-activity.js";
 import { annotateLog, recordLog } from "../logs/service.js";
 import { previewRateLimit, rateLimitPerUser, workCheckRateLimit } from "../auth/rate-limit.js";
+import { requireWorkspaceAccess } from "../auth/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
   AssignmentValidationError,
@@ -143,11 +144,13 @@ export async function registerImportRoutes(
   app: FastifyInstance,
   prisma: PrismaClient
 ) {
+  const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
+  const writeAccess = requireWorkspaceAccess("WORK_MANAGEMENT", true);
   await app.register(multipart, {
     limits: { fileSize: config.UPLOAD_MAX_BYTES, files: 1, fields: 0, parts: 1 }
   });
 
-  app.get("/api/imports", async (_request, reply) => {
+  app.get("/api/imports", { preHandler: readAccess }, async (_request, reply) => {
     try {
       const batches = await prisma.importBatch.findMany({
         orderBy: { createdAt: "desc" },
@@ -173,7 +176,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.get<{ Params: { id: string } }>("/api/imports/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/api/imports/:id", { preHandler: readAccess }, async (request, reply) => {
     try {
       const batch = await prisma.importBatch.findUnique({
         where: { id: request.params.id },
@@ -224,7 +227,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.post<{ Params: { id: string } }>("/api/imports/:id/work-check", { preHandler: rateLimitPerUser(workCheckRateLimit) }, async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/api/imports/:id/work-check", { preHandler: [readAccess, rateLimitPerUser(workCheckRateLimit)] }, async (request, reply) => {
     const parsed = workCheckSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите строки XLSX для проверки комментариев." });
 
@@ -480,7 +483,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.get<{ Querystring: { checkId?: string } }>("/api/imports/work-check/progress", async (request) => {
+  app.get<{ Querystring: { checkId?: string } }>("/api/imports/work-check/progress", { preHandler: readAccess }, async (request) => {
     const checkId = request.query.checkId;
     const entry = checkId ? workCheckProgress.get(checkId) : undefined;
     if (!entry) {
@@ -497,7 +500,7 @@ export async function registerImportRoutes(
     };
   });
 
-  app.post("/api/imports/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
+  app.post("/api/imports/preview", { preHandler: [writeAccess, rateLimitPerUser(previewRateLimit)] }, async (request, reply) => {
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
       const upload = await request.file();
@@ -649,7 +652,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.get<{ Params: { id: string } }>("/api/imports/:id/problematic-sites.xlsx", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/api/imports/:id/problematic-sites.xlsx", { preHandler: readAccess }, async (request, reply) => {
     try {
       const batch = await prisma.importBatch.findUnique({
         where: { id: request.params.id },
@@ -810,7 +813,7 @@ export async function registerImportRoutes(
     };
   }
 
-  app.post<{ Params: { id: string } }>("/api/imports/:id/assignment-preview", async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/api/imports/:id/assignment-preview", { preHandler: readAccess }, async (request, reply) => {
     const parsed = previewSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите строки плана, где площадка и инженер найдены в YouGile." });
     try {
@@ -838,7 +841,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.post<{ Params: { id: string } }>("/api/imports/:id/removal-preview", async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/api/imports/:id/removal-preview", { preHandler: readAccess }, async (request, reply) => {
     const parsed = importRemovalSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите уникальные строки XLSX для снятия инженеров." });
     try {
@@ -869,7 +872,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.post<{ Params: { id: string } }>("/api/imports/:id/remove", async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/api/imports/:id/remove", { preHandler: writeAccess }, async (request, reply) => {
     const parsed = importRemovalSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите проверенные строки XLSX для снятия инженеров." });
     try {
@@ -922,7 +925,7 @@ export async function registerImportRoutes(
     }
   });
 
-  app.post<{ Params: { id: string } }>("/api/imports/:id/assign", async (request, reply) => {
+  app.post<{ Params: { id: string } }>("/api/imports/:id/assign", { preHandler: writeAccess }, async (request, reply) => {
     const parsed = applySchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите проверенные строки плана и введите шаблон комментария." });
 

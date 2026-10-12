@@ -3,7 +3,7 @@ import { PortalRole, type PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
 import { YougileTokenEncryptionKeyError } from "../../integrations/yougile/token-crypto.js";
 import { previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
-import { requireRole } from "../auth/service.js";
+import { requireRole, requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
 import { mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
 import {
@@ -38,8 +38,10 @@ const previewMultipartLimits = {
  */
 export async function registerCoordinationRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const adminOnly = requireRole(PortalRole.ADMIN);
+  const readAccess = requireWorkspaceAccess("COORDINATION");
+  const writeAccess = requireWorkspaceAccess("COORDINATION", true);
 
-  app.get("/api/coordination/config", async (_request, reply) => {
+  app.get("/api/coordination/config", { preHandler: readAccess }, async (_request, reply) => {
     try {
       const [recipients, settings] = await Promise.all([
         loadMailRecipients(prisma),
@@ -125,7 +127,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     };
   });
 
-  app.post("/api/coordination/preview", { preHandler: rateLimitPerUser(previewRateLimit) }, async (request, reply) => {
+  app.post("/api/coordination/preview", { preHandler: [readAccess, rateLimitPerUser(previewRateLimit)] }, async (request, reply) => {
     if (!request.isMultipart()) {
       return reply.code(406).send({ error: "Ожидается загрузка файла в формате multipart/form-data." });
     }
@@ -182,7 +184,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     }
   });
 
-  app.post("/api/coordination/send", { preHandler: rateLimitPerUser(sendLetterRateLimit) }, async (request, reply) => {
+  app.post("/api/coordination/send", { preHandler: [writeAccess, rateLimitPerUser(sendLetterRateLimit)] }, async (request, reply) => {
     const parsed = sendLetterSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте тему и текст письма." });

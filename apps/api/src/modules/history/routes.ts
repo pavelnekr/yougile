@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { getAssignmentUsers } from "../users/service.js";
+import { requireWorkspaceAccess } from "../auth/service.js";
 
 const historyQuerySchema = z.object({
   days: z.enum(["30", "90", "all"]).default("30"),
@@ -73,7 +74,8 @@ function bucketLabel(key: string, days: "30" | "90" | "all") {
 }
 
 export async function registerHistoryRoutes(app: FastifyInstance, prisma: PrismaClient) {
-  app.get("/api/history/work-types", async (_request, reply) => {
+  const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
+  app.get("/api/history/work-types", { preHandler: readAccess }, async (_request, reply) => {
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
@@ -112,7 +114,7 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
     }
   });
 
-  app.get("/api/history/summary", async (request, reply) => {
+  app.get("/api/history/summary", { preHandler: readAccess }, async (request, reply) => {
     const parsed = historyQuerySchema.pick({ days: true }).safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите период 30, 90 дней или всё время." });
 
@@ -275,7 +277,7 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
     }
   });
 
-  app.get("/api/history/items", async (request, reply) => {
+  app.get("/api/history/items", { preHandler: readAccess }, async (request, reply) => {
     const parsed = historyQuerySchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ error: "Проверьте параметры фильтра истории." });
 

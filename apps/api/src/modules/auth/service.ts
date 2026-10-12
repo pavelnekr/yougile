@@ -4,7 +4,7 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import type { PortalRole, PrismaClient } from "@prisma/client";
+import type { PortalRole, PortalWorkspace, PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
 
 const scryptAsync = promisify(scrypt) as (
@@ -131,6 +131,7 @@ export type SessionUser = {
   login: string;
   displayName: string;
   role: PortalRole;
+  workspaces: PortalWorkspace[];
   createdAt: Date;
 };
 
@@ -151,6 +152,7 @@ export async function resolveSession(prisma: PrismaClient, request: FastifyReque
           login: true,
           displayName: true,
           role: true,
+          workspaceAccess: { select: { workspace: true } },
           active: true,
           createdAt: true
         }
@@ -176,7 +178,9 @@ export async function resolveSession(prisma: PrismaClient, request: FastifyReque
       .catch(() => undefined);
   }
 
-  return session;
+  // Prisma relation is projected as compact workspace enum values for guards/UI.
+  const { workspaceAccess, ...user } = session.user;
+  return { ...session, user: { ...user, workspaces: workspaceAccess.map(({ workspace }) => workspace) } };
 }
 
 export async function destroySession(prisma: PrismaClient, request: FastifyRequest) {
@@ -261,6 +265,20 @@ export function requireRole(...allowed: PortalRole[]) {
     }
     if (!allowed.includes(role)) {
       return reply.code(403).send({ error: "Этот раздел доступен только администраторам." });
+    }
+  };
+}
+
+export function requireWorkspaceAccess(workspace: PortalWorkspace, write = false) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = request.sessionUser;
+    if (!user) return reply.code(401).send({ error: "Требуется вход в портал." });
+    if (user.role === "ADMIN") return;
+    if (!user.workspaces.includes(workspace)) {
+      return reply.code(403).send({ error: "Нет доступа к этому разделу." });
+    }
+    if (write && user.role === "VIEWER") {
+      return reply.code(403).send({ error: "Для этого действия нужны права оператора." });
     }
   };
 }

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 // Роли в UI и API совпадают со значением enum PortalRole.
 const portalRoleSchema = z.enum(["ADMIN", "OPERATOR", "VIEWER"]);
+const portalWorkspaceSchema = z.enum(["WORK_MANAGEMENT", "COORDINATION", "WORK_PLANNING"]);
 
 export const adminUsersQuerySchema = z.object({
   // Период статистики в днях. "all" — вся история операций.
@@ -24,7 +25,8 @@ export const createUserSchema = z.object({
     .string()
     .min(8, "Пароль должен быть не короче 8 символов.")
     .max(256, "Пароль не должен быть длиннее 256 символов."),
-  role: portalRoleSchema.optional()
+  role: portalRoleSchema.optional(),
+  workspaces: z.array(portalWorkspaceSchema).default([])
 });
 
 export const updateUserSchema = z
@@ -36,7 +38,8 @@ export const updateUserSchema = z
       .max(120, "Имя пользователя не должно быть длиннее 120 символов.")
       .optional(),
     role: portalRoleSchema.optional(),
-    active: z.boolean().optional()
+    active: z.boolean().optional(),
+    workspaces: z.array(portalWorkspaceSchema).optional()
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "Нет изменений."

@@ -41,6 +41,7 @@ type AdminUser = {
   login: string;
   displayName: string;
   role: string;
+  workspaces: string[];
   active: boolean;
   yougileTokenConfigured: boolean;
   createdAt: string;
@@ -68,6 +69,12 @@ const roles = [
   { value: "VIEWER", label: "Наблюдатель" }
 ] as const;
 
+const workspaces = [
+  { value: "WORK_MANAGEMENT", label: "Управление работами" },
+  { value: "COORDINATION", label: "Согласование/Оповещение" },
+  { value: "WORK_PLANNING", label: "Планирование работ" }
+] as const;
+
 const operationTypeLabels: Record<string, string> = {
   ASSIGN: "назначений",
   REMOVE: "снятий",
@@ -82,7 +89,7 @@ function errorMessage(error: unknown) {
 
 // Текст подтверждения изменения. Формулировки без родовых окончаний:
 // в портале работают и мужчины, и женщины.
-function describePatch(user: AdminUser, changes: { role?: string; active?: boolean }, revokedSessions: number) {
+function describePatch(user: AdminUser, changes: { role?: string; active?: boolean; workspaces?: string[] }, revokedSessions: number) {
   if (changes.active === false) {
     return `${user.displayName}: доступ закрыт, сессий завершено — ${formatNumber(revokedSessions)}.`;
   }
@@ -92,6 +99,7 @@ function describePatch(user: AdminUser, changes: { role?: string; active?: boole
   if (changes.role) {
     return `${user.displayName}: роль изменена на «${roles.find((item) => item.value === changes.role)?.label ?? changes.role}».`;
   }
+  if (changes.workspaces) return `${user.displayName}: доступ к разделам обновлён.`;
   return `${user.displayName}: изменения сохранены.`;
 }
 
@@ -394,7 +402,7 @@ export default function AdminUsersPage({
     }
   };
 
-  const patchUser = async (user: AdminUser, changes: { role?: string; active?: boolean }) => {
+  const patchUser = async (user: AdminUser, changes: { role?: string; active?: boolean; workspaces?: string[] }) => {
     if (pendingId) return;
     setPendingId(user.id);
     setError("");
@@ -553,6 +561,7 @@ export default function AdminUsersPage({
                 <tr>
                   <th>Сотрудник</th>
                   <th>Роль</th>
+                  <th>Разделы</th>
                   <th>Доступ</th>
                   <th>Активность</th>
                   <th>Операции {periodLabel}</th>
@@ -586,6 +595,28 @@ export default function AdminUsersPage({
                         >
                           {roles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                         </select>
+                      </td>
+                      <td>
+                        {user.role === "ADMIN" ? <span className="admin-cell-note">Все разделы</span> : (
+                          <div className="admin-workspace-access">
+                            {workspaces.map((workspace) => (
+                              <label key={workspace.value}>
+                                <input
+                                  type="checkbox"
+                                  checked={user.workspaces.includes(workspace.value)}
+                                  disabled={busy}
+                                  onChange={(event) => {
+                                    const next = event.target.checked
+                                      ? [...user.workspaces, workspace.value]
+                                      : user.workspaces.filter((value) => value !== workspace.value);
+                                    void patchUser(user, { workspaces: next });
+                                  }}
+                                />
+                                <span>{workspace.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <span className={`admin-badge ${user.active ? "admin-badge-active" : "admin-badge-blocked"}`}>
