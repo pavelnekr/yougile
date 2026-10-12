@@ -76,12 +76,15 @@ export default function CommentPage({
   sites,
   loadState,
   siteError,
+  paused,
   onComplete,
   onOpenHistory
 }: {
   sites: PlannedSite[];
   loadState: SiteLoadState;
   siteError: string;
+  /** true — сервер отдал последний кэш, потому что идёт операция в YouGile. */
+  paused: boolean;
   onComplete: () => void;
   onOpenHistory: () => void;
 }) {
@@ -298,7 +301,7 @@ export default function CommentPage({
             <div className="assignment-panel-heading">
               <div>
                 <h2>1. Выберите площадки</h2>
-                <p>Список активных задач загружен из колонки плана YouGile.</p>
+                <p>{paused ? "Обновление списка приостановлено: идёт операция в YouGile." : "Список активных задач загружен из колонки плана YouGile."}</p>
               </div>
               {selectedTaskIds.length > 0 && <button className="text-button" disabled={operationPending} onClick={resetForm}>Сбросить</button>}
             </div>
@@ -307,7 +310,8 @@ export default function CommentPage({
               <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Поиск по номеру или адресу" />
             </label>
   
-            {loadState === "loading" ? <div className="assignment-loading">Загружаем план…</div>
+            {paused && sites.length === 0 ? <div className="sites-page-message sites-message-paused">Обновление списка приостановлено: идёт операция в YouGile.</div>
+              : loadState === "loading" ? <div className="assignment-loading">Загружаем план…</div>
               : loadState === "error" ? <div className="sites-page-message sites-message-error">{siteError}</div>
                 : filteredSites.length === 0 ? <div className="sites-page-message">{query ? "По вашему запросу площадок не найдено." : "В колонке плана пока нет площадок."}</div>
                   : (

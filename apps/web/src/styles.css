@@ -226,6 +226,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .planned-sites-preview, .avr-sites-preview { overflow: hidden; }
 .sites-message { display: grid; min-height: 125px; place-items: center; padding: 18px; color: #929aaa; font-size: 10px; text-align: center; }
 .sites-message-error { color: #b75c50; }
+/* Пауза обновления на время операции в YouGile: спокойный янтарный тон. */
+.sites-message-paused { color: #a4814c; }
 .preview-list { margin-top: 12px; }
 .site-row { display: grid; grid-template-columns: 45px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 27px; border-top: 1px solid #f1f3f7; }
 .site-number { color: #586dbe; font-size: 9px; font-weight: 700; font-variant-numeric: tabular-nums; }

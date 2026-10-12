@@ -12,6 +12,7 @@ import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { normalizeEngineerName } from "../../lib/engineer-name.js";
 import { describeError } from "../../lib/error-details.js";
+import { beginWorkCheck, endWorkCheck } from "../../lib/yougile-activity.js";
 import { annotateLog, recordLog } from "../logs/service.js";
 import { previewRateLimit, rateLimitPerUser, workCheckRateLimit } from "../auth/rate-limit.js";
 import { getAssignmentUsers } from "../users/service.js";
@@ -227,6 +228,10 @@ export async function registerImportRoutes(
     const parsed = workCheckSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Выберите строки XLSX для проверки комментариев." });
 
+    // Пока идёт проверка, списки площадок не перечитываются из YouGile: чтение
+    // чатов и так идёт по площадке с паузой 4 секунды, а параллельный обход
+    // колонок плана/АВР добавляет запросы и провоцирует HTTP 429.
+    beginWorkCheck();
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       const batch = await prisma.importBatch.findUnique({
@@ -470,6 +475,8 @@ export async function registerImportRoutes(
       }
       app.log.error({ err: error, importId: request.params.id }, "Could not check latest comments for XLSX rows");
       return reply.code(502).send({ error: "Не удалось проверить комментарии по выбранному XLSX." });
+    } finally {
+      endWorkCheck();
     }
   });
 

@@ -138,6 +138,14 @@ export function invalidateSitesCache(): void {
   plannedSitesCache.clear();
 }
 
+// Только кэш, без обращения к YouGile: используется, когда идёт операция и
+// перечитывать задачи нельзя. Просроченная запись не считается пустой — это
+// последнее известное состояние, и оно лучше лишнего запроса к YouGile.
+export function peekPlannedSites(client: YougileClient): PlannedSite[] | null {
+  const key = `${client.cacheKey}|${getPlanColumn().id}`;
+  return plannedSitesCache.get(key)?.data ?? null;
+}
+
 export type AvrColumnSites = { id: string; name: string; sites: PlannedSite[] };
 export type AvrSitesList = { columns: AvrColumnSites[]; items: PlannedSite[]; total: number };
 
@@ -190,4 +198,10 @@ export async function getAvrSites(
 // Вызывается из модуля portal-config сразу после сохранения нового списка.
 export function invalidateAvrSitesCache(): void {
   avrSitesCache.clear();
+}
+
+// Только кэш столбцов АВР, без обращения к YouGile (см. peekPlannedSites).
+export function peekAvrSites(client: YougileClient, columns: PortalColumn[]): AvrSitesList | null {
+  const key = `${client.cacheKey}|${columns.map((column) => `${column.id}:${column.name}`).join("|")}`;
+  return avrSitesCache.get(key)?.data ?? null;
 }

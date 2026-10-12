@@ -149,6 +149,19 @@ const actions = [
   }
 ];
 
+// Пока идёт операция в YouGile, сервер отдаёт списки площадок из кэша с флагом
+// paused и просит не перечитывать задачи (иначе YouGile отвечает HTTP 429).
+// Пока пауза держится, повторяем запрос с этим шагом: как только операции
+// закончились, приходит свежий список.
+const pausedSitesRetryMs = 4_000;
+
+// Единая формулировка паузы для карточек и списков площадок.
+const sitesPausedText = "Обновление приостановлено: идёт операция в YouGile";
+
+function SitesPausedNote({ className = "sites-message" }: { className?: string }) {
+  return <div className={`${className} sites-message-paused`}>{sitesPausedText}</div>;
+}
+
 function App() {
   const [sessionUser, setSessionUser] = useState<PortalUser | null>(null);
   // null = проверяем, false = гость, true = вход выполнен.
@@ -159,12 +172,15 @@ function App() {
   const [sites, setSites] = useState<PlannedSite[]>([]);
   const [siteLoadState, setSiteLoadState] = useState<SiteLoadState>("loading");
   const [siteError, setSiteError] = useState("");
+  // true — сервер отдал последний кэш, потому что сейчас идёт операция в YouGile.
+  const [sitePaused, setSitePaused] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [siteRefreshKey, setSiteRefreshKey] = useState(0);
   const refreshSites = useCallback(() => setSiteRefreshKey((key) => key + 1), []);
   const [avrSites, setAvrSites] = useState<AvrSitesList | null>(null);
   const [avrLoadState, setAvrLoadState] = useState<SiteLoadState>("loading");
   const [avrError, setAvrError] = useState("");
+  const [avrPaused, setAvrPaused] = useState(false);
   const [avrRefreshKey, setAvrRefreshKey] = useState(0);
   const refreshAvrSites = useCallback(() => setAvrRefreshKey((key) => key + 1), []);
 
@@ -221,26 +237,41 @@ function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    apiFetch("/api/sites/in-plan", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const error = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(error?.error ?? "Не удалось загрузить площадки.");
-        }
-        return response.json() as Promise<{ items: PlannedSite[] }>;
-      })
-      .then((data) => {
-        setSites(data.items);
-        setSiteLoadState("ready");
-        setSiteError("");
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setSiteError(error instanceof Error ? error.message : "Не удалось загрузить площадки.");
-        setSiteLoadState("error");
-      });
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
 
-    return () => controller.abort();
+    const load = () => {
+      apiFetch("/api/sites/in-plan", { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            const error = await response.json().catch(() => null) as { error?: string } | null;
+            throw new Error(error?.error ?? "Не удалось загрузить площадки.");
+          }
+          return response.json() as Promise<{ items: PlannedSite[]; paused?: boolean }>;
+        })
+        .then((data) => {
+          if (cancelled) return;
+          setSites(data.items);
+          setSiteLoadState("ready");
+          setSiteError("");
+          // Сервер приостановил обновление, потому что идёт операция: показываем
+          // последний кэш и повторяем запрос, пока операции не закончатся.
+          setSitePaused(Boolean(data.paused));
+          if (data.paused) retry = setTimeout(load, pausedSitesRetryMs);
+        })
+        .catch((error: unknown) => {
+          if (cancelled || controller.signal.aborted) return;
+          setSiteError(error instanceof Error ? error.message : "Не удалось загрузить площадки.");
+          setSiteLoadState("error");
+        });
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (retry) clearTimeout(retry);
+    };
   }, [siteRefreshKey]);
 
   // Единый список площадок АВР: служит и карточке на обзоре, и странице
@@ -248,25 +279,41 @@ function App() {
   // поэтому данные перечитываются сразу после сохранения.
   useEffect(() => {
     const controller = new AbortController();
-    apiFetch("/api/sites/in-avr", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const error = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(error?.error ?? "Не удалось загрузить площадки АВР.");
-        }
-        return response.json() as Promise<AvrSitesList>;
-      })
-      .then((data) => {
-        setAvrSites(data);
-        setAvrLoadState("ready");
-        setAvrError("");
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setAvrError(error instanceof Error ? error.message : "Не удалось загрузить площадки АВР.");
-        setAvrLoadState("error");
-      });
-    return () => controller.abort();
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+
+    const load = () => {
+      apiFetch("/api/sites/in-avr", { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            const error = await response.json().catch(() => null) as { error?: string } | null;
+            throw new Error(error?.error ?? "Не удалось загрузить площадки АВР.");
+          }
+          return response.json() as Promise<AvrSitesList & { paused?: boolean }>;
+        })
+        .then((data) => {
+          if (cancelled) return;
+          setAvrSites(data);
+          setAvrLoadState("ready");
+          setAvrError("");
+          // Как и у списка площадок: во время операции показываем кэш и
+          // повторяем запрос, пока операции не закончатся.
+          setAvrPaused(Boolean(data.paused));
+          if (data.paused) retry = setTimeout(load, pausedSitesRetryMs);
+        })
+        .catch((error: unknown) => {
+          if (cancelled || controller.signal.aborted) return;
+          setAvrError(error instanceof Error ? error.message : "Не удалось загрузить площадки АВР.");
+          setAvrLoadState("error");
+        });
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (retry) clearTimeout(retry);
+    };
   }, [avrRefreshKey]);
 
   const chooseSection = (label: Section) => {
@@ -394,9 +441,11 @@ function App() {
               sites={sites}
               siteLoadState={siteLoadState}
               siteError={siteError}
+              sitePaused={sitePaused}
               avrSites={avrSites}
               avrLoadState={avrLoadState}
               avrError={avrError}
+              avrPaused={avrPaused}
             />
           ) : activeSection === "Согласование/Оповещение" ? (
             <CoordinationLandingPage onNavigate={chooseSection} />
@@ -409,9 +458,9 @@ function App() {
               description="Планирование работ по площадкам и подготовка планов к выполнению."
             />
           ) : activeSection === "Площадки" ? (
-            <SitesPage sites={sites} loadState={siteLoadState} error={siteError} />
+            <SitesPage sites={sites} loadState={siteLoadState} error={siteError} paused={sitePaused} />
           ) : activeSection === "Площадки АВР" ? (
-            <AvrSitesPage avrSites={avrSites} loadState={avrLoadState} error={avrError} />
+            <AvrSitesPage avrSites={avrSites} loadState={avrLoadState} error={avrError} paused={avrPaused} />
           ) : activeSection === "Назначить инженера" ? (
             <XlsxAssignmentPage onComplete={refreshSites} />
           ) : activeSection === "Снять инженеров" ? (
@@ -421,6 +470,7 @@ function App() {
               sites={sites}
               loadState={siteLoadState}
               siteError={siteError}
+              paused={sitePaused}
               onComplete={refreshSites}
               onOpenHistory={() => chooseSection("История")}
             />
@@ -463,18 +513,22 @@ function Overview({
   sites,
   siteLoadState,
   siteError,
+  sitePaused,
   avrSites,
   avrLoadState,
-  avrError
+  avrError,
+  avrPaused
 }: {
   onNavigate: (section: Section) => void;
   health: Health;
   sites: PlannedSite[];
   siteLoadState: SiteLoadState;
   siteError: string;
+  sitePaused: boolean;
   avrSites: AvrSitesList | null;
   avrLoadState: SiteLoadState;
   avrError: string;
+  avrPaused: boolean;
 }) {
   const [workTypeStatistics, setWorkTypeStatistics] = useState<WorkTypeStatistic | null>(null);
   const [workTypeStatisticsError, setWorkTypeStatisticsError] = useState("");
@@ -567,8 +621,10 @@ function Overview({
 
       <section className="bottom-grid">
         <div className="panel activity-panel planned-sites-preview">
-          <div className="panel-heading"><div><h2>Площадки в фильтрации</h2><p>{siteLoadState === "ready" ? `${countRu(sites.length, taskForms)} из YouGile` : "Актуальный список из YouGile"}</p></div><button className="text-button" onClick={() => onNavigate("Площадки")}>Все площадки <ArrowRight size={14} /></button></div>
-          {siteLoadState === "loading" ? (
+          <div className="panel-heading"><div><h2>Площадки в фильтрации</h2><p>{sitePaused ? sitesPausedText : siteLoadState === "ready" ? `${countRu(sites.length, taskForms)} из YouGile` : "Актуальный список из YouGile"}</p></div><button className="text-button" onClick={() => onNavigate("Площадки")}>Все площадки <ArrowRight size={14} /></button></div>
+          {sitePaused && sites.length === 0 ? (
+            <SitesPausedNote />
+          ) : siteLoadState === "loading" ? (
             <div className="sites-message">Загружаем список площадок…</div>
           ) : siteLoadState === "error" ? (
             <div className="sites-message sites-message-error">{siteError}</div>
@@ -581,8 +637,10 @@ function Overview({
           )}
         </div>
         <div className="panel activity-panel avr-sites-preview">
-          <div className="panel-heading"><div><h2>Площадки в АВР</h2><p>{avrLoadState === "ready" ? `${countRu(avrSites?.total ?? 0, taskForms)} из YouGile` : "Актуальный список из YouGile"}</p></div><button className="text-button" onClick={() => onNavigate("Площадки АВР")}>Все площадки <ArrowRight size={14} /></button></div>
-          {avrLoadState === "loading" ? (
+          <div className="panel-heading"><div><h2>Площадки в АВР</h2><p>{avrPaused ? sitesPausedText : avrLoadState === "ready" ? `${countRu(avrSites?.total ?? 0, taskForms)} из YouGile` : "Актуальный список из YouGile"}</p></div><button className="text-button" onClick={() => onNavigate("Площадки АВР")}>Все площадки <ArrowRight size={14} /></button></div>
+          {avrPaused && (!avrSites || avrSites.items.length === 0) ? (
+            <SitesPausedNote />
+          ) : avrLoadState === "loading" ? (
             <div className="sites-message">Загружаем список площадок…</div>
           ) : avrLoadState === "error" ? (
             <div className="sites-message sites-message-error">{avrError}</div>
@@ -662,7 +720,7 @@ function SiteRow({ site, columnName }: { site: PlannedSite; columnName?: string 
   );
 }
 
-function SitesPage({ sites, loadState, error }: { sites: PlannedSite[]; loadState: SiteLoadState; error: string }) {
+function SitesPage({ sites, loadState, error, paused }: { sites: PlannedSite[]; loadState: SiteLoadState; error: string; paused: boolean }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 25;
@@ -675,7 +733,7 @@ function SitesPage({ sites, loadState, error }: { sites: PlannedSite[]; loadStat
     <section className="section-view">
       <div className="eyebrow"><span className="eyebrow-line" /> ДАННЫЕ YOUGILE</div>
       <div className="sites-page-heading">
-        <div><h1>Площадки в плане</h1><p>Активные задачи из колонки плана в YouGile.</p></div>
+        <div><h1>Площадки в плане</h1><p>{paused ? sitesPausedText : "Активные задачи из колонки плана в YouGile."}</p></div>
         <span className="sites-total">{loadState === "ready" ? countRu(sites.length, siteForms) : "Загрузка…"}</span>
       </div>
       <div className="panel sites-table-panel">
@@ -683,7 +741,9 @@ function SitesPage({ sites, loadState, error }: { sites: PlannedSite[]; loadStat
           <div><strong>Список площадок</strong><span>{loadState === "ready" ? `Найдено: ${filteredSites.length.toLocaleString("ru-RU")}` : "Источник: YouGile"}</span></div>
           <label className="sites-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Поиск по номеру или адресу" /></label>
         </div>
-        {loadState === "loading" ? (
+        {paused && sites.length === 0 ? (
+          <SitesPausedNote className="sites-page-message" />
+        ) : loadState === "loading" ? (
           <div className="sites-page-message">Загружаем список из YouGile…</div>
         ) : loadState === "error" ? (
           <div className="sites-page-message sites-message-error">{error}</div>
@@ -718,7 +778,7 @@ function SitesPage({ sites, loadState, error }: { sites: PlannedSite[]; loadStat
  * свалены в один список, у каждой площадки видно, из какого столбца она взята.
  * Каркас, поиск и пагинация те же, что у списка «Площадки в плане».
  */
-function AvrSitesPage({ avrSites, loadState, error }: { avrSites: AvrSitesList | null; loadState: SiteLoadState; error: string }) {
+function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSitesList | null; loadState: SiteLoadState; error: string; paused: boolean }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [columnFilter, setColumnFilter] = useState("");
@@ -737,7 +797,7 @@ function AvrSitesPage({ avrSites, loadState, error }: { avrSites: AvrSitesList |
     <section className="section-view">
       <div className="eyebrow"><span className="eyebrow-line" /> ДАННЫЕ YOUGILE</div>
       <div className="sites-page-heading">
-        <div><h1>Площадки в АВР</h1><p>Активные задачи из столбцов АВР в YouGile.</p></div>
+        <div><h1>Площадки в АВР</h1><p>{paused ? sitesPausedText : "Активные задачи из столбцов АВР в YouGile."}</p></div>
         <span className="sites-total">{loadState === "ready" ? countRu(sites.length, siteForms) : "Загрузка…"}</span>
       </div>
       <div className="panel sites-table-panel">
@@ -762,7 +822,9 @@ function AvrSitesPage({ avrSites, loadState, error }: { avrSites: AvrSitesList |
             ))}
           </div>
         )}
-        {loadState === "loading" ? (
+        {paused && sites.length === 0 ? (
+          <SitesPausedNote className="sites-page-message" />
+        ) : loadState === "loading" ? (
           <div className="sites-page-message">Загружаем список из YouGile…</div>
         ) : loadState === "error" ? (
           <div className="sites-page-message sites-message-error">{error}</div>
