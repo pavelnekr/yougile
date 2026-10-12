@@ -7,12 +7,15 @@ import { apiFetch } from "./apiClient";
  */
 export type ActiveOperation = {
   id: string;
-  type: "ASSIGN" | "REMOVE" | "COMMENT";
+  type: "ASSIGN" | "REMOVE" | "COMMENT" | "WORK_CHECK";
   status: "QUEUED" | "RUNNING";
   total: number;
   completed: number;
   failed: number;
   message: string | null;
+  importId?: string | null;
+  fileName?: string | null;
+  startedAt?: string | null;
 };
 
 export async function fetchActiveOperations(signal?: AbortSignal): Promise<ActiveOperation[]> {

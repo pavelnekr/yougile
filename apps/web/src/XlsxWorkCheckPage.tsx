@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Clock3, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
+import { fetchActiveOperations } from "./activeOperations";
 import { countRu, rowForms, siteForms } from "./plural";
 import { PORTAL_VERSION } from "./version";
 
@@ -83,6 +84,86 @@ export default function XlsxWorkCheckPage() {
   useEffect(() => {
     const controller = new AbortController();
     void loadBatches(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const restoreActiveCheck = async () => {
+      try {
+        const activeChecks = await fetchActiveOperations(controller.signal);
+        const activeCheck = activeChecks.find((operation) => operation.type === "WORK_CHECK");
+        if (!activeCheck?.importId) return;
+
+        setSource("history");
+        setCheckedFile({
+          id: activeCheck.importId,
+          fileName: activeCheck.fileName ?? "Проверка работ",
+          rowCount: activeCheck.total
+        });
+        setBusy(true);
+
+        while (!controller.signal.aborted) {
+          const progressResponse = await apiFetch(
+            `/api/imports/work-check/progress?checkId=${encodeURIComponent(activeCheck.id)}`,
+            { signal: controller.signal, cache: "no-store" }
+          );
+          if (progressResponse.ok) {
+            const nextProgress = await progressResponse.json() as WorkCheckProgress;
+            if (nextProgress.total > 0) setProgress(nextProgress);
+          }
+
+          const currentChecks = await fetchActiveOperations(controller.signal);
+          if (!currentChecks.some((operation) => operation.id === activeCheck.id)) {
+            // Проверка сохраняет итоговую Operation до снятия активной метки.
+            // Коротко опрашиваем последние результаты, чтобы сразу показать таблицу.
+            for (let attempt = 0; attempt < 5 && !controller.signal.aborted; attempt += 1) {
+              const recentResponse = await apiFetch("/api/operations/recent", {
+                signal: controller.signal,
+                cache: "no-store"
+              });
+              if (recentResponse.ok) {
+                const recent = await recentResponse.json() as { items?: { id: string; type: string; finishedAt: string | null; importId?: string | null }[] };
+                const result = recent.items?.find((operation) =>
+                  operation.type === "WORK_CHECK" &&
+                  operation.importId === activeCheck.importId &&
+                  operation.finishedAt &&
+                  (!activeCheck.startedAt || new Date(operation.finishedAt).getTime() >= new Date(activeCheck.startedAt).getTime())
+                );
+                if (result) {
+                  const detailResponse = await apiFetch(`/api/operations/${encodeURIComponent(result.id)}`, {
+                    signal: controller.signal,
+                    cache: "no-store"
+                  });
+                  if (detailResponse.ok) {
+                    const detail = await detailResponse.json() as { items?: { label: string; rowNumber: number | null; comment: string | null; commentedAt: string | null; resultMessage: string | null }[] };
+                    setItems((detail.items ?? []).map((item) => ({
+                      rowNumber: item.rowNumber ?? 0,
+                      siteId: item.label,
+                      comment: item.comment,
+                      commentedAt: item.commentedAt,
+                      message: item.resultMessage ?? "Комментарий не найден."
+                    })));
+                  }
+                  break;
+                }
+              }
+              await new Promise((resolve) => window.setTimeout(resolve, 500));
+            }
+            setBusy(false);
+            setProgress(null);
+            break;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        }
+      } catch (reason) {
+        if (!controller.signal.aborted) {
+          setError(errorMessage(reason));
+          setBusy(false);
+        }
+      }
+    };
+    void restoreActiveCheck();
     return () => controller.abort();
   }, []);
 

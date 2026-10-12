@@ -6,13 +6,15 @@ import type { Section } from "./router";
 const operationTitles: Record<ActiveOperation["type"], string> = {
   ASSIGN: "Назначение инженеров",
   REMOVE: "Снятие инженеров",
-  COMMENT: "Отправка комментариев"
+  COMMENT: "Отправка комментариев",
+  WORK_CHECK: "Проверка работ"
 };
 
 const operationSections: Record<ActiveOperation["type"], Section> = {
   ASSIGN: "Назначить инженера",
   REMOVE: "Снять инженеров",
-  COMMENT: "Написать комментарий"
+  COMMENT: "Написать комментарий",
+  WORK_CHECK: "Проверить работы"
 };
 
 /**

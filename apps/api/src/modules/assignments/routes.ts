@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { OperationStatus, OperationType, PrismaClient } from "@prisma/client";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
+import { getActiveWorkChecks } from "../../lib/active-work-checks.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
 import { requireWorkspaceAccess } from "../auth/service.js";
@@ -161,7 +162,8 @@ export async function registerAssignmentRoutes(
         completed: true,
         failed: true,
         message: true,
-        finishedAt: true
+        finishedAt: true,
+        metadata: true
       }
     });
 
@@ -171,6 +173,11 @@ export async function registerAssignmentRoutes(
         finishedAt: operation.finishedAt?.toISOString() ?? null,
         expiresAt: operation.finishedAt
           ? new Date(operation.finishedAt.getTime() + 10 * 60 * 1000).toISOString()
+          : null,
+        importId: operation.type === OperationType.WORK_CHECK && operation.metadata &&
+          typeof operation.metadata === "object" && !Array.isArray(operation.metadata) &&
+          "importBatchId" in operation.metadata && typeof operation.metadata.importBatchId === "string"
+          ? operation.metadata.importBatchId
           : null
       }))
     };
@@ -195,8 +202,7 @@ export async function registerAssignmentRoutes(
       }
     });
 
-    return {
-      items: operations
+    const queuedItems = operations
         .filter((operation) => visibleOperationTypes.includes(operation.type))
         .map((operation) => ({
           id: operation.id,
@@ -205,9 +211,24 @@ export async function registerAssignmentRoutes(
           total: operation.total,
           completed: operation.completed,
           failed: operation.failed,
-          message: operation.message
-        }))
-    };
+          message: operation.message,
+          importId: null,
+          fileName: null
+        }));
+    const workCheckItems = getActiveWorkChecks().map((check) => ({
+      id: check.checkId,
+      type: OperationType.WORK_CHECK,
+      status: OperationStatus.RUNNING,
+      total: check.total,
+      completed: check.completed,
+      failed: 0,
+      message: check.fileName ? `Проверка работ «${check.fileName}»` : "Проверка работ",
+      importId: check.importId,
+      fileName: check.fileName,
+      startedAt: new Date(check.startedAt).toISOString()
+    }));
+
+    return { items: [...queuedItems, ...workCheckItems] };
   });
 
   app.post("/api/assignments", { preHandler: writeAccess }, async (request, reply) => {

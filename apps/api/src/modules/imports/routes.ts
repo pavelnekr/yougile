@@ -12,6 +12,7 @@ import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { normalizeEngineerName } from "../../lib/engineer-name.js";
 import { describeError } from "../../lib/error-details.js";
+import { finishActiveWorkCheck, registerActiveWorkCheck, updateActiveWorkCheck } from "../../lib/active-work-checks.js";
 import { beginWorkCheck, endWorkCheck } from "../../lib/yougile-activity.js";
 import { annotateLog, recordLog } from "../logs/service.js";
 import { previewRateLimit, rateLimitPerUser, workCheckRateLimit } from "../auth/rate-limit.js";
@@ -236,6 +237,15 @@ export async function registerImportRoutes(
     // колонок плана/АВР добавляет запросы и провоцирует HTTP 429.
     beginWorkCheck();
     const operationStartedAt = new Date();
+    const activeCheckId = parsed.data.checkId ?? `wc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    registerActiveWorkCheck({
+      checkId: activeCheckId,
+      importId: request.params.id,
+      fileName: null,
+      total: parsed.data.rowNumbers.length,
+      completed: 0,
+      startedAt: Date.now()
+    });
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       const batch = await prisma.importBatch.findUnique({
@@ -254,6 +264,7 @@ export async function registerImportRoutes(
       }
 
       const uniqueTaskIds = [...new Set(batch.rows.flatMap((row) => row.yougileTaskId ? [row.yougileTaskId] : []))];
+      updateActiveWorkCheck(activeCheckId, { fileName: batch.fileName, total: uniqueTaskIds.length });
       // timestamp — метка времени последнего сообщения из id YouGile (epoch ms),
       // уходит на фронт как commentedAt, чтобы показать, когда комментарий написан.
       const latestByTaskId = new Map<string, { text: string | null; timestamp: number | null; error: string | null }>();
@@ -413,6 +424,7 @@ export async function registerImportRoutes(
         }
         const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
         if (progressEntry) progressEntry.processed += 1;
+        updateActiveWorkCheck(activeCheckId, { completed: progressEntry?.processed ?? uniqueTaskIds.indexOf(taskId) + 1 });
         // Пауза 4 секунды перед чтением чата следующей площадки.
         await delayBetweenYougileActions();
       }
@@ -518,6 +530,7 @@ export async function registerImportRoutes(
       return reply.code(502).send({ error: "Не удалось проверить комментарии по выбранному XLSX." });
     } finally {
       endWorkCheck();
+      finishActiveWorkCheck(activeCheckId);
     }
   });
 
