@@ -1360,3 +1360,47 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .fixture-toggle { position: fixed; z-index: 60; bottom: 18px; left: 50%; display: flex; gap: 2px; padding: 3px; border: 1px solid #dfe4ec; border-radius: 8px; background: #eceff4; box-shadow: 0 6px 20px rgba(24, 34, 58, .16); transform: translateX(-50%); font-family: "Segoe UI", sans-serif; }
 .fixture-toggle button { padding: 5px 11px; border: 0; border-radius: 6px; color: #5d6780; background: transparent; font-size: 11px; font-weight: 600; cursor: pointer; }
 .fixture-toggle .fixture-toggle-active { color: #2b3549; background: #fff; box-shadow: 0 1px 2px rgba(24, 34, 58, .12); }
+
+/* Desktop sidebar collapse: the rail keeps every destination visible as an icon. */
+.sidebar-brand-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px 32px 0; }
+.sidebar-brand-row .brand { min-width: 0; margin: 0; }
+.sidebar-collapse-button { position: fixed; z-index: 6; top: 50%; left: 252px; display: grid; width: 30px; height: 36px; place-items: center; transform: translate(-50%, -50%); border: 1px solid #e7ebf2; border-radius: 9px; color: #778296; background: #fff; box-shadow: 0 3px 10px #1d2b4b12; cursor: pointer; transition: left var(--dur-modal) var(--ease-in-out), background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease; }
+.sidebar-collapse-button:focus-visible { outline: 2px solid #8296e7; outline-offset: 2px; }
+
+@media (min-width: 761px) {
+  .sidebar { transition: width var(--dur-modal) var(--ease-in-out), padding var(--dur-modal) var(--ease-in-out); }
+  .main-area { transition: margin-left var(--dur-modal) var(--ease-in-out); }
+  .sidebar-collapsed ~ .sidebar-collapse-button { left: 68px; width: 27px; height: 29px; }
+  .sidebar-collapsed { width: 68px; padding-right: 8px; padding-left: 8px; }
+  .sidebar-collapsed ~ .main-area { margin-left: 68px; }
+  .sidebar-collapsed .sidebar-brand-row { justify-content: center; gap: 0; margin-right: 0; margin-bottom: 27px; }
+  .sidebar-collapsed .brand { flex: 0 0 25px; overflow: hidden; }
+  .sidebar-collapsed .brand-copy,
+  .sidebar-collapsed .workspace-copy,
+  .sidebar-collapsed .nav-caption,
+  .sidebar-collapsed .profile-copy,
+  .sidebar-collapsed .profile > svg { display: none; }
+  .sidebar-collapsed .workspace-switch { justify-content: center; padding-right: 0; padding-left: 0; }
+  .sidebar-collapsed .workspace-switch > svg { display: none; }
+  .sidebar-collapsed .nav-link { justify-content: center; padding-right: 0; padding-left: 0; }
+  .sidebar-collapsed .nav-link > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .sidebar-collapsed .help-card { display: none; }
+  .sidebar-collapsed .profile { justify-content: center; gap: 0; padding-right: 0; padding-left: 0; }
+}
+
+@media (min-width: 761px) and (max-width: 1100px) {
+  .sidebar-collapse-button { left: 225px; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sidebar-collapse-button:hover { border-color: #d8def1; color: #526bc6; background: #f7f8fe; }
+}
+
+@media (max-width: 760px) {
+  .sidebar-collapse-button { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .main-area { transition-duration: 0s; }
+  .sidebar-collapse-button { transition: none; }
+}

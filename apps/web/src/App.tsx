@@ -19,6 +19,8 @@ import {
   LogOut,
   Menu,
   MessageSquarePlus,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   ScrollText,
   Search,
@@ -179,6 +181,13 @@ function SitesPausedNote({ className = "sites-message" }: { className?: string }
 }
 
 function App() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem("portal-sidebar-collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [sessionUser, setSessionUser] = useState<PortalUser | null>(null);
   // null = проверяем, false = гость, true = вход выполнен.
   const [sessionChecked, setSessionChecked] = useState(false);
@@ -399,22 +408,24 @@ function App() {
   return (
     <div className="app-shell">
       {mobileNavOpen && <button className="mobile-scrim" aria-label="Закрыть меню" onClick={() => setMobileNavOpen(false)} />}
-      <aside className={`sidebar ${mobileNavOpen ? "sidebar-open" : ""}`}>
-        <a className="brand" href="#" onClick={(event) => { event.preventDefault(); chooseSection("Управление работами в YouGile"); }}>
-          <span className="brand-mark"><span /><span /><span /><span /></span>
-          <span className="brand-copy"><strong>yougile</strong><small>OPERATIONS PORTAL</small></span>
-        </a>
+      <aside className={`sidebar ${mobileNavOpen ? "sidebar-open" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+        <div className="sidebar-brand-row">
+          <a className="brand" href="#" onClick={(event) => { event.preventDefault(); chooseSection("Управление работами в YouGile"); }}>
+            <span className="brand-mark"><span /><span /><span /><span /></span>
+            <span className="brand-copy"><strong>yougile</strong><small>OPERATIONS PORTAL</small></span>
+          </a>
+        </div>
 
-        <div className="workspace-switch">
+        <div className="workspace-switch" title={sidebarCollapsed ? "Команда YouGile · Рабочее пространство" : undefined}>
           <span className="workspace-avatar">D</span>
           <span className="workspace-copy"><strong>Команда YouGile</strong><small>Рабочее пространство</small></span>
           <ChevronDown size={15} />
         </div>
 
         <p className="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</p>
-        <nav className="navigation" aria-label="Основная навигация">
+        <nav id="portal-sidebar-navigation" className="navigation" aria-label="Основная навигация">
           {visibleNavigation.map(({ label, icon: Icon }) => (
-            <button key={label} className={`nav-link ${activeNavSection === label ? "nav-link-active" : ""}`} onClick={() => chooseSection(label)}>
+            <button key={label} title={sidebarCollapsed ? label : undefined} aria-label={label} className={`nav-link ${activeNavSection === label ? "nav-link-active" : ""}`} onClick={() => chooseSection(label)}>
               <Icon size={18} strokeWidth={1.8} />
               <span>{label}</span>
             </button>
@@ -427,13 +438,29 @@ function App() {
             <strong>Изменения под контролем</strong>
             <p>Перед записью будет доступна проверка плана.</p>
           </div>
-          <button className="profile" type="button" onClick={() => void signOut()} title="Выйти из портала">
+          <button className="profile" type="button" onClick={() => void signOut()} title={sidebarCollapsed ? `Выйти из портала · ${sessionUser.displayName}` : "Выйти из портала"}>
             <span className="profile-avatar">{sessionUser.displayName.slice(0, 1).toLocaleUpperCase("ru")}</span>
             <span className="profile-copy"><strong>{sessionUser.displayName}</strong><small>{sessionUser.login} · выход</small></span>
             <LogOut size={15} />
           </button>
         </div>
       </aside>
+
+      <button
+        type="button"
+        className="sidebar-collapse-button"
+        aria-label={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
+        aria-expanded={!sidebarCollapsed}
+        aria-controls="portal-sidebar-navigation"
+        title={sidebarCollapsed ? "Развернуть меню" : "Свернуть меню"}
+        onClick={() => setSidebarCollapsed((collapsed) => {
+          const next = !collapsed;
+          try { window.localStorage.setItem("portal-sidebar-collapsed", String(next)); } catch { /* хранилище может быть отключено */ }
+          return next;
+        })}
+      >
+        {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+      </button>
 
       <main className="main-area">
         <header className="topbar">
