@@ -121,14 +121,14 @@ export default function CompletedOperationsPanel() {
   const visibleOperations = operations.filter((operation) => new Date(operation.expiresAt).getTime() > now);
   return (
     <>
-      <section className="overview-active-panel completed-operations-panel" aria-label="Выполненные операции">
+      {visibleOperations.length > 0 && <section className="overview-active-panel completed-operations-panel" aria-label="Выполненные операции">
         <div className="section-heading">
           <h2>Выполненные операции</h2>
           <p>Результаты доступны в течение 10 минут после завершения.</p>
         </div>
         {loadError ? (
           <p className="completed-operations-empty completed-operations-error">{loadError}</p>
-        ) : visibleOperations.length > 0 ? (
+        ) : (
           <div className="overview-active-list">
             {visibleOperations.map((operation) => (
               <button className="overview-active-card completed-operation-card" key={operation.id} onClick={() => setSelectedId(operation.id)}>
@@ -144,10 +144,8 @@ export default function CompletedOperationsPanel() {
               </button>
             ))}
           </div>
-        ) : (
-          <p className="completed-operations-empty">Завершённых операций за последние 10 минут пока нет.</p>
         )}
-      </section>
+      </section>}
 
       {selectedId && (
         <Modal className="completed-operation-dialog" labelledBy="completed-operation-title" onDismiss={() => { setSelectedId(""); setDetail(null); setError(""); }}>
