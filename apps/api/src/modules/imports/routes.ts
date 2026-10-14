@@ -2,7 +2,7 @@ import multipart from "@fastify/multipart";
 import { createHash } from "node:crypto";
 import ExcelJS from "exceljs";
 import type { FastifyInstance } from "fastify";
-import { ImportBatchStatus, ImportRowStatus, OperationStatus, OperationType, PrismaClient } from "@prisma/client";
+import { ImportBatchStatus, ImportRowStatus, OperationStatus, OperationType, PortalRole, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { config } from "../../config.js";
 import { YougileClient, YougileApiError } from "../../integrations/yougile/client.js";
@@ -16,7 +16,7 @@ import { finishActiveWorkCheck, registerActiveWorkCheck, updateActiveWorkCheck }
 import { beginWorkCheck, endWorkCheck } from "../../lib/yougile-activity.js";
 import { annotateLog, recordLog } from "../logs/service.js";
 import { previewRateLimit, rateLimitPerUser, workCheckRateLimit } from "../auth/rate-limit.js";
-import { requireWorkspaceAccess } from "../auth/service.js";
+import { requireRole, requireWorkspaceAccess } from "../auth/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import {
   AssignmentValidationError,
@@ -28,6 +28,13 @@ import { importRemovalSchema, prepareImportRemoval } from "../assignments/remova
 import { getPlannedSites } from "../sites/service.js";
 import { renderCommentTemplate, getRawField } from "./comment-template.js";
 import { parsePlanWorkbook } from "./xlsx.js";
+import {
+  defaultWorkCheckWindowHours,
+  loadWorkCheckWindowHours,
+  maxWorkCheckWindowHours,
+  minWorkCheckWindowHours,
+  saveWorkCheckWindowHours
+} from "./settings.js";
 
 const maxStoredImports = 5;
 const importRetentionLockId = 847201563;
@@ -38,6 +45,10 @@ const importRetentionLockId = 847201563;
 // площадка пропускается, как было раньше.
 const workCheckRetryDelayMs = 5_000;
 const workCheckReadAttempts = 2;
+// Окно «Проверки работ» задаётся в «Конфигурации портала» (в часах, AppSetting)
+// и подставляется в параметр since запроса к чату: вместо обхода всего чата
+// по страницам читается только окно. Значение по умолчанию и границы — в
+// ./settings.ts. Комментарий старше окна в проверку не попадёт.
 // Сколько строк XLSX отдаём в просмотр содержимого. Дальше пользователь всё
 // равно не читает таблицу глазами, а страница с несколькими тысячами ячеек
 // перестаёт прокручиваться.
@@ -58,6 +69,13 @@ const workCheckSchema = z.object({
   // Идентификатор проверки от фронтенда: по нему тот опрашивает живой прогресс,
   // пока синхронный POST /work-check обрабатывает площадки в фоне.
   checkId: z.string().trim().min(1).max(64).optional()
+});
+
+// Настройка окна «Проверки работ»: сколько часов назад смотреть сообщения чата.
+const workCheckSettingsSchema = z.object({
+  windowHours: z.number().int()
+    .min(minWorkCheckWindowHours, `Период должен быть не меньше ${minWorkCheckWindowHours} часа.`)
+    .max(maxWorkCheckWindowHours, `Период не должен превышать ${maxWorkCheckWindowHours} часов.`)
 });
 
 // Живой прогресс «Проверки работ». Запрос синхронный и идёт примерно 4 секунды
@@ -147,8 +165,37 @@ export async function registerImportRoutes(
 ) {
   const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
   const writeAccess = requireWorkspaceAccess("WORK_MANAGEMENT", true);
+  const adminOnly = requireRole(PortalRole.ADMIN);
   await app.register(multipart, {
     limits: { fileSize: config.UPLOAD_MAX_BYTES, files: 1, fields: 0, parts: 1 }
+  });
+
+  // Настройка окна «Проверки работ». Правит только администратор — как и
+  // остальные настройки «Конфигурации портала». Чтение отдельным эндпоинтом,
+  // чтобы форма конфигурации не тянула весь список загрузок XLSX.
+  app.get("/api/imports/work-check/settings", { preHandler: adminOnly }, async () => ({
+    windowHours: await loadWorkCheckWindowHours(prisma),
+    defaultWindowHours: defaultWorkCheckWindowHours,
+    minWindowHours: minWorkCheckWindowHours,
+    maxWindowHours: maxWorkCheckWindowHours
+  }));
+
+  app.put("/api/imports/work-check/settings", { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = workCheckSettingsSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте период проверки." });
+    }
+    try {
+      await saveWorkCheckWindowHours(prisma, parsed.data.windowHours);
+    } catch (error) {
+      app.log.error({ err: error }, "Could not save work check window setting");
+      return reply.code(500).send({ error: "Не удалось сохранить период проверки." });
+    }
+    app.log.warn(
+      { actor: request.sessionUser?.login, windowHours: parsed.data.windowHours },
+      "Work check window updated via portal config"
+    );
+    return { windowHours: parsed.data.windowHours };
   });
 
   app.get("/api/imports", { preHandler: readAccess }, async (_request, reply) => {
@@ -265,6 +312,10 @@ export async function registerImportRoutes(
 
       const uniqueTaskIds = [...new Set(batch.rows.flatMap((row) => row.yougileTaskId ? [row.yougileTaskId] : []))];
       updateActiveWorkCheck(activeCheckId, { fileName: batch.fileName, total: uniqueTaskIds.length });
+      // Нижняя граница окна берётся из настройки и считается один раз на запуск,
+      // чтобы все площадки проверялись по одному и тому же интервалу времени.
+      const windowHours = await loadWorkCheckWindowHours(prisma);
+      const since = Date.now() - windowHours * 60 * 60 * 1000;
       // timestamp — метка времени последнего сообщения из id YouGile (epoch ms),
       // уходит на фронт как commentedAt, чтобы показать, когда комментарий написан.
       const latestByTaskId = new Map<string, { text: string | null; timestamp: number | null; error: string | null }>();
@@ -283,12 +334,12 @@ export async function registerImportRoutes(
       // Запрос синхронный, поэтому проверка занимает ~4 секунды на площадку.
       let suspiciousReads = 0;
       for (const taskId of uniqueTaskIds) {
-        // readLatestChatMessageDetailed доходит до последней страницы чата:
-        // YouGile отдаёт сообщения старыми вперёд, и при длинном чате
-        // последний комментарий лежит за пределами первой сотни. Диагностика
-        // каждой площадки пишется в лог, чтобы видеть, где теряется
-        // последний комментарий: преждевременная остановка цикла или ошибки
-        // YouGile на отдельных страницах.
+        // readLatestChatMessageDetailed читает чат с фильтром since — только
+        // сообщения за окно проверки. Обычно это одна страница; если за окно
+        // сообщений больше сотни, чтение продолжается постранично (YouGile
+        // отдаёт сообщения старыми вперёд). Диагностика каждой площадки пишется
+        // в лог, чтобы видеть, где теряется последний комментарий: преждевременная
+        // остановка цикла или ошибки YouGile на отдельных страницах.
         //
         // Ошибка чтения (разовый HTTP 429 и т.п.) не роняет площадку сразу:
         // ждём 5 секунд и повторяем тот же запрос один раз. Если повтор опять
@@ -298,7 +349,7 @@ export async function registerImportRoutes(
         let lastAttemptError: unknown = null;
         for (let attempt = 1; attempt <= workCheckReadAttempts; attempt++) {
           try {
-            chatResult = await readLatestChatMessageDetailed(yougile, taskId);
+            chatResult = await readLatestChatMessageDetailed(yougile, taskId, since);
             readError = null;
             break;
           } catch (error) {
@@ -374,6 +425,7 @@ export async function registerImportRoutes(
           latestByTaskId.set(taskId, { text: latest?.text ?? null, timestamp: latest?.timestamp ?? null, error: null });
           const logData = {
             taskId,
+            since: diagnostics.since,
             pagesRead: diagnostics.pagesRead,
             rawMessages: diagnostics.rawMessages,
             textMessages: diagnostics.textMessages,
@@ -478,7 +530,7 @@ export async function registerImportRoutes(
           commentedAt: result?.timestamp != null ? new Date(result.timestamp).toISOString() : null,
           message: result?.error ?? (result?.text
             ? "Последний комментарий найден."
-            : row.yougileTaskId ? "Комментариев пока нет." : "Площадка не найдена в YouGile.")
+            : row.yougileTaskId ? "Комментариев за выбранный период проверки нет." : "Площадка не найдена в YouGile.")
         };
       });
       const finishedAt = new Date();

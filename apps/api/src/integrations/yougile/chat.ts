@@ -8,7 +8,8 @@ export type ChatMessage = {
 // Размер страницы сообщений чата. YouGile отдаёт сообщения старыми вперёд,
 // поэтому «последний комментарий» нельзя выбирать из первой страницы: при
 // длинном чате свежие сообщения лежат на последней странице, а первой сотни
-// в ответе нет.
+// в ответе нет. Если известна нижняя граница окна (`since`), страница почти
+// всегда одна — читать весь чат не нужно.
 const chatMessagesPageSize = 100;
 // Защитный предел числа страниц: у корректного API цикл завершается раньше —
 // последняя страница короче pageSize. Предел не даёт запросу крутиться вечно,
@@ -45,6 +46,9 @@ export type ChatReadDiagnostics = {
    *  могли быть ещё страницы и более свежие комментарии. */
   stoppedOnFullRawPage: boolean;
   pages: ChatReadPageDiagnostics[];
+  /** Нижняя граница окна чтения (epoch ms): сообщения старше не запрашивались.
+   *  null — читался весь чат постранично, без фильтра по времени. */
+  since: number | null;
   latestTimestamp: number | null;
   latestTextLength: number;
   latestTextPreview: string;
@@ -65,8 +69,13 @@ type ChatReadTrace = {
   pagesRead: number;
 };
 
-/** Все сообщения чата задачи (текст и метка времени), полученные постранично. */
-async function readAllChatMessages(client: YougileClient, taskId: string): Promise<{ messages: ChatMessage[]; trace: ChatReadTrace }> {
+/**
+ * Все сообщения чата задачи (текст и метка времени), полученные постранично.
+ * `since` — необязательная нижняя граница окна (epoch ms): YouGile вернёт только
+ * сообщения, обновлённые с этого момента, поэтому обычный вызов укладывается в
+ * одну страницу вместо обхода всего чата.
+ */
+async function readAllChatMessages(client: YougileClient, taskId: string, since?: number): Promise<{ messages: ChatMessage[]; trace: ChatReadTrace }> {
   const trace: ChatReadTrace = {
     pages: [],
     rawTotal: 0,
@@ -78,7 +87,11 @@ async function readAllChatMessages(client: YougileClient, taskId: string): Promi
   const messages: ChatMessage[] = [];
   for (let page = 0; page < maxChatMessagePages; page++) {
     const offset = page * chatMessagesPageSize;
-    const raw = await client.request(`chats/${encodeURIComponent(taskId)}/messages?limit=${chatMessagesPageSize}&offset=${offset}`);
+    // since — фильтр YouGile по времени сообщения (epoch ms): читаем только окно,
+    // а не весь чат. Без него на длинный чат уходило до maxChatMessagePages
+    // запросов; с ним обычный случай — один запрос.
+    const sinceQuery = since != null ? `&since=${since}` : "";
+    const raw = await client.request(`chats/${encodeURIComponent(taskId)}/messages?limit=${chatMessagesPageSize}&offset=${offset}${sinceQuery}`);
     const rawMessages = getChatMessages(raw);
     const rawCount = rawMessages.length;
     const candidates = rawMessages
@@ -170,10 +183,11 @@ function pickLatestChatMessage(messages: ChatMessage[]): ChatMessage | null {
  * Последнее сообщение чата задачи с диагностикой чтения. Используется в
  * «Проверке работ»: результат чтения логируется постранично, чтобы в проде
  * было видно, где именно теряется последний комментарий.
+ * `since` (epoch ms) ограничивает окно чтения — тогда обход всего чата не нужен.
  */
-export async function readLatestChatMessageDetailed(client: YougileClient, taskId: string): Promise<ChatLatestReadResult> {
+export async function readLatestChatMessageDetailed(client: YougileClient, taskId: string, since?: number): Promise<ChatLatestReadResult> {
   const startedAt = Date.now();
-  const { messages, trace } = await readAllChatMessages(client, taskId);
+  const { messages, trace } = await readAllChatMessages(client, taskId, since);
   const latest = pickLatestChatMessage(messages);
   return {
     latest,
@@ -186,6 +200,7 @@ export async function readLatestChatMessageDetailed(client: YougileClient, taskI
       stopReason: trace.stopReason,
       stoppedOnFullRawPage: trace.stoppedOnFullRawPage,
       pages: trace.pages,
+      since: since ?? null,
       latestTimestamp: latest?.timestamp ?? null,
       latestTextLength: latest?.text.length ?? 0,
       latestTextPreview: latest ? latest.text.slice(0, 80) : "",

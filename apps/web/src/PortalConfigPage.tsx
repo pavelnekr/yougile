@@ -6,7 +6,7 @@ import { PORTAL_VERSION } from "./version";
 
 type PortalColumn = { id: string; name: string };
 type LoadState = "loading" | "ready" | "error";
-type TabKey = "filter" | "avr" | "mail";
+type TabKey = "filter" | "avr" | "mail" | "workcheck";
 
 // Состояние проверки ID столбца в YouGile. «none» — проверка ещё не запускалась
 // (пустой ID), «invalid» — фронтовая проверка формата, остальное — ответ API.
@@ -32,6 +32,11 @@ type SmtpSettings = {
 // без проверки версии: важен сам идентификатор, а не какая версия UUID.
 const columnIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const maxColumns = 100;
+// Границы периода «Проверки работ» совпадают с API (apps/api/src/modules/imports/settings.ts).
+// Значение по умолчанию показывается, пока настройка не загрузилась.
+const defaultWorkCheckWindowHours = 48;
+const minWorkCheckWindowHours = 1;
+const maxWorkCheckWindowHours = 720;
 // Адрес почты для получателей писем. Строгая проверка живёт на бэкенде (zod),
 // здесь — грубая, чтобы поймать опечатку до отправки запроса.
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -170,10 +175,20 @@ export default function PortalConfigPage({
   const [smtpError, setSmtpError] = useState("");
   const [smtpNotice, setSmtpNotice] = useState("");
 
+  // Окно «Проверки работ» (в часах): за сколько времени до текущего момента
+  // искать последний комментарий в чатах задач. Хранится в AppSetting.
+  const [windowHours, setWindowHours] = useState(defaultWorkCheckWindowHours);
+  const [savedWindowHours, setSavedWindowHours] = useState(defaultWorkCheckWindowHours);
+  const [windowLoaded, setWindowLoaded] = useState(false);
+  const [windowLoadError, setWindowLoadError] = useState("");
+  const [windowError, setWindowError] = useState("");
+  const [windowNotice, setWindowNotice] = useState("");
+
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingAvr, setSavingAvr] = useState(false);
   const [savingMail, setSavingMail] = useState(false);
   const [savingSmtp, setSavingSmtp] = useState(false);
+  const [savingWindow, setSavingWindow] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -279,6 +294,37 @@ export default function PortalConfigPage({
     return () => controller.abort();
   }, [loadMail]);
 
+  // Период «Проверки работ» живёт в модуле imports, поэтому грузится отдельно от
+  // получателей и SMTP: сбой одной настройки не должен блокировать другую.
+  const loadWorkCheck = useCallback(async (signal?: AbortSignal) => {
+    setWindowLoadError("");
+    try {
+      const response = await apiFetch("/api/imports/work-check/settings", { signal });
+      const data = await response.json() as {
+        windowHours?: number;
+        defaultWindowHours?: number;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить период проверки.");
+      const hours = Number(data.windowHours);
+      const normalized = Number.isFinite(hours) && hours >= minWorkCheckWindowHours && hours <= maxWorkCheckWindowHours
+        ? hours
+        : Number(data.defaultWindowHours) || defaultWorkCheckWindowHours;
+      setWindowHours(normalized);
+      setSavedWindowHours(normalized);
+      setWindowLoaded(true);
+    } catch (reason) {
+      if (signal?.aborted) return;
+      setWindowLoadError(errorMessage(reason));
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadWorkCheck(controller.signal);
+    return () => controller.abort();
+  }, [loadWorkCheck]);
+
   const planChanged = plan.id !== savedPlan.id || plan.name !== savedPlan.name;
   const avrChanged = JSON.stringify(avr) !== JSON.stringify(savedAvr);
   const mailChanged = JSON.stringify(mailRecipients) !== JSON.stringify(savedMailRecipients);
@@ -287,6 +333,7 @@ export default function PortalConfigPage({
   const portChanged = Number(smtp.port) !== Number(savedSmtp.port);
   const smtpChanged = !smtpLoaded || smtp.host !== savedSmtp.host || portChanged ||
     smtp.user !== savedSmtp.user || smtp.from !== savedSmtp.from || smtpPassword !== "";
+  const windowChanged = windowHours !== savedWindowHours;
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -294,6 +341,8 @@ export default function PortalConfigPage({
     setNotice("");
     setSmtpError("");
     setSmtpNotice("");
+    setWindowError("");
+    setWindowNotice("");
   };
 
   const savePlan = async () => {
@@ -519,6 +568,37 @@ export default function PortalConfigPage({
     }
   };
 
+  const saveWorkCheck = async () => {
+    if (savingWindow || !windowChanged) return;
+    const hours = Number(windowHours);
+    if (!Number.isInteger(hours) || hours < minWorkCheckWindowHours || hours > maxWorkCheckWindowHours) {
+      setWindowNotice("");
+      setWindowError(`Укажите целое число часов от ${minWorkCheckWindowHours} до ${maxWorkCheckWindowHours}.`);
+      return;
+    }
+    setSavingWindow(true);
+    setWindowError("");
+    setWindowNotice("");
+    try {
+      const response = await apiFetch("/api/imports/work-check/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ windowHours: hours })
+      });
+      const data = await response.json() as { windowHours?: number; error?: string };
+      if (!response.ok || typeof data.windowHours !== "number") {
+        throw new Error(data.error ?? "Не удалось сохранить период проверки.");
+      }
+      setWindowHours(data.windowHours);
+      setSavedWindowHours(data.windowHours);
+      setWindowNotice("Период сохранён — следующая проверка работ учтёт новое окно.");
+    } catch (reason) {
+      setWindowError(errorMessage(reason));
+    } finally {
+      setSavingWindow(false);
+    }
+  };
+
   return (
     <section className="section-view portal-config-page">
       <div className="eyebrow"><span className="eyebrow-line" /> ТОЛЬКО ДЛЯ АДМИНИСТРАТОРА</div>
@@ -526,7 +606,7 @@ export default function PortalConfigPage({
         <span className="section-hero-icon"><SlidersHorizontal size={22} /></span>
         <div>
           <h1>Конфигурация портала</h1>
-          <p>Столбцы YouGile («Фильтрация» и АВР) и получатели писем раздела «Согласование/Оповещение». Изменения вступают в силу после сохранения.</p>
+          <p>Столбцы YouGile («Фильтрация» и АВР), период «Проверки работ» и получатели писем раздела «Согласование/Оповещение». Изменения вступают в силу после сохранения.</p>
         </div>
       </div>
 
@@ -576,6 +656,17 @@ export default function PortalConfigPage({
               onClick={() => switchTab("mail")}
             >
               Оповещения <span className="portal-config-tab-count">{mailRecipients.length}</span>
+            </button>
+            <button
+              id="portal-config-tab-workcheck"
+              type="button"
+              role="tab"
+              aria-selected={tab === "workcheck"}
+              aria-controls="portal-config-panel-workcheck"
+              className={`portal-config-tab ${tab === "workcheck" ? "portal-config-tab-active" : ""}`}
+              onClick={() => switchTab("workcheck")}
+            >
+              Проверка работ
             </button>
           </div>
 
@@ -968,6 +1059,75 @@ export default function PortalConfigPage({
                     )}
                   </div>
                 </>
+              )}
+            </div>
+          </div>
+
+          <div
+            className="portal-config-section"
+            id="portal-config-panel-workcheck"
+            role="tabpanel"
+            aria-labelledby="portal-config-tab-workcheck"
+            hidden={tab !== "workcheck"}
+          >
+            <div className="portal-config-section-heading">
+              <div>
+                <h2>Период «Проверки работ»</h2>
+                <p>За какое время до запуска искать последний комментарий в чатах задач YouGile. Ограничение окна читает только свежие сообщения, а не весь чат целиком.</p>
+              </div>
+              <span className={`portal-config-save-state ${windowChanged ? "portal-config-save-state-dirty" : ""}`}>
+                {windowChanged ? "Есть несохранённые изменения" : "Сохранено"}
+              </span>
+            </div>
+
+            {windowLoadError ? (
+              <div className="portal-config-feedback portal-config-feedback-error" role="alert">
+                {windowLoadError}
+                <button className="text-button" onClick={() => void loadWorkCheck()}>Повторить</button>
+              </div>
+            ) : !windowLoaded ? (
+              <div className="portal-config-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем период проверки…</div>
+            ) : (
+              <div className="portal-config-fields">
+                <label className="field-label" htmlFor="portal-config-workcheck-window"><span>Период, часов ({minWorkCheckWindowHours}–{maxWorkCheckWindowHours})</span>
+                  <input
+                    id="portal-config-workcheck-window"
+                    type="number"
+                    min={minWorkCheckWindowHours}
+                    max={maxWorkCheckWindowHours}
+                    value={windowHours}
+                    disabled={savingWindow}
+                    onChange={(event) => { setWindowHours(Number(event.target.value)); setWindowError(""); setWindowNotice(""); }}
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="portal-config-note">
+              <Info size={14} />
+              <span>По умолчанию — {defaultWorkCheckWindowHours} часов (двое суток). Комментарий старше периода в проверку не попадёт. Значение применяется со следующего запуска.</span>
+            </div>
+
+            {windowError && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{windowError}</div>}
+            {windowNotice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{windowNotice}</div>}
+
+            <div className="portal-config-actions">
+              <button
+                className="btn-primary"
+                disabled={savingWindow || !windowLoaded || !windowChanged}
+                onClick={() => void saveWorkCheck()}
+              >
+                {savingWindow ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
+                {savingWindow ? "Сохраняем…" : "Сохранить"}
+              </button>
+              {windowChanged && (
+                <button
+                  className="text-button"
+                  disabled={savingWindow}
+                  onClick={() => { setWindowHours(savedWindowHours); setWindowError(""); setWindowNotice(""); }}
+                >
+                  Отменить
+                </button>
               )}
             </div>
           </div>

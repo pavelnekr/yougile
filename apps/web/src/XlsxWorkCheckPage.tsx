@@ -293,7 +293,7 @@ export default function XlsxWorkCheckPage() {
     <section className="section-view assignment-page work-check-page">
       <div className="eyebrow"><span className="eyebrow-line" /> ПРОВЕРКА РАБОТ ПО XLSX</div>
       <div className="sites-page-heading">
-        <div><h1>Проверить работы</h1><p>Последние комментарии в задачах YouGile для площадок из выбранного XLSX.</p></div>
+        <div><h1>Проверить работы</h1><p>Последние комментарии в задачах YouGile за выбранный период проверки для площадок из выбранного XLSX.</p></div>
         {checkedFile && <span className="sites-total">{countRu(items.length || checkedFile.rowCount, rowForms)}</span>}
       </div>
 
@@ -313,7 +313,7 @@ export default function XlsxWorkCheckPage() {
             <div className="panel xlsx-upload-panel removal-upload-panel">
               <div className="xlsx-upload-icon"><FileSpreadsheet size={23} /></div>
               <h2>Загрузите XLSX-план</h2>
-              <p>Для каждой площадки покажем последнее сообщение из чата её задачи в YouGile.</p>
+              <p>Для каждой площадки покажем последнее сообщение из чата её задачи в YouGile за выбранный период проверки (настраивается в «Конфигурации портала»).</p>
               <label className={`xlsx-dropzone ${busy ? "xlsx-dropzone-busy" : ""}`}>
                 <Upload size={20} />
                 <strong>{busy ? "Загружаем файл и проверяем работы…" : "Выберите файл .xlsx"}</strong>
@@ -349,7 +349,7 @@ export default function XlsxWorkCheckPage() {
       ) : (
         <section className="panel work-check-results" ref={resultsStepRef}>
           <div className="panel-heading">
-            <div><h2>Результаты проверки</h2><p>{checkedFile.fileName} · последние сообщения из чатов задач YouGile</p></div>
+            <div><h2>Результаты проверки</h2><p>{checkedFile.fileName} · последние сообщения за выбранный период из чатов задач YouGile</p></div>
             <button className="text-button" disabled={busy} onClick={reset}>Выбрать другой XLSX</button>
           </div>
           {busy ? (
