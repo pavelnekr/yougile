@@ -138,6 +138,29 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
     };
   });
 
+  app.delete<{ Params: { id: string } }>("/api/admin/users/:id", { preHandler: adminOnly }, async (request, reply) => {
+    const target = await prisma.portalUser.findUnique({ where: { id: request.params.id } });
+    if (!target) return reply.code(404).send({ error: "Учётная запись не найдена." });
+    if (target.id === request.sessionUser?.id) {
+      return reply.code(400).send({ error: "Нельзя удалить собственную учётную запись." });
+    }
+    if (target.role === PortalRole.ADMIN && target.active) {
+      const otherAdmins = await prisma.portalUser.count({
+        where: { role: PortalRole.ADMIN, active: true, id: { not: target.id } }
+      });
+      if (otherAdmins === 0) {
+        return reply.code(400).send({ error: "Нельзя удалить последнего активного администратора." });
+      }
+    }
+
+    await prisma.portalUser.delete({ where: { id: target.id } });
+    app.log.warn(
+      { actor: request.sessionUser?.login, target: target.login },
+      "Portal account deleted by admin"
+    );
+    return { deleted: true };
+  });
+
   app.post<{ Params: { id: string } }>("/api/admin/users/:id/password", { preHandler: adminOnly }, async (request, reply) => {
     const parsed = passwordResetSchema.safeParse(request.body);
     if (!parsed.success) {

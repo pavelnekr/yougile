@@ -37,7 +37,7 @@ import CommentPage from "./CommentPage.js";
 import CoordinationPage from "./CoordinationPage.js";
 import CoordinationLandingPage from "./CoordinationLandingPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
-import UnderDevelopmentPage from "./UnderDevelopmentPage.js";
+import PlanningWorkPage from "./PlanningWorkPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js";
 import HistoryPage from "./HistoryPage.js";
@@ -108,9 +108,6 @@ const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: bo
   { label: "Управление работами в YouGile", icon: LayoutDashboard },
   { label: "Согласование/Оповещение", icon: BellRing },
   { label: "Планирование Работ", icon: CalendarDays },
-  { label: "Аудит", icon: ClipboardCheck },
-  { label: "История", icon: History },
-  { label: "Настройки", icon: Settings2 },
   { label: "Учётные записи", icon: UsersRound, adminOnly: true },
   { label: "Логирование", icon: ScrollText, adminOnly: true },
   // Последний пункт списка: конфигурация нужна редко и только администраторам.
@@ -505,11 +502,7 @@ function App() {
           ) : activeSection === "Согласование АВР" ? (
             <CoordinationPage onBack={() => chooseSection("Согласование/Оповещение")} />
           ) : activeSection === "Планирование Работ" ? (
-            <UnderDevelopmentPage
-              icon={CalendarDays}
-              title="Планирование Работ"
-              description="Планирование работ по площадкам и подготовка планов к выполнению."
-            />
+            <PlanningWorkPage canEdit={sessionUser.role !== "VIEWER"} />
           ) : activeSection === "Площадки" ? (
             <SitesPage sites={sites} loadState={siteLoadState} error={siteError} paused={sitePaused} />
           ) : activeSection === "Площадки АВР" ? (
@@ -671,6 +664,31 @@ function Overview({
             </button>
           );
         })}
+      </section>
+
+      <section className="section-heading">
+        <div><h2>Инструменты</h2><p>Аудит загрузок, журнал операций и шаблоны комментариев.</p></div>
+      </section>
+
+      <section className="actions-grid overview-tools-grid" aria-label="Инструменты управления работами">
+        <button className="action-card" onClick={() => onNavigate("Аудит")}>
+          <div className="action-card-top"><span className="action-icon violet"><ClipboardCheck size={19} /></span></div>
+          <h3>Аудит</h3>
+          <p>Просматривайте загруженные XLSX-файлы и проверяйте строки импорта.</p>
+          <span className="action-link">Открыть аудит <ArrowRight size={15} /></span>
+        </button>
+        <button className="action-card" onClick={() => onNavigate("История")}>
+          <div className="action-card-top"><span className="action-icon blue"><History size={19} /></span></div>
+          <h3>История</h3>
+          <p>Смотрите завершённые операции и статистику назначений.</p>
+          <span className="action-link">Открыть историю <ArrowRight size={15} /></span>
+        </button>
+        <button className="action-card" onClick={() => onNavigate("Настройки")}>
+          <div className="action-card-top"><span className="action-icon orange"><Settings2 size={19} /></span></div>
+          <h3>Настройки</h3>
+          <p>Создавайте и редактируйте шаблоны комментариев.</p>
+          <span className="action-link">Открыть настройки <ArrowRight size={15} /></span>
+        </button>
       </section>
 
       <section className="bottom-grid">

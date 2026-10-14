@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import Modal from "./Modal";
+import ConfirmDialog from "./ConfirmDialog";
 import type { PortalUser } from "./LoginPage";
 import { activeForms, adminForms, blockedForms, countRu } from "./plural";
 import { PORTAL_VERSION } from "./version";
@@ -368,6 +369,7 @@ export default function AdminUsersPage({
   const [pendingId, setPendingId] = useState("");
   const [passwordTarget, setPasswordTarget] = useState<AdminUser | null>(null);
   const [yougileTokenTarget, setYougileTokenTarget] = useState<AdminUser | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -481,6 +483,26 @@ export default function AdminUsersPage({
     if (user.id === currentUser.id) onCurrentUserTokenChanged(false);
     setYougileTokenTarget(null);
     await refresh();
+  };
+
+  const deleteUser = async (user: AdminUser) => {
+    if (pendingId) return;
+    setPendingId(user.id);
+    setError("");
+    setNotice("");
+    try {
+      const response = await apiFetch(`/api/admin/users/${encodeURIComponent(user.id)}`, { method: "DELETE" });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось удалить учётную запись.");
+      setDeleteTarget(null);
+      setNotice(`Учётная запись ${user.login} удалена.`);
+      await refresh();
+    } catch (reason) {
+      setError(errorMessage(reason));
+      await refresh();
+    } finally {
+      setPendingId("");
+    }
   };
 
   const periodLabel = period === "all" ? "за всё время" : `за ${period} дней`;
@@ -673,6 +695,14 @@ export default function AdminUsersPage({
                           >
                             <Ban size={13} /> {user.active ? "Блокировать" : "Разблокировать"}
                           </button>
+                          <button
+                            className="admin-action-button admin-action-danger"
+                            disabled={isSelf || busy}
+                            title={isSelf ? "Свою учётную запись удалить нельзя" : "Удалить учётную запись"}
+                            onClick={() => setDeleteTarget(user)}
+                          >
+                            <Trash2 size={13} /> Удалить
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -704,6 +734,16 @@ export default function AdminUsersPage({
       )}
       {createOpen && (
         <CreateUserDialog onClose={() => setCreateOpen(false)} onSubmit={submitCreate} />
+      )}
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Удалить учётную запись?"
+          confirmLabel={pendingId === deleteTarget.id ? "Удаляем…" : "Удалить сотрудника"}
+          onCancel={() => { if (!pendingId) setDeleteTarget(null); }}
+          onConfirm={() => void deleteUser(deleteTarget)}
+        >
+          Учётная запись «{deleteTarget.displayName}» ({deleteTarget.login}) будет удалена. Доступ завершится сразу; записи операций и загрузок останутся в истории без привязки к сотруднику.
+        </ConfirmDialog>
       )}
 
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Раздел доступен администраторам</span></footer>

@@ -80,6 +80,7 @@ model PortalUser {
   imports               ImportBatch[]
   sessions              PortalSession[]
   workspaceAccess       PortalUserWorkspace[]
+  planningWorks         PlanningWork[]
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 }
@@ -194,6 +195,35 @@ model AppSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+model PlanningWork {
+  id          String      @id @default(cuid())
+  free1       String?     @db.Text
+  workDate    DateTime?   @db.Date @map("data")
+  day         String?     @db.VarChar(40)
+  time        String?     @db.VarChar(20)
+  siteId      String      @map("id_site") @db.VarChar(100)
+  address     String?     @db.Text
+  po          String?     @db.VarChar(255) @map("PO")
+  comment     String?     @db.Text
+  free2       String?     @db.Text
+  free3       String?     @db.Text
+  assignee    String?     @db.VarChar(255) @map("user")
+  comment2    String?     @db.Text
+  status      String?     @db.VarChar(100)
+  cluster     String?     @db.VarChar(255) @map("klaster")
+  createdById String?
+  createdBy   PortalUser? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([workDate, createdAt])
+  @@index([siteId])
+  @@index([status])
+  @@index([cluster])
+  @@index([assignee])
+  @@index([po])
 }
 
 model ImportBatch {

@@ -368,6 +368,76 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .under-dev-icon { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 12px; color: #536dd2; background: #edf1ff; }
 .under-dev-panel h2 { margin: 2px 0 0; font-size: 15px; }
 .under-dev-panel p { max-width: 460px; margin: 0; color: #8790a0; font-size: 10px; line-height: 1.6; }
+.planning-page .planning-hero { margin-bottom: 20px; }
+.planning-page .planning-hero p { max-width: 780px; }
+.planning-entry-panel { padding: 18px 19px 14px; }
+.planning-readonly-note { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; padding: 12px 14px; color: #758199; font-size: 9px; }
+.planning-readonly-note svg { flex: 0 0 auto; color: #7889cf; }
+.planning-panel-heading, .planning-panel-heading > div, .planning-list-heading, .planning-list-heading > div { display: flex; align-items: center; }
+.planning-panel-heading { justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.planning-panel-heading > div, .planning-list-heading > div { gap: 10px; }
+.planning-step-icon, .planning-list-icon { display: grid; width: 31px; height: 31px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: #4d68d2; background: #eef1ff; }
+.planning-panel-heading h2, .planning-list-heading h2 { margin: 0 0 3px; color: #354056; font-size: 13px; }
+.planning-panel-heading p, .planning-list-heading p { margin: 0; color: #929aaa; font-size: 9px; }
+.planning-fields { display: grid; gap: 12px; }
+.planning-fields-primary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.planning-field { display: grid; min-width: 0; gap: 5px; color: #647086; font-size: 9px; font-weight: 600; }
+.planning-field > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.planning-field input, .planning-field textarea, .planning-filters input, .planning-filters select { width: 100%; min-width: 0; min-height: 35px; padding: 0 9px; border: 1px solid #e2e7ef; border-radius: 6px; outline: none; color: #38445a; background: #fff; font: 10px "Segoe UI", sans-serif; }
+.planning-field textarea { min-height: 55px; padding: 8px 9px; resize: vertical; line-height: 1.45; }
+.planning-field input:focus, .planning-field textarea:focus, .planning-filters input:focus, .planning-filters select:focus { border-color: #91a2e8; box-shadow: 0 0 0 3px #edf0ff; }
+.planning-field-id_site { grid-column: span 1; }
+.planning-field-address { grid-column: span 2; }
+.planning-field-PO { grid-column: span 1; }
+.planning-fields-notes { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 13px; }
+.planning-extra-fields { margin-top: 13px; padding-top: 11px; border-top: 1px solid #eff1f5; }
+.planning-extra-fields summary { width: fit-content; color: #6071b5; font-size: 9px; font-weight: 600; cursor: pointer; }
+.planning-extra-fields summary::marker { color: #8193dc; }
+.planning-extra-fields code { margin-left: 3px; color: #a5abba; font-size: 8px; font-weight: 400; }
+.planning-fields-extra { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; }
+.planning-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; }
+.planning-form-footer p { margin: 0; color: #a0a7b4; font-size: 8px; }
+.planning-form-footer .btn-primary { min-height: 35px; }
+.planning-form-footer .btn-primary > span { display: flex; }
+.planning-feedback { display: flex; align-items: center; gap: 7px; margin-top: 12px; padding: 9px 11px; border: 1px solid; border-radius: 7px; font-size: 9px; }
+.planning-feedback-success { border-color: #d8eee3; color: #478266; background: #f1faf5; }
+.planning-feedback-error { border-color: #f0d8d4; color: #aa5d50; background: #fff7f5; }
+.planning-list-heading { justify-content: space-between; margin: 28px 0 12px; }
+.planning-list-icon { color: #806aba; background: #f2effb; }
+.planning-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; margin-bottom: 12px; padding: 12px; }
+.planning-filters > label:not(.planning-search) { display: grid; min-width: 125px; flex: 1 1 125px; gap: 5px; color: #7d8799; font-size: 8px; font-weight: 600; }
+.planning-search { position: relative; display: flex; min-width: min(100%, 280px); height: 35px; flex: 2 1 280px; align-items: center; border: 1px solid #e2e7ef; border-radius: 6px; color: #929bad; background: #fff; }
+.planning-search > svg { flex: 0 0 auto; margin-left: 10px; }
+.planning-search input { height: 32px; border: 0; box-shadow: none !important; }
+.planning-filter-reset { display: inline-flex; height: 35px; flex: 0 0 auto; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid #e3e7ef; border-radius: 6px; color: #707b8f; background: #fff; font-size: 8px; cursor: pointer; }
+.planning-table-panel { overflow: hidden; }
+.planning-table-scroll { overflow: auto; max-height: min(66vh, 720px); }
+.planning-table { width: 100%; min-width: 1990px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.planning-table th, .planning-table td { overflow: hidden; padding: 9px 10px; border-bottom: 1px solid #eef0f4; color: #596579; font-size: 9px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.planning-table th { position: sticky; z-index: 1; top: 0; color: #7f899b; background: #f8f9fc; font-size: 8px; font-weight: 650; }
+.planning-table tbody tr:hover td { background: #fafbfe; }
+.planning-table th:nth-child(1), .planning-table th:nth-child(9), .planning-table th:nth-child(10) { width: 115px; }
+.planning-table th:nth-child(2) { width: 92px; }
+.planning-table th:nth-child(3), .planning-table th:nth-child(4) { width: 85px; }
+.planning-table th:nth-child(5) { width: 110px; }
+.planning-table th:nth-child(6) { width: 175px; }
+.planning-table th:nth-child(7) { width: 135px; }
+.planning-table th:nth-child(8), .planning-table th:nth-child(12) { width: 210px; }
+.planning-table th:nth-child(11) { width: 145px; }
+.planning-table th:nth-child(13), .planning-table th:nth-child(14) { width: 120px; }
+.planning-table td.planning-cell-comment, .planning-table td.planning-cell-comment2 { color: #768195; }
+.planning-row-actions { display: flex; gap: 4px; }
+.planning-row-actions button { display: grid; width: 26px; height: 25px; place-items: center; border: 0; border-radius: 5px; color: #78849a; background: transparent; cursor: pointer; }
+.planning-row-actions button:hover { color: #4e68ce; background: #eff2ff; }
+.planning-row-actions button:last-child:hover { color: #b05f51; background: #fff2ef; }
+.planning-actions-heading { width: 72px; }
+.planning-table-state { display: flex; min-height: 115px; align-items: center; justify-content: center; gap: 8px; color: #8791a3; }
+.planning-table-empty { flex-direction: column; gap: 7px; font-size: 10px; }
+.planning-table-empty svg { color: #a7b1c3; }
+.planning-table-footer { display: flex; min-height: 43px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 12px; color: #8993a4; font-size: 8px; }
+.planning-table-footer > div { display: inline-flex; align-items: center; gap: 10px; }
+.planning-table-footer button { display: grid; width: 26px; height: 25px; place-items: center; border: 1px solid #e7eaf0; border-radius: 5px; color: #69758a; background: #fff; cursor: pointer; }
+.planning-table-footer button:disabled { color: #c1c6cf; background: #fafbfc; cursor: default; }
 .migration-icon { display: grid; width: 35px; height: 35px; margin-bottom: 12px; place-items: center; border-radius: 9px; color: #7c77c4; background: #f2effb; }
 .migration-panel h2 { margin-bottom: 6px; font: 700 13px "Segoe UI", sans-serif; }
 .migration-panel > p { margin-bottom: 17px; color: #8d96a5; font-size: 9px; line-height: 1.6; }
@@ -383,6 +453,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   /* Узкие экраны: две карточки площадок по 50%, карточка работ — на всю строку. */
   .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stats-grid > .work-type-stat-card { grid-column: 1 / -1; }
+  .planning-fields-primary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .planning-filters > label:not(.planning-search) { min-width: 115px; flex-basis: 115px; }
 }
 @media (max-width: 760px) {
   .sidebar { width: 252px; transform: translateX(-100%); transition: transform var(--dur-modal) var(--ease-drawer); }
@@ -409,6 +481,14 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .assignment-layout { grid-template-columns: 1fr; }
   .assignment-sites-list { max-height: 390px; }
   .assignment-controls { grid-row: 1; }
+  .planning-fields-primary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .planning-field-address { grid-column: span 2; }
+  .planning-fields-notes, .planning-fields-extra { grid-template-columns: 1fr; }
+  .planning-panel-heading { align-items: flex-start; flex-direction: column; }
+  .planning-filters > label:not(.planning-search) { min-width: calc(50% - 5px); flex-basis: calc(50% - 5px); }
+  .planning-search { min-width: 100%; flex-basis: 100%; }
+  .planning-filter-reset { margin-left: auto; }
+  .planning-table-footer { align-items: flex-start; flex-direction: column; padding: 9px 12px; }
   .coordination-fields { grid-template-columns: minmax(0, 1fr); }
   .coordination-body-heading { flex-direction: column; align-items: flex-start; gap: 7px; }
   .sites-table-header { display: none; }
