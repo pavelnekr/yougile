@@ -582,6 +582,7 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
           <span className="action-link">Открыть отчёт <ArrowRight size={15} /></span>
         </button>
       </section>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
     </section>
   );
 }

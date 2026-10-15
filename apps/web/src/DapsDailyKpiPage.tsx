@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, ChevronDown, ImageDown, LoaderCircle, RefreshCw, Save, TrendingUp } from "lucide-react";
 import { apiFetch } from "./apiClient";
+import { PORTAL_VERSION } from "./version";
 
 type Values = Record<string, unknown>;
 type DailyData = { date: string; values: Values | null; monthlyAverages: Values; monthLabel: string };
@@ -306,5 +307,6 @@ export default function DapsDailyKpiPage({ onBack, canEdit }: { onBack: () => vo
     <section className="panel daps-daily-chart-panel"><div className="panel-heading"><div><h2>Динамика КПЭ К3</h2><p>Общий показатель, ПНР, АВР и накопленное значение.</p></div><div className="daps-chart-period">{(["week", "month", "all"] as const).map((item) => <button type="button" className={period === item ? "active" : ""} key={item} onClick={() => setPeriod(item)}>{item === "week" ? "Неделя" : item === "month" ? "Месяц" : "Всё время"}</button>)}</div></div>
       {graph ? <><div className="daps-chart-plot"><svg viewBox="0 0 1000 300" role="img" aria-label="График динамики КПЭ К3"><line x1="40" y1="260" x2="960" y2="260" /><line x1="40" y1="40" x2="40" y2="260" /><text x="4" y="48">{display(graph.max)}%</text><text x="4" y="260">{display(graph.min)}%</text>{graph.series.map((item) => <polyline key={item.key} points={graph.points(item.key)} fill="none" stroke={item.color} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />)}</svg></div><div className="daps-chart-legend">{graph.series.map((item) => <span key={item.key}><i style={{ background: item.color }} />{item.name}</span>)}</div><p className="daps-chart-dates">{chartRows[0]?.date} — {chartRows[chartRows.length - 1]?.date} · {chartRows.length} дней</p></> : <div className="daps-chart-empty">Для выбранного периода пока нет данных KPI.</div>}
     </section>
+    <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
   </section>;
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileSpreadsheet, LoaderCircle, RefreshCw, Upload } from "lucide-react";
 import { apiFetch } from "./apiClient";
+import { PORTAL_VERSION } from "./version";
 
 type Dataset = "AGGREGATE" | "KPI_REPORT" | "STATUS_CHANGES" | "RESPONSIBLE_CHANGES" | "POLITICS" | "POLITICS_WEEKLY";
 type RecentImport = { id: string; fileName: string; dataset: Dataset; rowCount: number; createdAt: string };
@@ -34,6 +35,7 @@ export default function DapsReportPage({ onBack, canEdit }: { onBack: () => void
   const [notice, setNotice] = useState("");
   const [kpiDate, setKpiDate] = useState("");
   const [kpiValues, setKpiValues] = useState<Record<string, string>>({});
+  const [loadingKpi, setLoadingKpi] = useState(false);
   const [kpiLoaded, setKpiLoaded] = useState(false);
   const [savingKpi, setSavingKpi] = useState(false);
 
@@ -77,22 +79,34 @@ export default function DapsReportPage({ onBack, canEdit }: { onBack: () => void
     }
   };
 
-  const loadKpi = async () => {
+  const loadKpi = useCallback(async (signal?: AbortSignal) => {
     if (!kpiDate) return;
     setError("");
     setNotice("");
     setKpiLoaded(false);
+    setKpiValues({});
+    setLoadingKpi(true);
     try {
-      const response = await apiFetch(`/api/daps/kpi?date=${encodeURIComponent(kpiDate)}`);
+      const response = await apiFetch(`/api/daps/kpi?date=${encodeURIComponent(kpiDate)}`, { signal });
       const data = await response.json() as { error?: string; values?: KpiValues };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить KPI.");
       setKpiValues(Object.fromEntries(kpiFields.map((field) => [field, String(data.values?.[field] ?? "")] )));
       setKpiLoaded(true);
     } catch (reason) {
+      if (signal?.aborted) return;
       setKpiValues({});
       setError(message(reason));
+    } finally {
+      if (!signal?.aborted) setLoadingKpi(false);
     }
-  };
+  }, [kpiDate]);
+
+  useEffect(() => {
+    if (!kpiDate) return;
+    const controller = new AbortController();
+    void loadKpi(controller.signal);
+    return () => controller.abort();
+  }, [kpiDate, loadKpi]);
 
   const saveKpi = async () => {
     if (!kpiLoaded || savingKpi) return;
@@ -107,7 +121,7 @@ export default function DapsReportPage({ onBack, canEdit }: { onBack: () => void
       });
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось сохранить KPI.");
-      setNotice(`KPI 1–7 за ${new Date(`${kpiDate}T00:00:00`).toLocaleDateString("ru-RU")} сохранены.`);
+      setNotice(`KPI-0 и KPI 1–7 за ${new Date(`${kpiDate}T00:00:00`).toLocaleDateString("ru-RU")} сохранены.`);
       await loadSummary();
     } catch (reason) {
       setError(message(reason));
@@ -152,8 +166,8 @@ export default function DapsReportPage({ onBack, canEdit }: { onBack: () => void
         <section className="panel daps-report-panel">
           <div className="panel-heading"><div><h2>Редактировать KPI 0–7</h2><p>KPI-0 сохраняется в дневное значение «KPI-0(MM_day)».</p></div></div>
           <div className="daps-kpi-toolbar">
-            <label><span>Дата отчёта</span><input type="date" value={kpiDate} onChange={(event) => { setKpiDate(event.target.value); setKpiLoaded(false); }} /></label>
-            <button type="button" className="outline-button" onClick={() => void loadKpi()} disabled={!kpiDate}>Загрузить значения</button>
+            <label><span>Дата отчёта</span><input type="date" value={kpiDate} onChange={(event) => { setKpiDate(event.target.value); setKpiLoaded(false); setKpiValues({}); setError(""); setNotice(""); }} /></label>
+            <button type="button" className="outline-button" onClick={() => void loadKpi()} disabled={!kpiDate || loadingKpi}>{loadingKpi ? <><LoaderCircle size={14} className="template-spinner" /> Загружаем…</> : <><RefreshCw size={14} /> Обновить</>}</button>
           </div>
           {kpiLoaded && <div className="daps-kpi-grid">{kpiFields.map((field) => <label key={field}><span>{field}</span><input disabled={!canEdit} value={kpiValues[field] ?? ""} onChange={(event) => setKpiValues((current) => ({ ...current, [field]: event.target.value }))} /></label>)}</div>}
           {kpiLoaded && canEdit && <div className="daps-actions"><button type="button" className="btn-primary" onClick={() => void saveKpi()} disabled={savingKpi}>{savingKpi ? "Сохраняем…" : "Сохранить KPI"}</button></div>}
@@ -168,6 +182,7 @@ export default function DapsReportPage({ onBack, canEdit }: { onBack: () => void
           </tbody></table></div>
         )}
       </section>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
     </section>
   );
 }
