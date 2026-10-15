@@ -349,18 +349,20 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
 
   return (
     <section className="section-view assignment-page coordination-page">
-      {onBack && (
-        <button className="text-button coordination-back-button" onClick={onBack}>
-          <ArrowLeft size={14} /> Все сценарии
-        </button>
-      )}
       <div className="eyebrow"><span className="eyebrow-line" /> ПИСЬМО СОГЛАСОВАНИЯ АВР · ОТПРАВКА ПО SMTP</div>
       <div className="sites-page-heading">
         <div>
           <h1>Согласование АВР</h1>
           <p>Загрузите DOCX-план работ — портал соберёт письмо согласования АВР. Проверьте тему и текст, затем отправьте получателям.</p>
         </div>
-        {config && !sent && <span className="sites-total">{countRu(config.recipients.length, recipientForms)}</span>}
+        <div className="coordination-heading-actions">
+          {config && !sent && <span className="sites-total">{countRu(config.recipients.length, recipientForms)}</span>}
+          {onBack && (
+            <button className="text-button" onClick={onBack}>
+              <ArrowLeft size={14} /> Назад
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}

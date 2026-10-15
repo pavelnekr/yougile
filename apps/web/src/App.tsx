@@ -27,6 +27,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  TrendingUp,
   UsersRound
 } from "lucide-react";
 import XlsxAssignmentPage from "./XlsxAssignmentPage.js";
@@ -39,6 +40,7 @@ import CoordinationLandingPage from "./CoordinationLandingPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import PlanningWorkPage from "./PlanningWorkPage.js";
 import DapsReportPage from "./DapsReportPage.js";
+import DapsDailyKpiPage from "./DapsDailyKpiPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js";
 import HistoryPage from "./HistoryPage.js";
@@ -120,6 +122,7 @@ const workspaceBySection: Partial<Record<Section, string>> = {
   "Управление работами в YouGile": "WORK_MANAGEMENT",
   "DAPS": "DAPS",
   "Отчёт Naumen": "DAPS",
+  "Ежедневный отчет по KPI": "DAPS",
   "Площадки": "WORK_MANAGEMENT",
   "Площадки АВР": "WORK_MANAGEMENT",
   "Назначить инженера": "WORK_MANAGEMENT",
@@ -376,7 +379,8 @@ function App() {
   // и пункт навигации остаются у родительского раздела.
   const parentSectionOf: Partial<Record<Section, Section>> = {
     "Согласование АВР": "Согласование/Оповещение",
-    "Отчёт Naumen": "DAPS"
+    "Отчёт Naumen": "DAPS",
+    "Ежедневный отчет по KPI": "DAPS"
   };
   const activeNavSection = parentSectionOf[activeSection] ?? activeSection;
 
@@ -495,6 +499,8 @@ function App() {
             <DapsLandingPage onNavigate={chooseSection} />
           ) : activeSection === "Отчёт Naumen" ? (
             <DapsReportPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
+          ) : activeSection === "Ежедневный отчет по KPI" ? (
+            <DapsDailyKpiPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Согласование/Оповещение" ? (
             <CoordinationLandingPage onNavigate={chooseSection} />
           ) : activeSection === "Согласование АВР" ? (
@@ -567,6 +573,12 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
           <div className="action-card-top"><span className="action-icon blue"><FileSpreadsheet size={19} /></span></div>
           <h3>Отчёт Naumen</h3>
           <p>Загрузите XLSX-отчёты, обновите данные и показатели KPI.</p>
+          <span className="action-link">Открыть отчёт <ArrowRight size={15} /></span>
+        </button>
+        <button className="action-card" onClick={() => onNavigate("Ежедневный отчет по KPI")}>
+          <div className="action-card-top"><span className="action-icon green"><TrendingUp size={19} /></span></div>
+          <h3>Ежедневный отчет по KPI</h3>
+          <p>Сводка показателей за день, месячные средние и динамика КПЭ К3.</p>
           <span className="action-link">Открыть отчёт <ArrowRight size={15} /></span>
         </button>
       </section>
@@ -1218,7 +1230,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Отчёт Naumen" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Отчёт Naumen" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

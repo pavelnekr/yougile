@@ -14,6 +14,7 @@ export type Section =
   | "Управление работами в YouGile"
   | "DAPS"
   | "Отчёт Naumen"
+  | "Ежедневный отчет по KPI"
   | "Площадки"
   | "Площадки АВР"
   | "Назначить инженера"
@@ -34,6 +35,7 @@ export const sectionSlugs: Record<Section, string> = {
   "Управление работами в YouGile": "",
   "DAPS": "daps",
   "Отчёт Naumen": "daps/report",
+  "Ежедневный отчет по KPI": "daps/daily-kpi",
   "Площадки": "sites",
   "Площадки АВР": "sites/avr",
   "Назначить инженера": "assign",

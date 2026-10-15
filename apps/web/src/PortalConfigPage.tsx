@@ -1241,7 +1241,7 @@ export default function PortalConfigPage({
                     />
                   </label>
                 </div>
-                <div className="portal-config-note"><Info size={14} /><span>Строка подключения хранится в основной базе портала в зашифрованном виде и не возвращается интерфейсу. В целевой базе должны быть созданы таблицы DAPS; SQL для первичной настройки находится в apps/api/prisma/daps-database.sql.</span></div>
+                <div className="portal-config-note"><Info size={14} /><span>Строка подключения хранится в основной базе портала в зашифрованном виде и не возвращается интерфейсу. В целевой базе нужны таблицы DAPS (SQL для первичной настройки — apps/api/prisma/daps-database.sql), а для ежедневного отчёта — analytics_data.all_k и public."Aggregate_for_KPI" из workflow n8n.</span></div>
               </>
             )}
             {dapsDatabaseError && dapsDatabaseUrl && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{dapsDatabaseError}</div>}

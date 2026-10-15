@@ -122,7 +122,7 @@ export default function DapsReportPage({ onBack, canEdit }: { onBack: () => void
       <div className="section-hero daps-report-hero">
         <span className="section-hero-icon"><FileSpreadsheet size={22} /></span>
         <div><h1>Отчёты Naumen</h1><p>Загрузка отчётов, расчёт KPI 0 и редактирование показателей KPI 1–7.</p></div>
-        <button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> DAPS</button>
+        <button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button>
       </div>
 
       {error && <div className="admin-feedback admin-feedback-error" role="alert">{error}</div>}
