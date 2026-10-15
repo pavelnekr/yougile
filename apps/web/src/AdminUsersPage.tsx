@@ -73,7 +73,8 @@ const roles = [
 const workspaces = [
   { value: "WORK_MANAGEMENT", label: "Управление работами" },
   { value: "COORDINATION", label: "Согласование/Оповещение" },
-  { value: "WORK_PLANNING", label: "Планирование работ" }
+  { value: "WORK_PLANNING", label: "Планирование работ" },
+  { value: "DAPS", label: "DAPS" }
 ] as const;
 
 const operationTypeLabels: Record<string, string> = {

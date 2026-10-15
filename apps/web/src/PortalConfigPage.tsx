@@ -6,7 +6,7 @@ import { PORTAL_VERSION } from "./version";
 
 type PortalColumn = { id: string; name: string };
 type LoadState = "loading" | "ready" | "error";
-type TabKey = "filter" | "avr" | "mail" | "workcheck";
+type TabKey = "filter" | "avr" | "mail" | "workcheck" | "daps";
 
 // Состояние проверки ID столбца в YouGile. «none» — проверка ещё не запускалась
 // (пустой ID), «invalid» — фронтовая проверка формата, остальное — ответ API.
@@ -184,6 +184,13 @@ export default function PortalConfigPage({
   const [windowError, setWindowError] = useState("");
   const [windowNotice, setWindowNotice] = useState("");
 
+  const [dapsDatabaseUrl, setDapsDatabaseUrl] = useState("");
+  const [dapsDatabaseConfigured, setDapsDatabaseConfigured] = useState(false);
+  const [dapsDatabaseLoading, setDapsDatabaseLoading] = useState(true);
+  const [dapsDatabaseSaving, setDapsDatabaseSaving] = useState(false);
+  const [dapsDatabaseError, setDapsDatabaseError] = useState("");
+  const [dapsDatabaseNotice, setDapsDatabaseNotice] = useState("");
+
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingAvr, setSavingAvr] = useState(false);
   const [savingMail, setSavingMail] = useState(false);
@@ -325,6 +332,28 @@ export default function PortalConfigPage({
     return () => controller.abort();
   }, [loadWorkCheck]);
 
+  const loadDapsDatabase = useCallback(async (signal?: AbortSignal) => {
+    setDapsDatabaseLoading(true);
+    setDapsDatabaseError("");
+    try {
+      const response = await apiFetch("/api/portal-config/daps-database", { signal });
+      const data = await response.json() as { configured?: boolean; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить настройки PostgreSQL для DAPS.");
+      setDapsDatabaseConfigured(Boolean(data.configured));
+    } catch (reason) {
+      if (signal?.aborted) return;
+      setDapsDatabaseError(errorMessage(reason));
+    } finally {
+      if (!signal?.aborted) setDapsDatabaseLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadDapsDatabase(controller.signal);
+    return () => controller.abort();
+  }, [loadDapsDatabase]);
+
   const planChanged = plan.id !== savedPlan.id || plan.name !== savedPlan.name;
   const avrChanged = JSON.stringify(avr) !== JSON.stringify(savedAvr);
   const mailChanged = JSON.stringify(mailRecipients) !== JSON.stringify(savedMailRecipients);
@@ -343,6 +372,31 @@ export default function PortalConfigPage({
     setSmtpNotice("");
     setWindowError("");
     setWindowNotice("");
+    setDapsDatabaseError("");
+    setDapsDatabaseNotice("");
+  };
+
+  const saveDapsDatabase = async () => {
+    if (dapsDatabaseSaving || !dapsDatabaseUrl.trim()) return;
+    setDapsDatabaseSaving(true);
+    setDapsDatabaseError("");
+    setDapsDatabaseNotice("");
+    try {
+      const response = await apiFetch("/api/portal-config/daps-database", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: dapsDatabaseUrl.trim() })
+      });
+      const data = await response.json() as { configured?: boolean; error?: string };
+      if (!response.ok || !data.configured) throw new Error(data.error ?? "Не удалось сохранить настройки PostgreSQL для DAPS.");
+      setDapsDatabaseConfigured(true);
+      setDapsDatabaseUrl("");
+      setDapsDatabaseNotice("Подключение проверено и сохранено. Отчёты DAPS теперь будут записываться в эту базу.");
+    } catch (reason) {
+      setDapsDatabaseError(errorMessage(reason));
+    } finally {
+      setDapsDatabaseSaving(false);
+    }
   };
 
   const savePlan = async () => {
@@ -623,7 +677,9 @@ export default function PortalConfigPage({
         </div>
       ) : (
         <div className="panel portal-config-panel">
-          <div className="portal-config-tabs" role="tablist" aria-label="Разделы конфигурации">
+          <div className="portal-config-tabs" aria-label="Разделы конфигурации">
+            <div className="portal-config-tab-group" role="tablist" aria-label="YouGile">
+              <span className="portal-config-tab-group-label" role="presentation">YouGile</span>
             <button
               id="portal-config-tab-filter"
               type="button"
@@ -647,17 +703,6 @@ export default function PortalConfigPage({
               АВР <span className="portal-config-tab-count">{avr.length}</span>
             </button>
             <button
-              id="portal-config-tab-mail"
-              type="button"
-              role="tab"
-              aria-selected={tab === "mail"}
-              aria-controls="portal-config-panel-mail"
-              className={`portal-config-tab ${tab === "mail" ? "portal-config-tab-active" : ""}`}
-              onClick={() => switchTab("mail")}
-            >
-              Оповещения <span className="portal-config-tab-count">{mailRecipients.length}</span>
-            </button>
-            <button
               id="portal-config-tab-workcheck"
               type="button"
               role="tab"
@@ -668,6 +713,35 @@ export default function PortalConfigPage({
             >
               Проверка работ
             </button>
+            </div>
+            <div className="portal-config-tab-group" role="tablist" aria-label="Согласование/Оповещение">
+              <span className="portal-config-tab-group-label" role="presentation">Согласование/Оповещение</span>
+              <button
+                id="portal-config-tab-mail"
+                type="button"
+                role="tab"
+                aria-selected={tab === "mail"}
+                aria-controls="portal-config-panel-mail"
+                className={`portal-config-tab ${tab === "mail" ? "portal-config-tab-active" : ""}`}
+                onClick={() => switchTab("mail")}
+              >
+                Оповещение <span className="portal-config-tab-count">{mailRecipients.length}</span>
+              </button>
+            </div>
+            <div className="portal-config-tab-group" role="tablist" aria-label="DAPS">
+              <span className="portal-config-tab-group-label" role="presentation">DAPS</span>
+              <button
+                id="portal-config-tab-daps"
+                type="button"
+                role="tab"
+                aria-selected={tab === "daps"}
+                aria-controls="portal-config-panel-daps"
+                className={`portal-config-tab ${tab === "daps" ? "portal-config-tab-active" : ""}`}
+                onClick={() => switchTab("daps")}
+              >
+                PostgreSQL
+              </button>
+            </div>
           </div>
 
           <div
@@ -1129,6 +1203,55 @@ export default function PortalConfigPage({
                   Отменить
                 </button>
               )}
+            </div>
+          </div>
+
+          <div
+            className="portal-config-section"
+            id="portal-config-panel-daps"
+            role="tabpanel"
+            aria-labelledby="portal-config-tab-daps"
+            hidden={tab !== "daps"}
+          >
+            <div className="portal-config-section-heading">
+              <div>
+                <h2>PostgreSQL для DAPS</h2>
+                <p>Отдельная база для отчётов Naumen, истории импортов и KPI. Соединение проверяется перед сохранением.</p>
+              </div>
+              <span className="portal-config-save-state">{dapsDatabaseConfigured ? "Подключение сохранено" : "Не настроено"}</span>
+            </div>
+            {dapsDatabaseLoading ? (
+              <div className="portal-config-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем настройки PostgreSQL…</div>
+            ) : dapsDatabaseError && !dapsDatabaseUrl ? (
+              <div className="portal-config-feedback portal-config-feedback-error" role="alert">
+                {dapsDatabaseError}<button className="text-button" onClick={() => void loadDapsDatabase()}>Повторить</button>
+              </div>
+            ) : (
+              <>
+                <div className="portal-config-fields">
+                  <label className="field-label" htmlFor="portal-config-daps-database-url"><span>Строка подключения PostgreSQL</span>
+                    <input
+                      id="portal-config-daps-database-url"
+                      type="password"
+                      autoComplete="new-password"
+                      value={dapsDatabaseUrl}
+                      disabled={dapsDatabaseSaving}
+                      placeholder={dapsDatabaseConfigured ? "postgresql://… (сохранённые данные скрыты)" : "postgresql://пользователь:пароль@сервер:5432/база?schema=public"}
+                      onChange={(event) => { setDapsDatabaseUrl(event.target.value); setDapsDatabaseError(""); setDapsDatabaseNotice(""); }}
+                    />
+                  </label>
+                </div>
+                <div className="portal-config-note"><Info size={14} /><span>Строка подключения хранится в основной базе портала в зашифрованном виде и не возвращается интерфейсу. В целевой базе должны быть созданы таблицы DAPS; SQL для первичной настройки находится в apps/api/prisma/daps-database.sql.</span></div>
+              </>
+            )}
+            {dapsDatabaseError && dapsDatabaseUrl && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{dapsDatabaseError}</div>}
+            {dapsDatabaseNotice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{dapsDatabaseNotice}</div>}
+            <div className="portal-config-actions">
+              <button className="btn-primary" disabled={dapsDatabaseSaving || dapsDatabaseLoading || !dapsDatabaseUrl.trim()} onClick={() => void saveDapsDatabase()}>
+                {dapsDatabaseSaving ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
+                {dapsDatabaseSaving ? "Проверяем и сохраняем…" : "Проверить и сохранить"}
+              </button>
+              {dapsDatabaseUrl && <button className="text-button" disabled={dapsDatabaseSaving} onClick={() => { setDapsDatabaseUrl(""); setDapsDatabaseError(""); setDapsDatabaseNotice(""); }}>Очистить</button>}
             </div>
           </div>
         </div>

@@ -17,6 +17,16 @@ enum PortalWorkspace {
   WORK_MANAGEMENT
   COORDINATION
   WORK_PLANNING
+  DAPS
+}
+
+enum DapsDataset {
+  AGGREGATE
+  KPI_REPORT
+  STATUS_CHANGES
+  RESPONSIBLE_CHANGES
+  POLITICS
+  POLITICS_WEEKLY
 }
 
 enum OperationType {
@@ -293,4 +303,38 @@ model PortalLog {
   @@index([level, createdAt])
   @@index([actorLogin, createdAt])
   @@index([action])
+}
+
+model DapsImportBatch {
+  id          String      @id @default(cuid())
+  fileName    String
+  dataset     DapsDataset
+  rowCount    Int         @default(0)
+  createdById String?
+  createdAt   DateTime    @default(now())
+
+  @@index([createdAt])
+  @@index([dataset, createdAt])
+}
+
+model DapsReportRow {
+  id          String      @id @default(cuid())
+  dataset     DapsDataset
+  externalKey String
+  reportDate  DateTime?   @db.Date
+  data        Json
+  sourceFile  String
+  updatedById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([dataset, externalKey])
+  @@index([dataset, reportDate])
+}
+
+model DapsKpiDay {
+  date        DateTime    @id @db.Date
+  values      Json
+  updatedById String?
+  updatedAt   DateTime    @updatedAt
 }

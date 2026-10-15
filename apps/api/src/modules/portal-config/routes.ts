@@ -5,6 +5,10 @@ import { getUserYougileClient, UserYougileCredentialError } from "../../integrat
 import type { YougileClient } from "../../integrations/yougile/client.js";
 import { invalidateAvrSitesCache, invalidateSitesCache } from "../sites/service.js";
 import { avrColumnsSchema, planColumnSchema } from "./schema.js";
+import { encryptDapsDatabaseUrl } from "../../integrations/yougile/token-crypto.js";
+import { dapsDatabaseSettingKey, resetDapsDatabaseClient } from "../daps/database.js";
+import { PrismaClient as DapsPrismaClient } from "@prisma/client";
+import { z } from "zod";
 import {
   avrColumnsSettingKey,
   checkColumnInYougile,
@@ -28,6 +32,52 @@ import {
  */
 export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const adminOnly = requireRole(PortalRole.ADMIN);
+
+  app.get("/api/portal-config/daps-database", { preHandler: adminOnly }, async () => {
+    const setting = await prisma.appSetting.findUnique({ where: { key: dapsDatabaseSettingKey } });
+    const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
+      ? setting.value as Record<string, unknown> : {};
+    return { configured: typeof value.encryptedUrl === "string" && value.encryptedUrl.length > 0 };
+  });
+
+  app.put("/api/portal-config/daps-database", { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = z.object({ url: z.string().trim().min(1).max(2000) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Укажите строку подключения PostgreSQL для DAPS." });
+    let url: URL;
+    try { url = new URL(parsed.data.url); } catch { return reply.code(400).send({ error: "Проверьте строку подключения PostgreSQL." }); }
+    if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+      return reply.code(400).send({ error: "Поддерживаются только подключения PostgreSQL." });
+    }
+    const check = new DapsPrismaClient({ datasources: { db: { url: parsed.data.url } } });
+    try {
+      await check.$queryRaw`SELECT 1`;
+      const tables = await check.$queryRaw<Array<{ table_name: string }>>`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = current_schema()
+          AND table_name IN ('DapsImportBatch', 'DapsReportRow', 'DapsKpiDay')
+      `;
+      if (tables.length !== 3) {
+        return reply.code(400).send({ error: "Подключение работает, но таблицы DAPS не найдены. Сначала выполните apps/api/prisma/daps-database.sql в выбранной базе." });
+      }
+    } catch (error) {
+      app.log.warn({ actor: request.sessionUser?.login }, "DAPS PostgreSQL connection check failed");
+      return reply.code(400).send({ error: "Не удалось подключиться к PostgreSQL. Проверьте адрес, базу, логин, пароль и доступ API-сервера." });
+    } finally {
+      await check.$disconnect();
+    }
+    try {
+      await prisma.appSetting.upsert({
+        where: { key: dapsDatabaseSettingKey },
+        create: { key: dapsDatabaseSettingKey, value: { encryptedUrl: encryptDapsDatabaseUrl(parsed.data.url) } },
+        update: { value: { encryptedUrl: encryptDapsDatabaseUrl(parsed.data.url) } }
+      });
+      await resetDapsDatabaseClient();
+      return { configured: true };
+    } catch (error) {
+      app.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save DAPS PostgreSQL settings");
+      return reply.code(500).send({ error: "Не удалось сохранить настройки DAPS PostgreSQL." });
+    }
+  });
 
   // Значение по умолчанию читается из БД один раз при старте, дальше держится в
   // памяти (см. service.ts), чтобы не ходить в базу на каждый запрос площадок.

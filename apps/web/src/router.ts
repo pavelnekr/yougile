@@ -12,6 +12,8 @@ import { useCallback, useEffect, useState } from "react";
  */
 export type Section =
   | "Управление работами в YouGile"
+  | "DAPS"
+  | "Отчёт Naumen"
   | "Площадки"
   | "Площадки АВР"
   | "Назначить инженера"
@@ -30,6 +32,8 @@ export type Section =
 
 export const sectionSlugs: Record<Section, string> = {
   "Управление работами в YouGile": "",
+  "DAPS": "daps",
+  "Отчёт Naumen": "daps/report",
   "Площадки": "sites",
   "Площадки АВР": "sites/avr",
   "Назначить инженера": "assign",

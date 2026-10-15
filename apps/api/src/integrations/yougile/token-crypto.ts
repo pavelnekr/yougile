@@ -70,3 +70,11 @@ export function encryptSmtpPassword(password: string) {
 export function decryptSmtpPassword(value: string) {
   return decryptWithAad(value, smtpPasswordAad, "SMTP password");
 }
+
+export function encryptDapsDatabaseUrl(value: string) {
+  return encryptWithAad(value, "daps-database-url:v1");
+}
+
+export function decryptDapsDatabaseUrl(value: string) {
+  return decryptWithAad(value, "daps-database-url:v1", "DAPS database URL");
+}

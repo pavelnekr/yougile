@@ -8,7 +8,6 @@ import {
   BellRing,
   CalendarDays,
   Check,
-  ChevronDown,
   ClipboardCheck,
   Clock3,
   CheckCircle2,
@@ -27,6 +26,7 @@ import {
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   UsersRound
 } from "lucide-react";
 import XlsxAssignmentPage from "./XlsxAssignmentPage.js";
@@ -38,6 +38,7 @@ import CoordinationPage from "./CoordinationPage.js";
 import CoordinationLandingPage from "./CoordinationLandingPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import PlanningWorkPage from "./PlanningWorkPage.js";
+import DapsReportPage from "./DapsReportPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js";
 import HistoryPage from "./HistoryPage.js";
@@ -106,6 +107,7 @@ type AvrSitesList = {
 // (requireRole), здесь она нужна, чтобы не показывать недоступный раздел.
 const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: boolean }[] = [
   { label: "Управление работами в YouGile", icon: LayoutDashboard },
+  { label: "DAPS", icon: Sparkles },
   { label: "Согласование/Оповещение", icon: BellRing },
   { label: "Планирование Работ", icon: CalendarDays },
   { label: "Учётные записи", icon: UsersRound, adminOnly: true },
@@ -116,6 +118,8 @@ const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: bo
 
 const workspaceBySection: Partial<Record<Section, string>> = {
   "Управление работами в YouGile": "WORK_MANAGEMENT",
+  "DAPS": "DAPS",
+  "Отчёт Naumen": "DAPS",
   "Площадки": "WORK_MANAGEMENT",
   "Площадки АВР": "WORK_MANAGEMENT",
   "Назначить инженера": "WORK_MANAGEMENT",
@@ -371,7 +375,8 @@ function App() {
   // на странице раздела открывает его по собственному адресу. Подсветка меню
   // и пункт навигации остаются у родительского раздела.
   const parentSectionOf: Partial<Record<Section, Section>> = {
-    "Согласование АВР": "Согласование/Оповещение"
+    "Согласование АВР": "Согласование/Оповещение",
+    "Отчёт Naumen": "DAPS"
   };
   const activeNavSection = parentSectionOf[activeSection] ?? activeSection;
 
@@ -410,14 +415,8 @@ function App() {
         <div className="sidebar-brand-row">
           <a className="brand" href="#" onClick={(event) => { event.preventDefault(); chooseSection("Управление работами в YouGile"); }}>
             <span className="brand-mark"><span /><span /><span /><span /></span>
-            <span className="brand-copy"><strong>yougile</strong><small>OPERATIONS PORTAL</small></span>
+            <span className="brand-copy"><strong>DAPS</strong><small>OPERATIONS PORTAL</small></span>
           </a>
-        </div>
-
-        <div className="workspace-switch" title={sidebarCollapsed ? "Команда YouGile · Рабочее пространство" : undefined}>
-          <span className="workspace-avatar">D</span>
-          <span className="workspace-copy"><strong>Команда YouGile</strong><small>Рабочее пространство</small></span>
-          <ChevronDown size={15} />
         </div>
 
         <p className="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</p>
@@ -431,11 +430,6 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="help-card">
-            <span className="help-icon"><ShieldCheck size={17} /></span>
-            <strong>Изменения под контролем</strong>
-            <p>Перед записью будет доступна проверка плана.</p>
-          </div>
           <button className="profile" type="button" onClick={() => void signOut()} title={sidebarCollapsed ? `Выйти из портала · ${sessionUser.displayName}` : "Выйти из портала"}>
             <span className="profile-avatar">{sessionUser.displayName.slice(0, 1).toLocaleUpperCase("ru")}</span>
             <span className="profile-copy"><strong>{sessionUser.displayName}</strong><small>{sessionUser.login} · выход</small></span>
@@ -497,6 +491,10 @@ function App() {
               avrError={avrError}
               avrPaused={avrPaused}
             />
+          ) : activeSection === "DAPS" ? (
+            <DapsLandingPage onNavigate={chooseSection} />
+          ) : activeSection === "Отчёт Naumen" ? (
+            <DapsReportPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Согласование/Оповещение" ? (
             <CoordinationLandingPage onNavigate={chooseSection} />
           ) : activeSection === "Согласование АВР" ? (
@@ -550,6 +548,29 @@ function App() {
         </div>
       </main>
     </div>
+  );
+}
+
+function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => void }) {
+  return (
+    <section className="section-view">
+      <div className="eyebrow"><span className="eyebrow-line" /> DAPS</div>
+      <div className="section-hero">
+        <span className="section-hero-icon"><Sparkles size={22} /></span>
+        <div><h1>DAPS</h1><p>Рабочее пространство готово к наполнению.</p></div>
+      </div>
+      <section className="section-heading">
+        <div><h2>Инструменты</h2><p>Загрузка и обработка отчётов.</p></div>
+      </section>
+      <section className="actions-grid daps-card-grid">
+        <button className="action-card" onClick={() => onNavigate("Отчёт Naumen")}>
+          <div className="action-card-top"><span className="action-icon blue"><FileSpreadsheet size={19} /></span></div>
+          <h3>Отчёт Naumen</h3>
+          <p>Загрузите XLSX-отчёты, обновите данные и показатели KPI.</p>
+          <span className="action-link">Открыть отчёт <ArrowRight size={15} /></span>
+        </button>
+      </section>
+    </section>
   );
 }
 
@@ -1197,7 +1218,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Отчёт Naumen" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

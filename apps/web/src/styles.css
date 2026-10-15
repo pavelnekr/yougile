@@ -38,7 +38,7 @@ button { color: inherit; }
 .login-page { display: grid; min-height: 100vh; min-height: 100dvh; grid-template-columns: minmax(380px, .95fr) minmax(430px, 1.05fr); background: #fff; }
 .login-brand-panel { position: relative; display: flex; min-height: 100vh; min-height: 100dvh; flex-direction: column; overflow: hidden; padding: 37px clamp(32px, 6vw, 88px) 25px; color: #fff; background: radial-gradient(ellipse at 16% 86%, #344a9d 0, transparent 38%), linear-gradient(145deg, #1b2851 0%, #26396f 57%, #314985 100%); }
 .login-brand { position: relative; z-index: 1; display: inline-flex; width: fit-content; align-items: center; gap: 11px; color: #fff; text-decoration: none; }
-.login-brand .brand-copy strong, .login-mobile-brand .brand-copy strong { font: 800 19px "Segoe UI", sans-serif; letter-spacing: -.8px; }
+.login-brand .brand-copy strong, .login-mobile-brand .brand-copy strong { font: 800 19px "Avenir Next", "Trebuchet MS", sans-serif; letter-spacing: 1.1px; }
 .login-brand .brand-copy small, .login-mobile-brand .brand-copy small { margin-top: 5px; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
 .login-brand .brand-copy small { color: #bdc8eb; }
 .login-brand .brand-mark span { background: #fff; }
@@ -111,14 +111,33 @@ button { color: inherit; }
 .brand-mark span:nth-child(3) { background: #83a4ee; }
 .brand-mark span:nth-child(4) { background: #313d79; }
 .brand-copy { display: flex; flex-direction: column; line-height: 1.1; }
-.brand-copy strong { font: 800 19px "Segoe UI", sans-serif; letter-spacing: -.8px; }
+.brand-copy strong { font: 800 19px "Avenir Next", "Trebuchet MS", sans-serif; letter-spacing: 1.1px; }
 .brand-copy small { margin-top: 5px; color: #8a94a7; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
-.workspace-switch { display: flex; align-items: center; gap: 10px; padding: 11px 9px; border: 1px solid #edf0f4; border-radius: 9px; }
-.workspace-avatar { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 8px; color: #4c63bd; background: #edf1ff; font-weight: 700; font-size: 13px; }
-.workspace-copy, .profile-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
-.workspace-copy strong, .profile-copy strong { overflow: hidden; color: #384256; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.workspace-copy small, .profile-copy small { color: #99a1b0; font-size: 10px; }
-.workspace-switch > svg, .profile > svg { color: #8992a1; }
+.daps-card-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 320px)); }
+.daps-report-hero .text-button { margin-left: auto; }
+.daps-report-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.daps-report-panel { min-width: 0; padding: 16px; }
+.daps-report-panel .panel-heading { margin-bottom: 14px; }
+.daps-file-list { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.daps-file-list li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid #edf0f5; border-radius: 6px; color: #4b566b; font-size: 10px; overflow-wrap: anywhere; }
+.daps-file-list small { flex: 0 0 auto; color: #929aaa; font-size: 9px; }
+.daps-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+.daps-report-panel .admin-panel-note { display: flex; margin: 13px 0 0; line-height: 1.55; }
+.daps-kpi-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.daps-kpi-toolbar label, .daps-kpi-grid label { display: grid; min-width: 0; gap: 5px; color: #737e92; font-size: 9px; }
+.daps-kpi-toolbar input, .daps-kpi-grid input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
+.daps-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
+.daps-kpi-grid label { font-weight: 600; }
+.daps-import-history { margin-top: 16px; padding: 16px; }
+.daps-import-history .panel-heading { margin-bottom: 12px; }
+.daps-import-history table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
+.daps-import-history th, .daps-import-history td { padding: 9px 10px; border-bottom: 1px solid #edf0f4; }
+.daps-import-history th { color: #8791a2; font-size: 9px; font-weight: 600; }
+.daps-import-history td { color: #445066; }
+.profile-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 3px; }
+.profile-copy strong { overflow: hidden; color: #384256; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.profile-copy small { color: #99a1b0; font-size: 10px; }
+.profile > svg { color: #8992a1; }
 .nav-caption { margin: 31px 10px 10px; color: #a0a8b5; font-size: 9px; font-weight: 700; letter-spacing: 1.05px; }
 .navigation { display: grid; gap: 4px; }
 .nav-link { display: flex; min-height: 41px; align-items: center; gap: 11px; padding: 8px 11px; border: 0; border-radius: 7px; color: #717b8d; background: transparent; text-align: left; font-size: 12px; line-height: 1.3; cursor: pointer; }
@@ -126,10 +145,6 @@ button { color: inherit; }
 .nav-link-active:before { position: absolute; left: 0; width: 3px; height: 25px; border-radius: 0 3px 3px 0; background: #4a67dd; content: ""; }
 .nav-count { display: grid; width: 20px; height: 20px; margin-left: auto; place-items: center; border-radius: 6px; color: #828da1; background: #f0f2f6; font-size: 9px; }
 .sidebar-bottom { margin-top: auto; }
-.help-card { padding: 14px 13px 13px; border: 1px solid #e8edfc; border-radius: 9px; background: linear-gradient(145deg, #f8f9ff, #f4f6ff); }
-.help-icon { display: grid; width: 27px; height: 27px; margin-bottom: 10px; place-items: center; border-radius: 7px; color: #536bd1; background: #e9edff; }
-.help-card strong { font-size: 11px; font-weight: 600; }
-.help-card p { margin: 6px 0 0; color: #8a93a4; font-size: 10px; line-height: 1.5; }
 .profile { display: flex; width: 100%; align-items: center; gap: 10px; margin-top: 14px; padding: 13px 4px 2px; border: 0; border-top: 1px solid #edf0f5; background: none; text-align: left; cursor: pointer; }
 .profile-avatar, .topbar-avatar { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(145deg, #90a5e9, #586db8); font-size: 10px; font-weight: 600; }
 
@@ -478,6 +493,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .actions-grid { grid-template-columns: 1fr; gap: 9px; }
   .action-card { min-height: 149px; }
   .bottom-grid, .section-columns { grid-template-columns: 1fr; }
+  .daps-report-layout { grid-template-columns: 1fr; }
+  .daps-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .assignment-layout { grid-template-columns: 1fr; }
   .assignment-sites-list { max-height: 390px; }
   .assignment-controls { grid-row: 1; }
@@ -1194,6 +1211,10 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .portal-config-loading { display: flex; align-items: center; gap: 8px; min-height: 110px; color: #828b9c; font-size: 10px; }
 
 .portal-config-tabs { display: flex; gap: 7px; padding-bottom: 14px; border-bottom: 1px solid #eff1f5; }
+.portal-config-tab-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 10px; border-right: 1px solid #eff1f5; }
+.portal-config-tab-group:first-child { padding-left: 0; }
+.portal-config-tab-group:last-child { padding-right: 0; border-right: 0; }
+.portal-config-tab-group-label { flex-basis: 100%; color: #929bab; font-size: 8px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
 .portal-config-tab {
   display: inline-flex;
   min-height: 34px;
@@ -1309,6 +1330,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 
 @media (max-width: 720px) {
   .portal-config-fields { grid-template-columns: minmax(0, 1fr); }
+  .portal-config-tabs { flex-wrap: wrap; }
+  .portal-config-tab-group { padding: 0 6px; }
   .portal-config-section-heading { flex-direction: column; gap: 7px; }
   .portal-config-save-state { max-width: none; padding-top: 0; text-align: left; }
   /* В узкой строке ID уезжает под названием, кнопка удаления остаётся справа. */
@@ -1467,15 +1490,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .sidebar-collapsed .sidebar-brand-row { justify-content: center; gap: 0; margin-right: 0; margin-bottom: 27px; }
   .sidebar-collapsed .brand { flex: 0 0 25px; overflow: hidden; }
   .sidebar-collapsed .brand-copy,
-  .sidebar-collapsed .workspace-copy,
   .sidebar-collapsed .nav-caption,
   .sidebar-collapsed .profile-copy,
   .sidebar-collapsed .profile > svg { display: none; }
-  .sidebar-collapsed .workspace-switch { justify-content: center; padding-right: 0; padding-left: 0; }
-  .sidebar-collapsed .workspace-switch > svg { display: none; }
   .sidebar-collapsed .nav-link { justify-content: center; padding-right: 0; padding-left: 0; }
   .sidebar-collapsed .nav-link > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .sidebar-collapsed .help-card { display: none; }
   .sidebar-collapsed .profile { justify-content: center; gap: 0; padding-right: 0; padding-left: 0; }
 }
 
