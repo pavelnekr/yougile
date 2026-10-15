@@ -214,15 +214,71 @@ export async function readLatestChatMessage(client: YougileClient, taskId: strin
   return (await readLatestChatMessageDetailed(client, taskId)).latest;
 }
 
+/** Таймаут HTTP-клиента: сервер мог принять запрос, а ответ мы не дождались. */
+function isTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { name?: string; code?: string; message?: string };
+  if (err.name === "TimeoutError") return true;
+  if (typeof err.code === "string" && err.code.startsWith("UND_ERR_")) return true;
+  return /aborted due to timeout/i.test(err.message ?? "");
+}
+
+/** Нормализация текста перед сравнением: разные переводы строк и хвостовые пробелы — это одно сообщение. */
+function normalizeText(value: string): string {
+  return value.replace(/\r\n/g, "\n").trim();
+}
+
+/** Сколько ждать первой проверки, что сообщение всё-таки дошло до YouGile. */
+const deliveryCheckDelayMs = 2000;
+/** Сколько ждать второй (последней) проверки до признания отправки неудачной. */
+const deliveryRecheckDelayMs = 3000;
+/** Окно поиска своего сообщения в чате после таймаута (мс). */
+const deliveryCheckWindowMs = 2 * 60 * 1000;
+
+/**
+ * Дошло ли отправленное сообщение: после таймаута читаем свежее окно чата
+ * (свежие 2 минуты — одна страница вместо обхода всего чата) и ищем такой же текст.
+ * Нужно, чтобы не признавать ошибкой сообщение, которое YouGile уже записал,
+ * и при этом не отправлять повторный POST, который создал бы дубль.
+ */
+async function messageWasDelivered(client: YougileClient, taskId: string, text: string, textHtml?: string): Promise<boolean> {
+  const expected = new Set([normalizeText(text)]);
+  if (textHtml) {
+    expected.add(normalizeText(getMessageText({ textHtml: textHtml }) ?? ""));
+  }
+  expected.delete("");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, attempt === 0 ? deliveryCheckDelayMs : deliveryRecheckDelayMs));
+    try {
+      const since = Date.now() - deliveryCheckWindowMs;
+      const { messages } = await readAllChatMessages(client, taskId, since);
+      if (messages.some((message) => expected.has(normalizeText(message.text)))) return true;
+    } catch {
+      // Не смогли прочитать чат — попробуем ещё раз, решаем по последней проверке.
+    }
+  }
+  return false;
+}
+
 /**
  * Отправка сообщения в чат задачи. Текст можно дополнить `textHtml` — тогда
  * YouGile получит оба поля, как это делал n8n-воркфлоу назначения для
  * комментария кластера.
+ *
+ * Таймаут не означает, что сообщение не дошло: сервер мог принять запрос,
+ * а мы не дождаться ответа. Поэтому при таймауте проверяем чат (read-after-write)
+ * и не делаем повторный POST — он создал бы дубль комментария.
  */
 export async function postChatMessage(client: YougileClient, taskId: string, text: string, textHtml?: string) {
-  await client.request(`chats/${encodeURIComponent(taskId)}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(textHtml ? { text, textHtml } : { text })
-  });
+  try {
+    await client.request(`chats/${encodeURIComponent(taskId)}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(textHtml ? { text, textHtml } : { text })
+    });
+  } catch (error) {
+    if (!isTimeoutError(error)) throw error;
+    if (await messageWasDelivered(client, taskId, text, textHtml)) return;
+    throw error;
+  }
 }
