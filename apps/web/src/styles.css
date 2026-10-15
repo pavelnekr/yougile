@@ -116,7 +116,7 @@ button { color: inherit; }
 .daps-card-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 320px)); }
 .daps-report-hero .text-button { margin-left: auto; }
 .daps-report-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
-.daps-report-panel { min-width: 0; padding: 16px; }
+.daps-report-panel { min-width: 0; padding: 16px; container-type: inline-size; }
 .daps-report-panel .panel-heading { margin-bottom: 14px; }
 .daps-file-list { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
 .daps-file-list li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid #edf0f5; border-radius: 6px; color: #4b566b; font-size: 10px; overflow-wrap: anywhere; }
@@ -125,9 +125,10 @@ button { color: inherit; }
 .daps-report-panel .admin-panel-note { display: flex; margin: 13px 0 0; line-height: 1.55; }
 .daps-kpi-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
 .daps-kpi-toolbar label, .daps-kpi-grid label { display: grid; min-width: 0; gap: 5px; color: #737e92; font-size: 9px; }
-.daps-kpi-toolbar input, .daps-kpi-grid input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
+.daps-kpi-toolbar input, .daps-kpi-grid input { width: 100%; min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
 .daps-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
 .daps-kpi-grid label { font-weight: 600; }
+@container (max-width: 430px) { .daps-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .daps-import-history { margin-top: 16px; padding: 16px; }
 .daps-import-history .panel-heading { margin-bottom: 12px; }
 .daps-import-history table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }

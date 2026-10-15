@@ -186,6 +186,10 @@ export default function PortalConfigPage({
 
   const [dapsDatabaseUrl, setDapsDatabaseUrl] = useState("");
   const [dapsDatabaseConfigured, setDapsDatabaseConfigured] = useState(false);
+  const [dapsSourceSchema, setDapsSourceSchema] = useState("analytics_data");
+  const [savedDapsSourceSchema, setSavedDapsSourceSchema] = useState("analytics_data");
+  const [dapsAggregateSchema, setDapsAggregateSchema] = useState("public");
+  const [savedDapsAggregateSchema, setSavedDapsAggregateSchema] = useState("public");
   const [dapsDatabaseLoading, setDapsDatabaseLoading] = useState(true);
   const [dapsDatabaseSaving, setDapsDatabaseSaving] = useState(false);
   const [dapsDatabaseError, setDapsDatabaseError] = useState("");
@@ -337,9 +341,13 @@ export default function PortalConfigPage({
     setDapsDatabaseError("");
     try {
       const response = await apiFetch("/api/portal-config/daps-database", { signal });
-      const data = await response.json() as { configured?: boolean; error?: string };
+      const data = await response.json() as { configured?: boolean; sourceSchema?: string; aggregateSchema?: string; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить настройки PostgreSQL для DAPS.");
       setDapsDatabaseConfigured(Boolean(data.configured));
+      const sourceSchema = data.sourceSchema ?? "analytics_data";
+      const aggregateSchema = data.aggregateSchema ?? "public";
+      setDapsSourceSchema(sourceSchema); setSavedDapsSourceSchema(sourceSchema);
+      setDapsAggregateSchema(aggregateSchema); setSavedDapsAggregateSchema(aggregateSchema);
     } catch (reason) {
       if (signal?.aborted) return;
       setDapsDatabaseError(errorMessage(reason));
@@ -363,6 +371,7 @@ export default function PortalConfigPage({
   const smtpChanged = !smtpLoaded || smtp.host !== savedSmtp.host || portChanged ||
     smtp.user !== savedSmtp.user || smtp.from !== savedSmtp.from || smtpPassword !== "";
   const windowChanged = windowHours !== savedWindowHours;
+  const dapsSchemaChanged = dapsSourceSchema.trim() !== savedDapsSourceSchema || dapsAggregateSchema.trim() !== savedDapsAggregateSchema;
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -377,7 +386,8 @@ export default function PortalConfigPage({
   };
 
   const saveDapsDatabase = async () => {
-    if (dapsDatabaseSaving || !dapsDatabaseUrl.trim()) return;
+    const schemaChanged = dapsSourceSchema !== savedDapsSourceSchema || dapsAggregateSchema !== savedDapsAggregateSchema;
+    if (dapsDatabaseSaving || (!dapsDatabaseUrl.trim() && (!dapsDatabaseConfigured || !schemaChanged))) return;
     setDapsDatabaseSaving(true);
     setDapsDatabaseError("");
     setDapsDatabaseNotice("");
@@ -385,13 +395,19 @@ export default function PortalConfigPage({
       const response = await apiFetch("/api/portal-config/daps-database", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: dapsDatabaseUrl.trim() })
+        body: JSON.stringify({
+          ...(dapsDatabaseUrl.trim() ? { url: dapsDatabaseUrl.trim() } : {}),
+          sourceSchema: dapsSourceSchema.trim(),
+          aggregateSchema: dapsAggregateSchema.trim()
+        })
       });
       const data = await response.json() as { configured?: boolean; error?: string };
       if (!response.ok || !data.configured) throw new Error(data.error ?? "Не удалось сохранить настройки PostgreSQL для DAPS.");
       setDapsDatabaseConfigured(true);
       setDapsDatabaseUrl("");
-      setDapsDatabaseNotice("Подключение проверено и сохранено. Отчёты DAPS теперь будут записываться в эту базу.");
+      setSavedDapsSourceSchema(dapsSourceSchema.trim());
+      setSavedDapsAggregateSchema(dapsAggregateSchema.trim());
+      setDapsDatabaseNotice("Настройки DAPS проверены и сохранены.");
     } catch (reason) {
       setDapsDatabaseError(errorMessage(reason));
     } finally {
@@ -1240,14 +1256,34 @@ export default function PortalConfigPage({
                       onChange={(event) => { setDapsDatabaseUrl(event.target.value); setDapsDatabaseError(""); setDapsDatabaseNotice(""); }}
                     />
                   </label>
+                  <label className="field-label" htmlFor="portal-config-daps-source-schema"><span>Схема таблицы all_k</span>
+                    <input
+                      id="portal-config-daps-source-schema"
+                      type="text"
+                      value={dapsSourceSchema}
+                      disabled={dapsDatabaseSaving}
+                      placeholder="analytics_data"
+                      onChange={(event) => { setDapsSourceSchema(event.target.value); setDapsDatabaseError(""); setDapsDatabaseNotice(""); }}
+                    />
+                  </label>
+                  <label className="field-label" htmlFor="portal-config-daps-aggregate-schema"><span>Схема таблицы Aggregate_for_KPI</span>
+                    <input
+                      id="portal-config-daps-aggregate-schema"
+                      type="text"
+                      value={dapsAggregateSchema}
+                      disabled={dapsDatabaseSaving}
+                      placeholder="public"
+                      onChange={(event) => { setDapsAggregateSchema(event.target.value); setDapsDatabaseError(""); setDapsDatabaseNotice(""); }}
+                    />
+                  </label>
                 </div>
-                <div className="portal-config-note"><Info size={14} /><span>Строка подключения хранится в основной базе портала в зашифрованном виде и не возвращается интерфейсу. В целевой базе нужны таблицы DAPS (SQL для первичной настройки — apps/api/prisma/daps-database.sql), а для ежедневного отчёта — analytics_data.all_k и public."Aggregate_for_KPI" из workflow n8n.</span></div>
+              <div className="portal-config-note"><Info size={14} /><span>Оба набора таблиц находятся в одной базе PostgreSQL, схемы задаются отдельно. Таблицы DAPS из apps/api/prisma/daps-database.sql остаются в public; исходная all_k и Aggregate_for_KPI — в схемах выше. Строка подключения хранится зашифрованной.</span></div>
               </>
             )}
             {dapsDatabaseError && dapsDatabaseUrl && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{dapsDatabaseError}</div>}
             {dapsDatabaseNotice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{dapsDatabaseNotice}</div>}
             <div className="portal-config-actions">
-              <button className="btn-primary" disabled={dapsDatabaseSaving || dapsDatabaseLoading || !dapsDatabaseUrl.trim()} onClick={() => void saveDapsDatabase()}>
+              <button className="btn-primary" disabled={dapsDatabaseSaving || dapsDatabaseLoading || (!dapsDatabaseUrl.trim() && (!dapsDatabaseConfigured || !dapsSchemaChanged))} onClick={() => void saveDapsDatabase()}>
                 {dapsDatabaseSaving ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
                 {dapsDatabaseSaving ? "Проверяем и сохраняем…" : "Проверить и сохранить"}
               </button>

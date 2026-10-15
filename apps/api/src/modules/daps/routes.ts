@@ -5,10 +5,16 @@ import { requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
 import { config } from "../../config.js";
 import { computeKpiZero, parseDapsUpload, type ParsedDapsFile } from "./service.js";
-import { getDapsDatabase } from "./database.js";
+import { getDapsDatabase, getDapsSchemas, quoteDapsSchema } from "./database.js";
 
 const kpiFields = ["KPI-01", "KPI-02", "KPI-03", "KPI-04", "KPI-05", "KPI-06", "KPI-07"] as const;
-const kpiUpdateSchema = z.object(Object.fromEntries(kpiFields.map((field) => [field, z.string().trim().max(80).optional()])));
+const kpiEditorFields = ["KPI-0", ...kpiFields] as const;
+const kpiUpdateSchema = z.object(Object.fromEntries(kpiEditorFields.map((field) => [field, z.string().trim().max(80).optional()])));
+const kpiTableColumns: Record<typeof kpiEditorFields[number], string> = {
+  "KPI-0": "KPI-0(MM_day)",
+  "KPI-01": "KPI-01", "KPI-02": "KPI-02", "KPI-03": "KPI-03",
+  "KPI-04": "KPI-04", "KPI-05": "KPI-05", "KPI-06": "KPI-06", "KPI-07": "KPI-07"
+};
 const maxFiles = 12;
 const maxRowsPerFile = 20000;
 const dailyKpiSaveSchema = z.object({
@@ -37,7 +43,8 @@ function safeFileName(fileName: string) {
 async function saveParsedFile(
   tx: Prisma.TransactionClient,
   file: ParsedDapsFile,
-  userId: string | undefined
+  userId: string | undefined,
+  aggregateTable: Prisma.Sql
 ) {
   let written = 0;
   for (const row of file.rows) {
@@ -52,6 +59,31 @@ async function saveParsedFile(
         create: { date, values, updatedById: userId },
         update: { values, updatedById: userId }
       });
+      const updateValues: { field: string; value: string | number }[] = [];
+      for (const field of kpiEditorFields) {
+        const value = row.data[field];
+        if (value === undefined || value === null || value === "") continue;
+        if (field === "KPI-03") {
+          const numeric = Number(String(value).replace(",", "."));
+          if (Number.isFinite(numeric)) updateValues.push({ field, value: numeric });
+          continue;
+        }
+        updateValues.push({ field: kpiTableColumns[field], value: String(value) });
+      }
+      if (updateValues.length) {
+        const assignments = Prisma.join(updateValues.map(({ field, value }) => Prisma.sql`${Prisma.raw(`"${field}"`)} = ${value}`));
+        const updated = await tx.$executeRaw(Prisma.sql`
+          UPDATE ${aggregateTable} SET ${assignments} WHERE "Data"::date = ${date}::date
+        `);
+        if (!updated) {
+          const columns = Prisma.join(updateValues.map(({ field }) => Prisma.raw(`"${field}"`)));
+          const valuesSql = Prisma.join(updateValues.map(({ value }) => Prisma.sql`${value}`));
+          await tx.$executeRaw(Prisma.sql`
+            INSERT INTO ${aggregateTable} ("Data", ${columns})
+            VALUES (${row.externalKey}, ${valuesSql})
+          `);
+        }
+      }
     } else {
       await tx.dapsReportRow.upsert({
         where: { dataset_externalKey: { dataset: file.dataset, externalKey: row.externalKey } },
@@ -85,12 +117,19 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
 
   app.get("/api/daps/summary", { preHandler: readAccess }, async () => {
     const daps = await getDapsDatabase(prisma);
+    const { aggregateSchema } = await getDapsSchemas(prisma);
+    const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
     const [datasets, recentImports] = await Promise.all([
       daps.dapsReportRow.groupBy({ by: ["dataset"], _count: { _all: true }, _max: { updatedAt: true } }),
       daps.dapsImportBatch.findMany({ orderBy: { createdAt: "desc" }, take: 12, select: { id: true, fileName: true, dataset: true, rowCount: true, createdAt: true } })
     ]);
     const counts = Object.fromEntries(datasets.map((row) => [row.dataset, { rows: row._count._all, updatedAt: row._max.updatedAt }])) as Record<string, { rows: number; updatedAt: Date | null }>;
-    counts.KPI_REPORT = { rows: await daps.dapsKpiDay.count(), updatedAt: (await daps.dapsKpiDay.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }))?.updatedAt ?? null };
+    const [kpiCount] = await daps.$queryRaw<{ rows: number }[]>(Prisma.sql`
+      SELECT COUNT(*)::int AS rows FROM ${aggregateTable}
+      WHERE "KPI-0(MM_day)" IS NOT NULL OR "KPI-01" IS NOT NULL OR "KPI-02" IS NOT NULL OR "KPI-03" IS NOT NULL
+         OR "KPI-04" IS NOT NULL OR "KPI-05" IS NOT NULL OR "KPI-06" IS NOT NULL OR "KPI-07" IS NOT NULL
+    `);
+    counts.KPI_REPORT = { rows: kpiCount?.rows ?? 0, updatedAt: null };
     return { counts, recentImports };
   });
 
@@ -129,10 +168,12 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
 
     try {
       const daps = await getDapsDatabase(prisma);
+      const { aggregateSchema } = await getDapsSchemas(prisma);
+      const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
       const result = await daps.$transaction(async (tx) => {
         const imported: { fileName: string; dataset: DapsDataset; rows: number }[] = [];
         for (const file of parsedFiles) {
-          const rows = await saveParsedFile(tx, file, undefined);
+          const rows = await saveParsedFile(tx, file, undefined, aggregateTable);
           imported.push({ fileName: file.fileName, dataset: file.dataset, rows });
         }
         const aggregateRows = parsedFiles
@@ -166,38 +207,58 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
   });
 
   app.get<{ Querystring: { date?: string } }>("/api/daps/kpi", { preHandler: readAccess }, async (request, reply) => {
-    const daps = await getDapsDatabase(prisma);
     const date = parseDate(request.query.date);
     if (!date) return reply.code(400).send({ error: "Укажите дату в формате ГГГГ-ММ-ДД." });
-    const row = await daps.dapsKpiDay.findUnique({ where: { date } });
+    const daps = await getDapsDatabase(prisma);
+    const { aggregateSchema } = await getDapsSchemas(prisma);
+    const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
+    const [row] = await daps.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+      SELECT "KPI-0(MM_day)" AS "KPI-0", "KPI-01", "KPI-02", "KPI-03", "KPI-04", "KPI-05", "KPI-06", "KPI-07"
+      FROM ${aggregateTable}
+      WHERE "Data"::date = ${date}::date
+      LIMIT 1
+    `);
     if (!row) return reply.code(404).send({ error: "За эту дату данных KPI нет." });
-    return { date: row.date.toISOString().slice(0, 10), values: row.values, updatedAt: row.updatedAt };
+    return { date: request.query.date, values: row };
   });
 
   app.get<{ Querystring: { date?: string } }>("/api/daps/daily-kpi", { preHandler: readAccess }, async (request, reply) => {
     const date = parseDate(request.query.date);
     if (!date) return reply.code(400).send({ error: "Укажите дату в формате ГГГГ-ММ-ДД." });
     const daps = await getDapsDatabase(prisma);
-    const rows = await daps.$queryRaw<Record<string, unknown>[]>`
+    const { sourceSchema, aggregateSchema } = await getDapsSchemas(prisma);
+    const sourceTable = Prisma.raw(`${quoteDapsSchema(sourceSchema)}."all_k"`);
+    const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
+    const [tables] = await daps.$queryRaw<{ allK: string | null; aggregate: string | null }[]>`
+      SELECT to_regclass(${`${quoteDapsSchema(sourceSchema)}.all_k`})::text AS "allK",
+             to_regclass(${`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`})::text AS aggregate
+    `;
+    if (!tables?.allK) {
+      return reply.code(424).send({ error: `В подключённой базе не найдена таблица ${sourceSchema}.all_k. Проверьте выбранную схему или создайте таблицу в этой базе.` });
+    }
+    if (!tables.aggregate) {
+      return reply.code(424).send({ error: `В подключённой базе не найдена таблица ${aggregateSchema}.Aggregate_for_KPI. Проверьте выбранную схему или создайте таблицу в этой базе.` });
+    }
+    const rows = await daps.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
       WITH monthly_stats AS (
         SELECT
           AVG("KPI-01") AS avg_kpi_01, AVG("KPI-02") AS avg_kpi_02,
           AVG("KPI-03") AS avg_kpi_03, AVG("KPI-04") AS avg_kpi_04,
           AVG("KPI-05") AS avg_kpi_05, AVG("KPI-06") AS avg_kpi_06,
           AVG("KPI-07") AS avg_kpi_07
-        FROM analytics_data.all_k
-        WHERE date >= date_trunc('month', ${date}::date) AND date <= ${date}::date
+        FROM ${sourceTable}
+        WHERE date::date >= date_trunc('month', ${date}::date)::date AND date::date <= ${date}::date
       )
       SELECT t.date::date AS date,
         t."KPI-01", t."KPI-02", t."KPI-03", t."KPI-04", t."KPI-05", t."KPI-06", t."KPI-07",
         t."KPI-03(AVR)", t."KPI-03(PNR)",
         m.avg_kpi_01, m.avg_kpi_02, m.avg_kpi_03, m.avg_kpi_04, m.avg_kpi_05, m.avg_kpi_06, m.avg_kpi_07,
         a."KPI-03(CUMM)", a."KPI-0(MM_day)", a."KPI-0(MM_mounth)"
-      FROM analytics_data.all_k t
+      FROM ${sourceTable} t
       CROSS JOIN monthly_stats m
-      LEFT JOIN public."Aggregate_for_KPI" a ON a."Data"::date = t.date::date
+      LEFT JOIN ${aggregateTable} a ON a."Data"::date = t.date::date
       WHERE t.date::date = ${date}::date
-    `;
+    `);
     const row = rows[0];
     const values = row ? Object.fromEntries([
       ...kpiFields.map((field) => [field, row[field]] as const),
@@ -216,15 +277,17 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
 
   app.get("/api/daps/daily-kpi/chart", { preHandler: readAccess }, async () => {
     const daps = await getDapsDatabase(prisma);
-    const rows = await daps.$queryRaw<{ date: Date; values: Record<string, unknown> }[]>`
+    const { aggregateSchema } = await getDapsSchemas(prisma);
+    const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
+    const rows = await daps.$queryRaw<{ date: Date; values: Record<string, unknown> }[]>(Prisma.sql`
       SELECT "Data"::date AS date,
         jsonb_build_object(
           'KPI-03', "KPI-03", 'KPI-03(AVR)', "KPI-03(AVR)",
           'KPI-03(PNR)', "KPI-03(PNR)", 'KPI-03(CUMM)', "KPI-03(CUMM)"
         ) AS "values"
-      FROM public."Aggregate_for_KPI"
+      FROM ${aggregateTable}
       ORDER BY "Data" ASC
-    `;
+    `);
     return rows.map((row) => ({ date: row.date.toISOString().slice(0, 10), values: row.values }));
   });
 
@@ -234,18 +297,20 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     const parsed = dailyKpiSaveSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "Проверьте значения К0 и накопленного К3." });
     const daps = await getDapsDatabase(prisma);
-    const updated = await daps.$queryRaw<{ date: Date }[]>`
-      UPDATE public."Aggregate_for_KPI"
-      SET "KPI-0(MM_day)" = ${parsed.data.k0Fact},
-          "KPI-0(MM_mounth)" = ${parsed.data.k0Accum},
-          "KPI-03(CUMM)" = ${parsed.data.k3Accum}
+    const { aggregateSchema } = await getDapsSchemas(prisma);
+    const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
+    const updated = await daps.$queryRaw<{ date: Date }[]>(Prisma.sql`
+      UPDATE ${aggregateTable}
+      SET "KPI-0(MM_day)" = ${String(parsed.data.k0Fact)},
+          "KPI-0(MM_mounth)" = ${String(parsed.data.k0Accum)},
+          "KPI-03(CUMM)" = ${String(parsed.data.k3Accum)}
       WHERE "Data"::date = ${date}::date
       RETURNING "Data"::date AS date
-    `;
-    if (!updated.length) return reply.code(404).send({ error: "В Aggregate_for_KPI нет строки за эту дату. Сначала добавьте дату в таблицу и повторите сохранение." });
+    `);
+    if (!updated.length) return reply.code(404).send({ error: `В таблице ${aggregateSchema}.Aggregate_for_KPI нет строки за эту дату. Сначала добавьте дату в таблицу и повторите сохранение.` });
     await recordLog(prisma, {
       level: "INFO", action: "DAPS_DAILY_KPI_UPDATE",
-      message: `Обновлены показатели ежедневного отчёта KPI в Aggregate_for_KPI за ${request.params.date}.`,
+      message: `Обновлены показатели ежедневного отчёта KPI в ${aggregateSchema}.Aggregate_for_KPI за ${request.params.date}.`,
       actorId: request.sessionUser?.id ?? null, actorLogin: request.sessionUser?.login ?? null,
       actorRole: request.sessionUser?.role ?? null, entityId: request.params.date
     });
@@ -253,24 +318,38 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
   });
 
   app.put<{ Params: { date: string } }>("/api/daps/kpi/:date", { preHandler: writeAccess }, async (request, reply) => {
-    const daps = await getDapsDatabase(prisma);
     const date = parseDate(request.params.date);
     if (!date) return reply.code(400).send({ error: "Укажите дату в формате ГГГГ-ММ-ДД." });
     const parsed = kpiUpdateSchema.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: "Проверьте значения KPI 1–7." });
-    const existing = await daps.dapsKpiDay.findUnique({ where: { date } });
-    if (!existing) return reply.code(404).send({ error: "За эту дату данных KPI нет." });
-    const values = mergeJson(existing.values, parsed.data as Prisma.InputJsonObject);
-    const saved = await daps.dapsKpiDay.update({ where: { date }, data: { values } });
+    if (!parsed.success) return reply.code(400).send({ error: "Проверьте значения KPI-0 и KPI 1–7." });
+    const kpi03 = parsed.data["KPI-03"]?.replace(",", ".").trim();
+    if (kpi03 && !Number.isFinite(Number(kpi03))) return reply.code(400).send({ error: "Для KPI-03 укажите число." });
+    const daps = await getDapsDatabase(prisma);
+    const { aggregateSchema } = await getDapsSchemas(prisma);
+    const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
+    const updated = await daps.$queryRaw<{ date: Date }[]>(Prisma.sql`
+      UPDATE ${aggregateTable}
+      SET "KPI-0(MM_day)" = ${parsed.data["KPI-0"] ?? null},
+          "KPI-01" = ${parsed.data["KPI-01"] ?? null},
+          "KPI-02" = ${parsed.data["KPI-02"] ?? null},
+          "KPI-03" = ${kpi03 ? Number(kpi03) : null},
+          "KPI-04" = ${parsed.data["KPI-04"] ?? null},
+          "KPI-05" = ${parsed.data["KPI-05"] ?? null},
+          "KPI-06" = ${parsed.data["KPI-06"] ?? null},
+          "KPI-07" = ${parsed.data["KPI-07"] ?? null}
+      WHERE "Data"::date = ${date}::date
+      RETURNING "Data"::date AS date
+    `);
+    if (!updated.length) return reply.code(404).send({ error: `В таблице ${aggregateSchema}.Aggregate_for_KPI нет строки за ${request.params.date}. Сначала загрузите отчёт за эту дату.` });
     await recordLog(prisma, {
       level: "INFO",
       action: "DAPS_KPI_UPDATE",
-      message: `Вручную обновлены KPI 1–7 за ${date.toISOString().slice(0, 10)}.`,
+      message: `Вручную обновлены KPI-0 и KPI 1–7 в ${aggregateSchema}.Aggregate_for_KPI за ${date.toISOString().slice(0, 10)}.`,
       actorId: request.sessionUser?.id ?? null,
       actorLogin: request.sessionUser?.login ?? null,
       actorRole: request.sessionUser?.role ?? null,
       entityId: date.toISOString().slice(0, 10)
     });
-    return { date: saved.date.toISOString().slice(0, 10), values: saved.values, updatedAt: saved.updatedAt };
+    return { date: request.params.date };
   });
 }

@@ -91,8 +91,17 @@ apps/api/src/
     ├── auth/              сессии, вход, регистрация по ключу     (routes + service + schema + rate-limit)
     ├── admin/             учётные записи, роли, токены, статистика (routes + service + schema)
     ├── coordination/      письмо согласования АВР: DOCX → SMTP   (routes + service + schema + letter)
+    ├── planning/          планирование работ: список, фильтры, CRUD (routes + schema)
+    ├── daps/               отчёты DAPS и ежедневный KPI (routes + service + база)
     └── portal-config/     ID столбцов YouGile, только ADMIN      (routes + service + schema)
 ```
+
+Модуль `daps` подключается к отдельной PostgreSQL, URL настраивается администратором
+в «Конфигурации портала» и хранится в `AppSetting` в зашифрованном виде. Схема
+портала в целевой базе создаётся SQL-файлом `apps/api/prisma/daps-database.sql`.
+Ежедневный KPI дополнительно читает существующие таблицы источника
+`analytics_data.all_k` и `public."Aggregate_for_KPI"`; SQL-файл портала их не создаёт.
+Пользовательские права на чтение и запись проверяются через `requireWorkspaceAccess`.
 
 Модуль `coordination` — порт n8n-воркфлоу «Отправка писем ПМО»: `letter.ts`
 разбирает HTML из mammoth (номер АВР, площадка, таблица оборудования и
@@ -106,7 +115,7 @@ apps/api/src/
 
 Все модули с эндпоинтами (`health`, `auth`, `sites`, `assignments`, `comments`,
 `imports`, `history`, `settings`, `admin`, `logs`, `portal-config`,
-`coordination`) экспортируют `registerXRoutes(app, prisma)` и регистрируются в
+`coordination`, `planning`, `daps`) экспортируют `registerXRoutes(app, prisma)` и регистрируются в
 `server.ts` в одном месте.
 YouGile в сигнатуру не передаётся: внутри маршрута клиент строится через
 `getUserYougileClient(prisma, request.sessionUser?.id, options)`. Папка `users`
@@ -436,9 +445,10 @@ DELETE /api/admin/users/:id/yougile-token  снять токен
 
 ### Правило: страницы — отдельные файлы, навигация — в `App.tsx`
 
-Всего тринадцать экранов: обзор, площадки, площадки АВР, назначение, снятие, комментарий,
-проверка работ, аудит, история, настройки, учётные записи, логирование,
-согласование/оповещение (плюс подраздел «Согласование АВР»).
+Разделы: управление работами в YouGile, DAPS (включая отчёт Naumen и ежедневный
+отчёт по KPI), планирование работ, площадки, площадки АВР, назначение, снятие,
+комментарий, проверка работ, аудит, история, настройки, учётные записи,
+логирование, согласование/оповещение (плюс подраздел «Согласование АВР»).
 Переключение — через `activeSection` в `App.tsx`. «Обзор», «Площадки» и «Площадки АВР» — это
 компоненты `Overview`, `SitesPage` и `AvrSitesPage` прямо в `App.tsx`: первые два делят общий список
 площадок, который грузится на уровне `App` (`GET /api/sites/in-plan`), третий —
@@ -448,7 +458,8 @@ DELETE /api/admin/users/:id/yougile-token  снять токен
 `XlsxRemovalPage.tsx`, `XlsxWorkCheckPage.tsx`, `CommentPage.tsx`,
 `ImportAuditPage.tsx`, `HistoryPage.tsx`, `CommentTemplatesPage.tsx`,
 `AdminUsersPage.tsx`, `LogsPage.tsx`, `CoordinationLandingPage.tsx`,
-`CoordinationPage.tsx`).
+`CoordinationPage.tsx`, `DapsReportPage.tsx`, `DapsDailyKpiPage.tsx`,
+`PlanningWorkPage.tsx`).
 Раздел «Согласование/Оповещение» открывает страницу с карточками сценариев
 (`CoordinationLandingPage`), карточка «Согласование АВР» ведёт на подраздел
 `/coordination/avr` (`CoordinationPage`). Подраздел не имеет пункта меню:
@@ -472,6 +483,10 @@ DELETE /api/admin/users/:id/yougile-token  снять токен
 | Проверить работы | `/work-check` |
 | Согласование/Оповещение | `/coordination` |
 | Согласование АВР | `/coordination/avr` |
+| DAPS | `/daps` |
+| Отчёт Naumen | `/daps/report` |
+| Ежедневный отчет по KPI | `/daps/daily-kpi` |
+| Планирование Работ | `/planning` |
 | Аудит | `/audit` |
 | История | `/history` |
 | Настройки | `/settings` |
@@ -910,6 +925,10 @@ PowerShell.
   `REGISTRATION_KEY`, роли `ADMIN` / `OPERATOR` / `VIEWER` в схеме;
 - глобальная обработка 401: любой отказ защищённого эндпоинта сбрасывает сессию
   и возвращает форму входа;
+- доступ к рабочим пространствам (`WORK_MANAGEMENT`, `COORDINATION`,
+  `WORK_PLANNING`, `DAPS`) задаётся администратором для каждого пользователя;
+  администратор имеет полный доступ, `VIEWER` в доступном пространстве может
+  читать, но не выполнять операции записи;
 - админ-раздел «Учётные записи»: список сотрудников, смена роли, блокировка,
   смена пароля, создание записи и статистика работы за период;
 - разделы портала открываются по адресам (`/history`, `/admin/users` и так далее):
@@ -931,12 +950,18 @@ PowerShell.
   (хранятся в `AppSetting`, `SMTP_*` в окружении — только значения по умолчанию);
   отправка журналируется в `PortalLog`, попытки без настроенного SMTP отклоняются с
   понятной ошибкой.
+- пространство DAPS (`/daps`): импорт XLSX-отчётов Naumen, просмотр показателей,
+  ручное редактирование KPI, ежедневный отчёт по KPI и выгрузка таблицы в PNG;
+  отдельный PostgreSQL URL настраивается в «Конфигурации портала», проверяется
+  и хранится в `AppSetting` зашифрованным; целевая БД должна содержать таблицы,
+  созданные `apps/api/prisma/daps-database.sql`. Ежедневный отчёт также требует
+  существующие `analytics_data.all_k` и `public."Aggregate_for_KPI"`; схемы
+  этих таблиц настраиваются отдельно в конфигурации DAPS, в одной базе;
+- планирование работ (`/planning`): таблица записей с поиском, фильтрами,
+  постраничной выдачей и созданием, изменением и удалением записей.
 
 Не сделано:
 
-- импорт таблиц из n8n;
+- импорт исторических таблиц напрямую из n8n (DAPS принимает XLSX-выгрузки);
 - аудит назначений как отдельный экран: сверки назначений пока не реализованы
-  (старая заготовка `audit/checks.ts` удалена как мёртвый код);
-- ролевое разделение операций: `VIEWER` есть в схеме, но права просмотра на
-  разделы и запуск операций по ролям ещё не ограничены (сейчас это делает только
-  флаг `adminOnly` для трёх админ-разделов).
+  (старая заготовка `audit/checks.ts` удалена как мёртвый код).

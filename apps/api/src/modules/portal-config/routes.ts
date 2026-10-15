@@ -5,8 +5,13 @@ import { getUserYougileClient, UserYougileCredentialError } from "../../integrat
 import type { YougileClient } from "../../integrations/yougile/client.js";
 import { invalidateAvrSitesCache, invalidateSitesCache } from "../sites/service.js";
 import { avrColumnsSchema, planColumnSchema } from "./schema.js";
-import { encryptDapsDatabaseUrl } from "../../integrations/yougile/token-crypto.js";
-import { dapsDatabaseSettingKey, resetDapsDatabaseClient } from "../daps/database.js";
+import { decryptDapsDatabaseUrl, encryptDapsDatabaseUrl } from "../../integrations/yougile/token-crypto.js";
+import {
+  defaultDapsAggregateSchema,
+  defaultDapsSourceSchema,
+  dapsDatabaseSettingKey,
+  resetDapsDatabaseClient
+} from "../daps/database.js";
 import { PrismaClient as DapsPrismaClient } from "@prisma/client";
 import { z } from "zod";
 import {
@@ -32,32 +37,54 @@ import {
  */
 export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const adminOnly = requireRole(PortalRole.ADMIN);
+  const postgresSchema = z.string().trim().min(1).max(63).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Имя схемы: латинские буквы, цифры и _; первый символ — буква или _.");
 
   app.get("/api/portal-config/daps-database", { preHandler: adminOnly }, async () => {
     const setting = await prisma.appSetting.findUnique({ where: { key: dapsDatabaseSettingKey } });
     const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
       ? setting.value as Record<string, unknown> : {};
-    return { configured: typeof value.encryptedUrl === "string" && value.encryptedUrl.length > 0 };
+    return {
+      configured: typeof value.encryptedUrl === "string" && value.encryptedUrl.length > 0,
+      sourceSchema: typeof value.sourceSchema === "string" ? value.sourceSchema : defaultDapsSourceSchema,
+      aggregateSchema: typeof value.aggregateSchema === "string" ? value.aggregateSchema : defaultDapsAggregateSchema
+    };
   });
 
   app.put("/api/portal-config/daps-database", { preHandler: adminOnly }, async (request, reply) => {
-    const parsed = z.object({ url: z.string().trim().min(1).max(2000) }).safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: "Укажите строку подключения PostgreSQL для DAPS." });
+    const parsed = z.object({
+      url: z.string().trim().max(2000).optional(),
+      sourceSchema: postgresSchema.default(defaultDapsSourceSchema),
+      aggregateSchema: postgresSchema.default(defaultDapsAggregateSchema)
+    }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте параметры PostgreSQL для DAPS." });
+    const currentSetting = await prisma.appSetting.findUnique({ where: { key: dapsDatabaseSettingKey } });
+    const currentValue = currentSetting?.value && typeof currentSetting.value === "object" && !Array.isArray(currentSetting.value)
+      ? currentSetting.value as Record<string, unknown> : {};
+    const currentEncryptedUrl = typeof currentValue.encryptedUrl === "string" ? currentValue.encryptedUrl : "";
+    if (!parsed.data.url && !currentEncryptedUrl) {
+      return reply.code(400).send({ error: "Укажите строку подключения PostgreSQL для DAPS." });
+    }
+    const connectionUrl = parsed.data.url || decryptDapsDatabaseUrl(currentEncryptedUrl);
     let url: URL;
-    try { url = new URL(parsed.data.url); } catch { return reply.code(400).send({ error: "Проверьте строку подключения PostgreSQL." }); }
+    try { url = new URL(connectionUrl); } catch { return reply.code(400).send({ error: "Проверьте строку подключения PostgreSQL." }); }
     if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
       return reply.code(400).send({ error: "Поддерживаются только подключения PostgreSQL." });
     }
-    const check = new DapsPrismaClient({ datasources: { db: { url: parsed.data.url } } });
+    const check = new DapsPrismaClient({ datasources: { db: { url: connectionUrl } } });
     try {
       await check.$queryRaw`SELECT 1`;
-      const tables = await check.$queryRaw<Array<{ table_name: string }>>`
-        SELECT table_name FROM information_schema.tables
-        WHERE table_schema = current_schema()
-          AND table_name IN ('DapsImportBatch', 'DapsReportRow', 'DapsKpiDay')
+      const sourceTable = `"${parsed.data.sourceSchema}"."all_k"`;
+      const aggregateTable = `"${parsed.data.aggregateSchema}"."Aggregate_for_KPI"`;
+      const tables = await check.$queryRaw<Array<{ source: string | null; aggregate: string | null }>>`
+        SELECT to_regclass(${sourceTable})::text AS source,
+               to_regclass(${aggregateTable})::text AS aggregate
       `;
-      if (tables.length !== 3) {
-        return reply.code(400).send({ error: "Подключение работает, но таблицы DAPS не найдены. Сначала выполните apps/api/prisma/daps-database.sql в выбранной базе." });
+      if (!tables[0]?.source || !tables[0]?.aggregate) {
+        const missing = [
+          !tables[0]?.source ? `${parsed.data.sourceSchema}.all_k` : null,
+          !tables[0]?.aggregate ? `${parsed.data.aggregateSchema}.Aggregate_for_KPI` : null
+        ].filter(Boolean).join(" и ");
+        return reply.code(400).send({ error: `Подключение работает, но не найдена таблица ${missing}. Проверьте имена схем и таблиц для отчёта KPI.` });
       }
     } catch (error) {
       app.log.warn({ actor: request.sessionUser?.login }, "DAPS PostgreSQL connection check failed");
@@ -66,10 +93,11 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
       await check.$disconnect();
     }
     try {
+      const encryptedUrl = parsed.data.url ? encryptDapsDatabaseUrl(connectionUrl) : currentEncryptedUrl;
       await prisma.appSetting.upsert({
         where: { key: dapsDatabaseSettingKey },
-        create: { key: dapsDatabaseSettingKey, value: { encryptedUrl: encryptDapsDatabaseUrl(parsed.data.url) } },
-        update: { value: { encryptedUrl: encryptDapsDatabaseUrl(parsed.data.url) } }
+        create: { key: dapsDatabaseSettingKey, value: { encryptedUrl, sourceSchema: parsed.data.sourceSchema, aggregateSchema: parsed.data.aggregateSchema } },
+        update: { value: { encryptedUrl, sourceSchema: parsed.data.sourceSchema, aggregateSchema: parsed.data.aggregateSchema } }
       });
       await resetDapsDatabaseClient();
       return { configured: true };

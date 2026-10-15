@@ -158,7 +158,7 @@ export default function DapsDailyKpiPage({ onBack, canEdit }: { onBack: () => vo
       context.scale(scale, scale);
       context.fillStyle = "#fff"; context.fillRect(0, 0, width, height);
       let y = 0;
-      rows.forEach((row, rowIndex) => {
+      rows.forEach((_row, rowIndex) => {
         let x = 0;
         cells[rowIndex]?.forEach((cell, columnIndex) => {
         const cellWidth = columnWidths[columnIndex] ?? 120;

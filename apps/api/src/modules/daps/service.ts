@@ -162,6 +162,7 @@ function parseKpi(rows: Record<string, unknown>[], fileName: string): ParsedDaps
     const indicator = String(row.Показатель ?? "").trim();
     const factColumn = Object.keys(row).find((key) => key.startsWith("Факт за"));
     const raw = factColumn ? row[factColumn] : undefined;
+    if (indicator === "К0" && raw !== undefined && raw !== null) values["KPI-0"] = raw;
     if (indicator && raw !== undefined && raw !== null && indicator !== "К0") {
       const numeric = Number(String(raw).replace(",", "."));
       values[`KPI-${indicator.slice(1).padStart(2, "0")}`] = Number.isFinite(numeric) ? numeric * 100 : raw;

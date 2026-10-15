@@ -15,7 +15,7 @@ const datasetLabels: Record<Dataset, string> = {
   POLITICS: "Дневная статистика",
   POLITICS_WEEKLY: "Недельная статистика"
 };
-const kpiFields = ["KPI-01", "KPI-02", "KPI-03", "KPI-04", "KPI-05", "KPI-06", "KPI-07"];
+const kpiFields = ["KPI-0", "KPI-01", "KPI-02", "KPI-03", "KPI-04", "KPI-05", "KPI-06", "KPI-07"];
 
 function message(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось выполнить запрос.";
@@ -150,7 +150,7 @@ export default function DapsReportPage({ onBack, canEdit }: { onBack: () => void
         </section>
 
         <section className="panel daps-report-panel">
-          <div className="panel-heading"><div><h2>Редактировать KPI 1–7</h2><p>Выберите дату, за которую уже загружены показатели.</p></div></div>
+          <div className="panel-heading"><div><h2>Редактировать KPI 0–7</h2><p>KPI-0 сохраняется в дневное значение «KPI-0(MM_day)».</p></div></div>
           <div className="daps-kpi-toolbar">
             <label><span>Дата отчёта</span><input type="date" value={kpiDate} onChange={(event) => { setKpiDate(event.target.value); setKpiLoaded(false); }} /></label>
             <button type="button" className="outline-button" onClick={() => void loadKpi()} disabled={!kpiDate}>Загрузить значения</button>
