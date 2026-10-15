@@ -35,7 +35,12 @@ export async function registerHealthRoutes(
     } catch (error) {
       app.log.error({ err: error }, "YouGile token health check failed");
     }
-    const result = { status, services: { api: "ok", database, queue, yougile } };
+    // Версия конвертера разметки шаблонов (**слово** → жирный в чате).
+    // Поле нужно для диагностики: если в health оно отсутствует или равно 1,
+    // работающий API собран со старым кодом и звёздочки из шаблонов уходят
+    // в YouGile как обычный текст.
+    const commentMarkup = 2;
+    const result = { status, services: { api: "ok", database, queue, yougile }, commentMarkup };
     return status === "ok" ? result : reply.code(503).send(result);
   });
 }

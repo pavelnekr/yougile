@@ -5,6 +5,7 @@ import { readLatestChatMessage, postChatMessage } from "../../integrations/yougi
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { describeError } from "../../lib/error-details.js";
+import { renderCommentForYougile } from "../../lib/comment-markup.js";
 import { getPlannedSites } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, readTask, validatePlanTask } from "../assignments/service.js";
@@ -170,8 +171,11 @@ export async function processCommentOperation(
         throw new Error("Номер площадки изменился после предпросмотра.");
       }
 
-      beforeData = { taskId: task.id, title: task.title, commentText: comment };
-      await postChatMessage(client, task.id, comment);
+      // Разметка шаблона (`**слово**`) уходит в HTML-версию сообщения,
+      // в `text` — чистый текст без звёздочек.
+      const message = renderCommentForYougile(comment);
+      beforeData = { taskId: task.id, title: task.title, commentText: message.text };
+      await postChatMessage(client, task.id, message.text, message.textHtml);
       status = OperationItemStatus.SUCCEEDED;
       afterData = { taskId: task.id, title: task.title, commentPosted: true };
       // Пауза 4 секунды перед отправкой комментария на следующую площадку.

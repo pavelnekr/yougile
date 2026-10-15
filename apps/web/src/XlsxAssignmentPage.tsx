@@ -16,6 +16,7 @@ import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { findActiveOperation } from "./activeOperations";
 import { countRu, rowForms, siteForms } from "./plural";
+import { renderCommentMarkup } from "./commentMarkup";
 import { PORTAL_VERSION } from "./version";
 
 type ImportRow = {
@@ -510,7 +511,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
             <div className="panel xlsx-assignment-preview" ref={previewStepRef}>
               <div className="assignment-panel-heading"><div><h2>3. Предпросмотр изменений</h2><p>{countRu(preview.count, siteForms)}, только из загруженного XLSX</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
               <div className="preview-summary">Для каждой строки будет назначен инженер из XLSX, а сформированный по её дате и времени комментарий отправлен в чат задачи. Если в строке заполнен столбец «klaster», в чат дополнительно уйдёт комментарий кластера («Обрати внимание! Кластер: площадка-кластер»). Существующие ответственные сохраняются; комментарий отправится и если инженер уже назначен.</div>
-              <blockquote className="comment-preview"><strong>Шаблон:</strong> {comment.trim()}</blockquote>
+              <blockquote className="comment-preview"><strong>Шаблон:</strong> {renderCommentMarkup(comment.trim())}</blockquote>
               <div className="xlsx-preview-list">
                 {preview.items.map((item) => (
                   <div className="xlsx-preview-row" key={item.rowNumber}>
@@ -519,7 +520,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
                     <span className="xlsx-preview-engineer">{item.engineerName}<small>{item.alreadyAssigned ? "Уже назначен" : "Будет добавлен"}</small></span>
                     <span className="xlsx-preview-current" title={item.currentEngineers.map((user) => user.name).join(", ")}>
                       <span>Сейчас: {item.currentEngineers.map((user) => user.name).join(", ") || "нет ответственных"}</span>
-                      <small className="xlsx-preview-comment">{item.comment}</small>
+                      <small className="xlsx-preview-comment">{renderCommentMarkup(item.comment)}</small>
                     </span>
                   </div>
                 ))}

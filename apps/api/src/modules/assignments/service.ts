@@ -5,6 +5,7 @@ import { postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { describeError } from "../../lib/error-details.js";
+import { renderCommentForYougile } from "../../lib/comment-markup.js";
 import { getPlanColumn } from "../portal-config/service.js";
 import { getPlannedSites, type PlannedSite } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
@@ -263,7 +264,9 @@ export async function processAssignmentOperation(
 
         if (commentText) {
           phase = "comment";
-          await postChatMessage(client, task.id, commentText);
+          // `**слово**` из шаблона уходит в HTML-версию, в `text` — чистый текст.
+          const message = renderCommentForYougile(commentText);
+          await postChatMessage(client, task.id, message.text, message.textHtml);
           afterData = { ...afterData, commentPosted: true };
           await delayBetweenYougileActions();
         }

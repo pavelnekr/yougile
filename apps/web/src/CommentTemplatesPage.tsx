@@ -3,6 +3,7 @@ import { Check, CheckCircle2, Clock3, FileText, LoaderCircle, Plus, Save, Sparkl
 import { apiFetch } from "./apiClient";
 import ConfirmDialog from "./ConfirmDialog";
 import Modal from "./Modal";
+import { renderCommentMarkup } from "./commentMarkup";
 import { PORTAL_VERSION } from "./version";
 
 type CommentTemplate = {
@@ -230,11 +231,12 @@ export default function CommentTemplatesPage() {
               <div className="template-variables">
                 <div><code>{"${data}"}</code><span>Дата из XLSX; для «ночи» — дата и следующий день.</span></div>
                 <div><code>{"${time}"}</code><span>Временной интервал из XLSX.</span></div>
+                <div><code>{"**слово**"}</code><span>Выделит слово жирным в чате YouGile.</span></div>
               </div>
 
               <div className="template-live-preview">
                 <div className="template-preview-heading"><span><Sparkles size={14} /> Пример подстановки</span><small>ночь · 02.10.2026 · 00:00–06:00</small></div>
-                <p>{preview || "Начните вводить текст шаблона — здесь появится пример комментария."}</p>
+                <p>{preview ? renderCommentMarkup(preview) : "Начните вводить текст шаблона — здесь появится пример комментария."}</p>
               </div>
 
               {error && <div className="template-feedback template-feedback-error" role="alert">{error}</div>}

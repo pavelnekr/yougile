@@ -14,6 +14,7 @@ import OperationSites from "./OperationSites";
 import ErrorDiagnostics from "./ErrorDiagnostics";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics";
 import { countRu, siteForms } from "./plural";
+import { renderCommentMarkup } from "./commentMarkup";
 import { PORTAL_VERSION } from "./version";
 
 export type PlannedSite = {
@@ -418,7 +419,7 @@ export default function CommentPage({
               <span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span>
             </div>
             <div className="preview-summary">Комментарий будет отправлен в чат каждой задачи. Ответственные не меняются, существующие сообщения сохраняются.</div>
-            <blockquote className="comment-preview"><strong>Комментарий:</strong> {preview.comment}</blockquote>
+            <blockquote className="comment-preview"><strong>Комментарий:</strong> {renderCommentMarkup(preview.comment)}</blockquote>
             <div className="xlsx-preview-list">
               {preview.items.map((item) => (
                 <div className="xlsx-preview-row comment-preview-row" key={item.taskId}>
