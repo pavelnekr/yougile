@@ -16,6 +16,13 @@ export const importRemovalSchema = z.object({
 
 export type ImportRemovalInput = z.infer<typeof importRemovalSchema>;
 
+function isRequestTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "TimeoutError" ||
+    error.name === "AbortError" && /timeout|timed out|aborted/i.test(error.message) ||
+    /operation was aborted due to timeout|request timed out/i.test(error.message);
+}
+
 export async function prepareImportRemoval(
   client: YougileClient,
   prisma: PrismaClient,
@@ -150,13 +157,32 @@ export async function processRemovalOperation(
         } else {
           // При снятии инженера вместе с ним передаём completed: false — статус
           // работ «не выполнена», как это было в n8n (узел «Снять инженера»).
-          await client.request(`tasks/${encodeURIComponent(task.id)}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ assigned: nextAssigned, completed: false })
-          });
-          status = OperationItemStatus.SUCCEEDED;
-          afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, completed: false, removed: true };
+          try {
+            await client.request(`tasks/${encodeURIComponent(task.id)}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ assigned: nextAssigned, completed: false })
+            });
+            status = OperationItemStatus.SUCCEEDED;
+            afterData = { taskId: task.id, title: task.title, assignedUserIds: nextAssigned, completed: false, removed: true };
+          } catch (error) {
+            // YouGile could apply the PUT while its response times out. Read the
+            // task again before reporting failure so a completed removal is not
+            // shown as failed (and later repeated unnecessarily).
+            if (!isRequestTimeout(error)) throw error;
+            const currentTask = await readTask(client, task.id);
+            const currentAssigned = currentTask.assigned ?? [];
+            if (currentAssigned.includes(userId)) throw error;
+            status = OperationItemStatus.SUCCEEDED;
+            afterData = {
+              taskId: currentTask.id,
+              title: currentTask.title,
+              assignedUserIds: currentAssigned,
+              completed: currentTask.completed ?? false,
+              removed: true,
+              responseTimedOut: true
+            };
+          }
           // Пауза 4 секунды перед снятием инженера со следующей площадки —
           // записи идут строго по очереди, как и в остальных операциях.
           await delayBetweenYougileActions();
