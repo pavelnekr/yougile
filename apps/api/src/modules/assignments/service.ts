@@ -6,7 +6,9 @@ import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { describeError } from "../../lib/error-details.js";
 import { renderCommentForYougile } from "../../lib/comment-markup.js";
-import { getPlanColumn } from "../portal-config/service.js";
+import { getPlanColumn, loadAvrColumns } from "../portal-config/service.js";
+import { getAvrSites } from "../sites/service.js";
+import type { PortalColumn } from "../portal-config/schema.js";
 import { getPlannedSites, type PlannedSite } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 
@@ -73,30 +75,33 @@ async function assignTaskUsers(client: YougileClient, taskId: string, userIds: s
   }
 }
 
-export function validatePlanTask(task: TaskDetails, siteByTaskId: Map<string, PlannedSite>): PlannedSite {
+export function validatePlanTask(task: TaskDetails, siteByTaskId: Map<string, PlannedSite>, allowedColumnIds = [getPlanColumn().id]): PlannedSite {
   const plannedSite = siteByTaskId.get(task.id);
   if (
     !plannedSite ||
-    task.columnId !== getPlanColumn().id ||
+    !allowedColumnIds.includes(task.columnId) ||
     task.archived ||
     task.deleted ||
     plannedSite.siteNumber !== task.title.match(/^(\d+)/)?.[1]
   ) {
-    throw new AssignmentValidationError("Задача больше не находится в активном плане. Обновите список площадок.");
+    throw new AssignmentValidationError("Задача больше не находится в активном плане или настроенном столбце АВР. Обновите список площадок.");
   }
   return plannedSite;
 }
 
 export async function previewAssignments(
   client: YougileClient,
-  input: AssignmentPreviewInput
+  input: AssignmentPreviewInput,
+  additionalColumns: PortalColumn[] = []
 ) {
   const users = await getAssignmentUsers(client);
   const user = users.find((candidate) => candidate.id === input.userId);
   if (!user) throw new AssignmentValidationError("Выбранный инженер не найден среди пользователей YouGile.");
 
   const plannedSites = await getPlannedSites(client);
-  const siteByTaskId = new Map(plannedSites.map((site) => [site.taskId, site]));
+  const avrSites = additionalColumns.length ? (await getAvrSites(client, additionalColumns)).items : [];
+  const allowedColumnIds = [getPlanColumn().id, ...additionalColumns.map((column) => column.id)];
+  const siteByTaskId = new Map([...plannedSites, ...avrSites].map((site) => [site.taskId, site]));
   const missingTask = input.taskIds.find((taskId) => !siteByTaskId.has(taskId));
   if (missingTask) {
     throw new AssignmentValidationError("Одна из выбранных задач отсутствует в актуальном плане. Обновите страницу.");
@@ -105,7 +110,7 @@ export async function previewAssignments(
   const items = [];
   for (const taskId of input.taskIds) {
     const task = await readTask(client, taskId);
-    const plannedSite = validatePlanTask(task, siteByTaskId);
+    const plannedSite = validatePlanTask(task, siteByTaskId, allowedColumnIds);
     const currentUserIds = task.assigned ?? [];
     items.push({
       taskId,
@@ -177,6 +182,8 @@ export async function processAssignmentOperation(
     "comment" in metadata && typeof metadata.comment === "string"
     ? metadata.comment.trim()
     : "";
+  const pointAssignmentNotice = metadata && typeof metadata === "object" && !Array.isArray(metadata) &&
+    "pointAssignmentNotice" in metadata && metadata.pointAssignmentNotice === true;
   const commentsRequested = fallbackComment.length > 0 ||
     Boolean(metadata && typeof metadata === "object" && !Array.isArray(metadata) &&
       "commentTemplate" in metadata && typeof metadata.commentTemplate === "string" &&
@@ -188,6 +195,12 @@ export async function processAssignmentOperation(
   });
 
   const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
+  const avrColumns = await loadAvrColumns(prisma);
+  if (avrColumns.length) {
+    const avrSites = await getAvrSites(client, avrColumns);
+    for (const site of avrSites.items) siteByTaskId.set(site.taskId, site);
+  }
+  const allowedColumnIds = [getPlanColumn().id, ...avrColumns.map((column) => column.id)];
   for (const item of operation.items) {
     if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
 
@@ -195,6 +208,11 @@ export async function processAssignmentOperation(
         ? item.beforeData.taskId
         : null;
       const userId = item.requestedUserId;
+      const engineerName = item.beforeData && typeof item.beforeData === "object" &&
+        !Array.isArray(item.beforeData) && "engineerName" in item.beforeData &&
+        typeof item.beforeData.engineerName === "string"
+        ? item.beforeData.engineerName.trim()
+        : "";
       const storedComment = item.beforeData && typeof item.beforeData === "object" &&
         !Array.isArray(item.beforeData) && "commentText" in item.beforeData &&
         typeof item.beforeData.commentText === "string"
@@ -221,13 +239,13 @@ export async function processAssignmentOperation(
         }
 
         const task = await readTask(client, taskIdValue);
-        const plannedSite = validatePlanTask(task, siteByTaskId);
+        const plannedSite = validatePlanTask(task, siteByTaskId, allowedColumnIds);
         if (plannedSite.siteNumber !== item.siteId) {
           throw new Error("Номер площадки изменился после предпросмотра.");
         }
 
         const assigned = task.assigned ?? [];
-        beforeData = { taskId: task.id, title: task.title, assignedUserIds: assigned, commentText };
+        beforeData = { taskId: task.id, title: task.title, assignedUserIds: assigned, engineerName, commentText };
         let engineerAssigned = false;
         if (assigned.includes(userId)) {
           status = commentText || cluster ? OperationItemStatus.SUCCEEDED : OperationItemStatus.SKIPPED;
@@ -258,7 +276,15 @@ export async function processAssignmentOperation(
         // инженер уже на площадке, назначать нечего — комментарий всё равно идёт
         // с той же паузой, иначе повторная операция выстреливает серией запросов
         // за минуту и «очередь» нарушается.
-        if (engineerAssigned) {
+        if (engineerAssigned || pointAssignmentNotice) {
+          await delayBetweenYougileActions();
+        }
+
+        if (pointAssignmentNotice && engineerName) {
+          phase = "comment";
+          const notice = renderCommentForYougile(`**${engineerName}**, возьми в работу, пожалуйста`);
+          await postChatMessage(client, task.id, notice.text, notice.textHtml);
+          afterData = { ...afterData, assignmentNoticePosted: true };
           await delayBetweenYougileActions();
         }
 

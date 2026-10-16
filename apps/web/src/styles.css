@@ -32,6 +32,9 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
    правило не распространяется: адреса и сообщения об ошибках копируются. */
 button, [role="button"] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 body { margin: 0; min-width: 360px; min-height: 100vh; min-height: 100dvh; }
+/* На широких экранах интерфейс чуть увеличен целиком: многие компоненты
+   используют фиксированные размеры в px, поэтому одного font-size недостаточно. */
+@media (min-width: 761px) { body { zoom: 1.25; } }
 button, a { font: inherit; }
 button { color: inherit; }
 
@@ -115,26 +118,6 @@ button { color: inherit; }
 .brand-copy small { margin-top: 5px; color: #8a94a7; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
 .daps-card-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 320px)); }
 .daps-report-hero .text-button { margin-left: auto; }
-.daps-report-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
-.daps-report-panel { min-width: 0; padding: 16px; container-type: inline-size; }
-.daps-report-panel .panel-heading { margin-bottom: 14px; }
-.daps-file-list { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
-.daps-file-list li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid #edf0f5; border-radius: 6px; color: #4b566b; font-size: 10px; overflow-wrap: anywhere; }
-.daps-file-list small { flex: 0 0 auto; color: #929aaa; font-size: 9px; }
-.daps-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
-.daps-report-panel .admin-panel-note { display: flex; margin: 13px 0 0; line-height: 1.55; }
-.daps-kpi-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
-.daps-kpi-toolbar label, .daps-kpi-grid label { display: grid; min-width: 0; gap: 5px; color: #737e92; font-size: 9px; }
-.daps-kpi-toolbar input, .daps-kpi-grid input { width: 100%; min-width: 0; min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
-.daps-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
-.daps-kpi-grid label { font-weight: 600; }
-@container (max-width: 430px) { .daps-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.daps-import-history { margin-top: 16px; padding: 16px; }
-.daps-import-history .panel-heading { margin-bottom: 12px; }
-.daps-import-history table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
-.daps-import-history th, .daps-import-history td { padding: 9px 10px; border-bottom: 1px solid #edf0f4; }
-.daps-import-history th { color: #8791a2; font-size: 9px; font-weight: 600; }
-.daps-import-history td { color: #445066; }
 .daps-daily-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 12px; margin-top: 18px; padding: 13px 15px; }
 .daps-daily-controls > label, .daps-manual-row label { display: grid; min-width: 135px; flex: 1 1 145px; gap: 5px; color: #737e92; font-size: 9px; }
 .daps-daily-controls > .field-label { min-width: 145px; flex: 0 1 160px; }
@@ -143,9 +126,9 @@ button { color: inherit; }
 .daps-daily-source { flex: 1 0 100%; color: #8790a0; font-size: 9px; text-align: right; }
 .daps-daily-table-panel, .daps-daily-chart-panel { margin-top: 14px; padding: 16px; }
 .daps-daily-table-panel .panel-heading, .daps-daily-chart-panel .panel-heading { margin-bottom: 12px; }
+.daps-chevron-open { transform: rotate(180deg); }
 .daps-report-heading-actions { display: flex; align-items: center; gap: 9px; }
 .daps-report-heading-actions .outline-button, .daps-report-heading-actions .text-button { height: 36px; min-height: 36px; align-items: center; gap: 8px; padding: 0 12px; border-radius: 7px; font-size: 10px; }
-.daps-chevron-open { transform: rotate(180deg); }
 .daps-daily-table-wrap { overflow-x: auto; }
 .daps-daily-table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
 .daps-daily-table th, .daps-daily-table td { padding: 9px 8px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }
@@ -331,13 +314,14 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .assignment-panel-heading p { margin: 0; color: #929aaa; font-size: 9px; line-height: 1.5; }
 .assignment-search { width: 100%; margin: 13px 0 10px; }
 .assignment-sites-list { max-height: 610px; overflow: auto; border-top: 1px solid #eff1f5; border-bottom: 1px solid #eff1f5; }
-.assignment-site-option { display: grid; min-height: 38px; grid-template-columns: 17px 40px minmax(0, 1fr) 52px; align-items: center; gap: 9px; padding: 0 7px; border-bottom: 1px solid #f2f4f7; cursor: pointer; }
+.assignment-site-option { display: grid; min-height: 38px; grid-template-columns: 17px 40px minmax(0, 1fr) auto 52px; align-items: center; gap: 9px; padding: 0 7px; border-bottom: 1px solid #f2f4f7; cursor: pointer; }
 .assignment-site-option:last-child { border-bottom: 0; }
 .assignment-site-selected { background: #f6f8ff; }
 .assignment-site-option input { width: 14px; height: 14px; margin: 0; accent-color: #526dd1; cursor: pointer; }
 .assignment-site-option input:disabled { cursor: not-allowed; }
 .assignment-site-option .site-title { font-size: 9px; }
 .assignment-site-option .site-assignees { color: #9aa2b0; font-size: 8px; text-align: right; white-space: nowrap; }
+.assignment-site-option .site-source-label { color: #7581a0; font-size: 8px; white-space: nowrap; }
 .assignment-pagination { padding: 11px 3px 1px; font-size: 8px; }
 .assignment-pagination button { height: 25px; font-size: 8px; }
 .assignment-controls { display: grid; gap: 13px; }
@@ -381,6 +365,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .operation-sites { max-height: 285px; overflow: auto; border: 1px solid #eff1f5; border-radius: 7px; overscroll-behavior: contain; }
 .operation-sites-head { position: sticky; top: 0; z-index: 1; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 27px; padding: 0 10px; border-bottom: 1px solid #eff1f5; color: #929aaa; background: #fafbfd; font-size: 8px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; }
 .operation-site-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 30px; padding: 0 10px; border-bottom: 1px solid #f2f4f7; font-size: 9px; line-height: 1.35; }
+.operation-sites-engineer .operation-sites-head, .operation-sites-engineer .operation-site-row { grid-template-columns: 45px minmax(110px, 1.2fr) minmax(120px, 1fr) auto; }
 .operation-site-row:last-child { border-bottom: 0; }
 .operation-site-label { overflow: hidden; color: #58657a; text-overflow: ellipsis; white-space: nowrap; }
 .operation-site-status { display: inline-flex; align-items: center; gap: 5px; color: #93a0b4; white-space: nowrap; }
@@ -532,8 +517,6 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .actions-grid { grid-template-columns: 1fr; gap: 9px; }
   .action-card { min-height: 149px; }
   .bottom-grid, .section-columns { grid-template-columns: 1fr; }
-  .daps-report-layout { grid-template-columns: 1fr; }
-  .daps-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daps-daily-controls { align-items: stretch; flex-direction: column; }
   .daps-daily-source { margin-left: 0; }
   .daps-daily-table-panel .panel-heading, .daps-daily-chart-panel .panel-heading { align-items: flex-start; flex-direction: column; }
@@ -841,6 +824,12 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .history-stat-label { color: #818b9b; font-size: 8px; }
 .history-stat-card > strong { color: #364258; font-size: 22px; font-weight: 700; letter-spacing: -.5px; line-height: 1.1; }
 .history-stat-card > small { color: #9aa2b0; font-size: 7px; }
+.history-execution-summary { display: grid; align-content: center; gap: 9px; padding: 15px; }
+.history-execution-row { display: grid; gap: 4px; }
+.history-execution-row + .history-execution-row { border-top: 1px solid #edf0f4; }
+.history-execution-row + .history-execution-row { padding-top: 8px; }
+.history-execution-row span { color: #818b9b; font-size: 8px; }
+.history-execution-row strong { color: #364258; font-size: 16px; font-weight: 700; letter-spacing: -.3px; line-height: 1.1; }
 .history-charts-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); gap: 12px; }
 .history-panel { min-width: 0; padding: 15px; }
 .history-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
@@ -1237,6 +1226,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   white-space: nowrap;
 }
 .completed-operations-panel .section-heading { margin-top: 22px; }
+.completed-operations-entry { min-height: 64px; }
+.completed-operations-list-dialog { width: min(680px, 100%); max-height: 85vh; }
+.completed-operations-list-dialog .icon-button { margin-left: auto; flex: 0 0 auto; }
+.completed-operations-list { max-height: 60vh; overflow: auto; }
+.completed-operation-meta { overflow-wrap: anywhere; }
 .completed-operations-empty { margin: 0; padding: 14px; border: 1px dashed #e2e7ef; border-radius: 8px; color: #929aaa; background: #fff; font-size: 10px; }
 .completed-operations-error { border-color: #f0d3ca; color: #ad5f4a; background: #fff8f6; }
 .completed-operation-icon { color: #4f9779; background: #eaf5ee; }

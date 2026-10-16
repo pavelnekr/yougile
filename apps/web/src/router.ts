@@ -13,11 +13,11 @@ import { useCallback, useEffect, useState } from "react";
 export type Section =
   | "Управление работами в YouGile"
   | "DAPS"
-  | "Отчёт Naumen"
   | "Ежедневный отчет по KPI"
   | "Площадки"
   | "Площадки АВР"
-  | "Назначить инженера"
+  | "Массовое назначение инженеров"
+  | "Точечное назначение инженера"
   | "Снять инженеров"
   | "Написать комментарий"
   | "Проверить работы"
@@ -34,11 +34,11 @@ export type Section =
 export const sectionSlugs: Record<Section, string> = {
   "Управление работами в YouGile": "",
   "DAPS": "daps",
-  "Отчёт Naumen": "daps/report",
   "Ежедневный отчет по KPI": "daps/daily-kpi",
   "Площадки": "sites",
   "Площадки АВР": "sites/avr",
-  "Назначить инженера": "assign",
+  "Массовое назначение инженеров": "assign",
+  "Точечное назначение инженера": "assign-one",
   "Снять инженеров": "remove",
   "Написать комментарий": "comment",
   "Проверить работы": "work-check",

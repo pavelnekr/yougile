@@ -133,6 +133,8 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
             completed: true,
             failed: true,
             createdAt: true,
+            startedAt: true,
+            finishedAt: true,
             createdBy: { select: { displayName: true } },
             metadata: true,
             items: {
@@ -225,6 +227,12 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
         sum + operation.items.filter((item) => item.status === OperationItemStatus.FAILED).length, 0);
       const pendingOperations = operations.filter((operation) =>
         operation.status === OperationStatus.QUEUED || operation.status === OperationStatus.RUNNING).length;
+      const finishedOperations = operations.filter((operation) =>
+        operation.finishedAt !== null && [OperationStatus.SUCCEEDED, OperationStatus.PARTIAL, OperationStatus.FAILED, OperationStatus.CANCELLED].includes(operation.status));
+      const totalExecutionMs = finishedOperations.reduce((sum, operation) => {
+        if (!operation.startedAt || !operation.finishedAt) return sum;
+        return sum + Math.max(0, operation.finishedAt.getTime() - operation.startedAt.getTime());
+      }, 0);
 
       return {
         period: days,
@@ -233,6 +241,8 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
           uploads: imports.length,
           uploadRows: imports.reduce((sum, batch) => sum + batch.rowCount, 0),
           operations: operations.length,
+          finishedOperations: finishedOperations.length,
+          totalExecutionMs,
           assignmentOperations: operations.filter((operation) => operation.type === OperationType.ASSIGN).length,
           assignments: operations.filter((operation) => operation.type === OperationType.ASSIGN)
             .reduce((sum, operation) => sum + operation.items.filter((item) => item.status === OperationItemStatus.SUCCEEDED).length, 0),

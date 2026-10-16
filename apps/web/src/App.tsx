@@ -39,7 +39,6 @@ import CoordinationPage from "./CoordinationPage.js";
 import CoordinationLandingPage from "./CoordinationLandingPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import PlanningWorkPage from "./PlanningWorkPage.js";
-import DapsReportPage from "./DapsReportPage.js";
 import DapsDailyKpiPage from "./DapsDailyKpiPage.js";
 import ErrorDiagnostics from "./ErrorDiagnostics.js";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics.js";
@@ -121,11 +120,11 @@ const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: bo
 const workspaceBySection: Partial<Record<Section, string>> = {
   "Управление работами в YouGile": "WORK_MANAGEMENT",
   "DAPS": "DAPS",
-  "Отчёт Naumen": "DAPS",
   "Ежедневный отчет по KPI": "DAPS",
   "Площадки": "WORK_MANAGEMENT",
   "Площадки АВР": "WORK_MANAGEMENT",
-  "Назначить инженера": "WORK_MANAGEMENT",
+  "Массовое назначение инженеров": "WORK_MANAGEMENT",
+  "Точечное назначение инженера": "WORK_MANAGEMENT",
   "Снять инженеров": "WORK_MANAGEMENT",
   "Написать комментарий": "WORK_MANAGEMENT",
   "Проверить работы": "WORK_MANAGEMENT",
@@ -140,22 +139,30 @@ const workspaceBySection: Partial<Record<Section, string>> = {
 const actions = [
   {
     number: "01",
-    title: "Назначить инженера",
-    description: "Выберите площадки и инженера, проверьте план изменений и подтвердите назначение.",
+    title: "Точечное назначение инженера",
+    description: "Укажите ФИО, выберите одну площадку и добавьте комментарий к назначению.",
     icon: ArrowUpRight,
     tone: "blue",
-    section: "Назначить инженера" as Section
+    section: "Точечное назначение инженера" as Section
   },
   {
     number: "02",
-    title: "Снять с площадки",
+    title: "Массовое назначение инженеров",
+    description: "Выберите площадки и инженера, проверьте план изменений и подтвердите назначение.",
+    icon: ArrowUpRight,
+    tone: "blue",
+    section: "Массовое назначение инженеров" as Section
+  },
+  {
+    number: "03",
+    title: "Массовое снятие с площадки",
     description: "Загрузите XLSX или выберите файл из аудита, чтобы проверить назначения для снятия.",
     icon: ArrowDownToLine,
     tone: "violet",
     section: "Снять инженеров" as Section
   },
   {
-    number: "03",
+    number: "04",
     title: "Проверить работы",
     description: "Загрузите XLSX или выберите файл из аудита, чтобы посмотреть последние комментарии по площадкам.",
     icon: ClipboardCheck,
@@ -163,7 +170,7 @@ const actions = [
     section: "Проверить работы" as Section
   },
   {
-    number: "04",
+    number: "05",
     title: "Написать комментарий",
     description: "Выберите одну или несколько площадок и напишите комментарий в чат задач YouGile.",
     icon: MessageSquarePlus,
@@ -180,6 +187,16 @@ const pausedSitesRetryMs = 4_000;
 
 // Единая формулировка паузы для карточек и списков площадок.
 const sitesPausedText = "Обновление приостановлено: идёт операция в YouGile";
+
+function compareSiteNumbers(left: string, right: string): number {
+  // Номер остаётся строкой (в нём могут быть ведущие нули), но порядок
+  // получается числовым: 21 перед 321, а 021 стабильно рядом с 21.
+  const normalizedLeft = left.replace(/^0+(?=\d)/, "");
+  const normalizedRight = right.replace(/^0+(?=\d)/, "");
+  if (normalizedLeft.length !== normalizedRight.length) return normalizedLeft.length - normalizedRight.length;
+  const digitsOrder = normalizedLeft.localeCompare(normalizedRight);
+  return digitsOrder || left.localeCompare(right);
+}
 
 function SitesPausedNote({ className = "sites-message" }: { className?: string }) {
   return <div className={`${className} sites-message-paused`}>{sitesPausedText}</div>;
@@ -379,7 +396,6 @@ function App() {
   // и пункт навигации остаются у родительского раздела.
   const parentSectionOf: Partial<Record<Section, Section>> = {
     "Согласование АВР": "Согласование/Оповещение",
-    "Отчёт Naumen": "DAPS",
     "Ежедневный отчет по KPI": "DAPS"
   };
   const activeNavSection = parentSectionOf[activeSection] ?? activeSection;
@@ -497,8 +513,6 @@ function App() {
             />
           ) : activeSection === "DAPS" ? (
             <DapsLandingPage onNavigate={chooseSection} />
-          ) : activeSection === "Отчёт Naumen" ? (
-            <DapsReportPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Ежедневный отчет по KPI" ? (
             <DapsDailyKpiPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Согласование/Оповещение" ? (
@@ -511,8 +525,10 @@ function App() {
             <SitesPage sites={sites} loadState={siteLoadState} error={siteError} paused={sitePaused} />
           ) : activeSection === "Площадки АВР" ? (
             <AvrSitesPage avrSites={avrSites} loadState={avrLoadState} error={avrError} paused={avrPaused} />
-          ) : activeSection === "Назначить инженера" ? (
+          ) : activeSection === "Массовое назначение инженеров" ? (
             <XlsxAssignmentPage onComplete={refreshSites} />
+          ) : activeSection === "Точечное назначение инженера" ? (
+            <AssignmentPage sites={sites} loadState={siteLoadState} avrSites={avrSites} avrLoadState={avrLoadState} onComplete={refreshSites} pointMode />
           ) : activeSection === "Снять инженеров" ? (
             <XlsxRemovalPage onComplete={refreshSites} />
           ) : activeSection === "Написать комментарий" ? (
@@ -563,18 +579,12 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
       <div className="eyebrow"><span className="eyebrow-line" /> DAPS</div>
       <div className="section-hero">
         <span className="section-hero-icon"><Sparkles size={22} /></span>
-        <div><h1>DAPS</h1><p>Рабочее пространство готово к наполнению.</p></div>
+        <div><h1>DAPS</h1><p>Рабочее пространство ежедневного контроля KPI.</p></div>
       </div>
       <section className="section-heading">
-        <div><h2>Инструменты</h2><p>Загрузка и обработка отчётов.</p></div>
+        <div><h2>Инструменты</h2><p>Ежедневная сводка показателей KPI.</p></div>
       </section>
       <section className="actions-grid daps-card-grid">
-        <button className="action-card" onClick={() => onNavigate("Отчёт Naumen")}>
-          <div className="action-card-top"><span className="action-icon blue"><FileSpreadsheet size={19} /></span></div>
-          <h3>Отчёт Naumen</h3>
-          <p>Загрузите XLSX-отчёты, обновите данные и показатели KPI.</p>
-          <span className="action-link">Открыть отчёт <ArrowRight size={15} /></span>
-        </button>
         <button className="action-card" onClick={() => onNavigate("Ежедневный отчет по KPI")}>
           <div className="action-card-top"><span className="action-icon green"><TrendingUp size={19} /></span></div>
           <h3>Ежедневный отчет по KPI</h3>
@@ -966,17 +976,27 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
 export function AssignmentPage({
   sites,
   loadState,
-  onComplete
+  avrSites,
+  avrLoadState,
+  onComplete,
+  pointMode = false
 }: {
   sites: PlannedSite[];
   loadState: SiteLoadState;
+  avrSites: AvrSitesList | null;
+  avrLoadState: SiteLoadState;
   onComplete: () => void;
+  pointMode?: boolean;
 }) {
   const [users, setUsers] = useState<AssignmentUser[]>([]);
+  const [pointAvrSites, setPointAvrSites] = useState<AvrSitesList | null>(null);
+  const [pointAvrState, setPointAvrState] = useState<SiteLoadState>("loading");
   const [usersState, setUsersState] = useState<SiteLoadState>("loading");
   const [usersError, setUsersError] = useState("");
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [targetUserId, setTargetUserId] = useState("");
+  const [userQuery, setUserQuery] = useState("");
+  const [comment, setComment] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [preview, setPreview] = useState<AssignmentPreview | null>(null);
@@ -991,6 +1011,33 @@ export function AssignmentPage({
   const stepKey = operationId ? "operation" : preview ? "preview" : null;
   const stepRef = stepKey === "operation" ? operationStepRef : previewStepRef;
   useStepScroll(stepKey, stepRef);
+
+  useEffect(() => {
+    if (!pointMode) return;
+    const controller = new AbortController();
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let active = true;
+    const loadAvrSites = async () => {
+      try {
+        const response = await apiFetch("/api/sites/in-avr", { signal: controller.signal });
+        const data = await response.json() as AvrSitesList & { paused?: boolean; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить площадки АВР.");
+        if (!active) return;
+        setPointAvrSites(data);
+        setPointAvrState("ready");
+        if (data.paused) retry = setTimeout(() => void loadAvrSites(), pausedSitesRetryMs);
+      } catch {
+        if (!active || controller.signal.aborted) return;
+        setPointAvrState("error");
+      }
+    };
+    void loadAvrSites();
+    return () => {
+      active = false;
+      controller.abort();
+      if (retry) clearTimeout(retry);
+    };
+  }, [pointMode]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1040,7 +1087,18 @@ export function AssignmentPage({
     };
   }, [operationId, onComplete]);
 
-  const filteredSites = sites.filter((site) =>
+  const selectableSites = useMemo(() => {
+    if (!pointMode) return sites;
+    const byTaskId = new Map<string, PlannedSite & { sourceLabel?: string }>();
+    for (const site of sites) byTaskId.set(site.taskId, { ...site, sourceLabel: "План" });
+    for (const site of [...(avrSites?.items ?? []), ...(pointAvrSites?.items ?? [])]) {
+      if (!byTaskId.has(site.taskId)) byTaskId.set(site.taskId, { ...site, sourceLabel: site.columnName });
+    }
+    return [...byTaskId.values()].sort((left, right) =>
+      compareSiteNumbers(left.siteNumber, right.siteNumber) || left.title.localeCompare(right.title, "ru")
+    );
+  }, [pointMode, sites, avrSites, pointAvrSites]);
+  const filteredSites = selectableSites.filter((site) =>
     `${site.siteNumber} ${site.title}`.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru"))
   );
   const pageCount = Math.max(1, Math.ceil(filteredSites.length / pageSize));
@@ -1052,7 +1110,7 @@ export function AssignmentPage({
 
   const updateSelection = (taskId: string, checked: boolean) => {
     setSelectedTaskIds((current) => {
-      if (checked) return current.includes(taskId) ? current : [...current, taskId];
+      if (checked) return pointMode ? [taskId] : current.includes(taskId) ? current : [...current, taskId];
       return current.filter((id) => id !== taskId);
     });
     setPreview(null);
@@ -1091,7 +1149,9 @@ export function AssignmentPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           taskIds: preview.items.map((item) => item.taskId),
-          userId: preview.user.id
+          userId: preview.user.id,
+          comment: pointMode ? comment : undefined,
+          pointAssignmentNotice: pointMode
         })
       });
       const data = await response.json() as { operationId?: string; error?: string };
@@ -1108,6 +1168,8 @@ export function AssignmentPage({
   const resetAssignment = () => {
     setSelectedTaskIds([]);
     setTargetUserId("");
+    setUserQuery("");
+    setComment("");
     setPreview(null);
     setOperationId("");
     setOperation(null);
@@ -1119,7 +1181,7 @@ export function AssignmentPage({
     <section className="section-view assignment-page">
       <div className="eyebrow"><span className="eyebrow-line" /> ИЗМЕНЕНИЯ ПРИМЕНЯЮТСЯ ТОЛЬКО ПОСЛЕ ПОДТВЕРЖДЕНИЯ</div>
       <div className="sites-page-heading">
-        <div><h1>Назначить инженера</h1><p>Выберите инженера и площадки. Перед записью сверим текущих ответственных в YouGile.</p></div>
+        <div><h1>{pointMode ? "Точечное назначение инженера" : "Массовое назначение инженеров"}</h1><p>{pointMode ? "Введите ФИО инженера, выберите одну площадку и напишите комментарий." : "Выберите инженера и площадки. Перед записью сверим текущих ответственных в YouGile."}</p></div>
         <span className="sites-total">{selectedTaskIds.length.toLocaleString("ru-RU")} выбрано</span>
       </div>
 
@@ -1128,10 +1190,12 @@ export function AssignmentPage({
       <div className="assignment-layout">
         <div className="panel assignment-sites-panel">
           <div className="assignment-panel-heading">
-            <div><h2>1. Выберите площадки</h2><p>План напрямую загружен из колонки YouGile.</p></div>
+            <div><h2>1. {pointMode ? "Выберите площадку" : "Выберите площадки"}</h2><p>План напрямую загружен из колонки YouGile.</p></div>
             {selectedTaskIds.length > 0 && <button className="text-button" onClick={() => { setSelectedTaskIds([]); setPreview(null); }}>Сбросить</button>}
           </div>
           <label className="sites-search assignment-search"><Search size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); setPreview(null); }} placeholder="Поиск по номеру или адресу" /></label>
+          {pointMode && (pointAvrState === "error" || avrLoadState === "error") && !pointAvrSites && !avrSites && <div className="sites-page-message sites-message-error">Не удалось загрузить площадки АВР. Сейчас доступны только площадки из плана.</div>}
+          {pointMode && pointAvrState === "loading" && avrLoadState === "loading" && <div className="sites-page-message">Загружаем площадки АВР…</div>}
           {loadState === "loading" ? <div className="sites-page-message">Загружаем план…</div> :
             loadState === "error" ? <div className="sites-page-message sites-message-error">Не удалось загрузить план. Вернитесь к разделу «Площадки» и проверьте соединение.</div> :
               filteredSites.length === 0 ? <div className="sites-page-message">Площадки не найдены.</div> : (
@@ -1141,13 +1205,10 @@ export function AssignmentPage({
                       const checked = selectedTaskIds.includes(site.taskId);
                       return (
                         <label className={`assignment-site-option ${checked ? "assignment-site-selected" : ""}`} key={site.taskId}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(event) => updateSelection(site.taskId, event.target.checked)}
-                          />
+                          <input type={pointMode ? "radio" : "checkbox"} name={pointMode ? "point-site" : undefined} checked={checked} onChange={(event) => updateSelection(site.taskId, event.target.checked)} />
                           <span className="site-number">{site.siteNumber}</span>
                           <span className="site-title" title={site.title}>{site.title}</span>
+                          {"sourceLabel" in site && <span className="site-source-label">{site.sourceLabel}</span>}
                           <span className="site-assignees">{site.assignedCount} назн.</span>
                         </label>
                       );
@@ -1167,13 +1228,16 @@ export function AssignmentPage({
             {usersState === "loading" ? <div className="assignment-loading">Загружаем сотрудников YouGile…</div> :
               usersState === "error" ? <div className="assignment-error">{usersError}</div> : (
                 <label className="field-label">Инженер
-                  <select value={targetUserId} onChange={(event) => { setTargetUserId(event.target.value); setPreview(null); setNotice(""); }}>
-                    <option value="">Выберите сотрудника</option>
-                    {users.map((user) => <option key={user.id} value={user.id}>{user.name}{user.status === "offline" ? " · не в сети" : ""}</option>)}
-                  </select>
+                  {pointMode ? <><input list="point-assignment-users" value={userQuery} placeholder="Начните вводить ФИО" onChange={(event) => {
+                    const value = event.target.value;
+                    setUserQuery(value); setPreview(null); setNotice("");
+                    const match = users.find((user) => user.name.toLocaleLowerCase("ru") === value.trim().toLocaleLowerCase("ru"));
+                    setTargetUserId(match?.id ?? "");
+                  }} /><datalist id="point-assignment-users">{users.map((user) => <option key={user.id} value={user.name} />)}</datalist></> : <select value={targetUserId} onChange={(event) => { setTargetUserId(event.target.value); setPreview(null); setNotice(""); }}><option value="">Выберите сотрудника</option>{users.map((user) => <option key={user.id} value={user.id}>{user.name}{user.status === "offline" ? " · не в сети" : ""}</option>)}</select>}
                 </label>
               )}
-            <button className="btn-primary assignment-preview-button" disabled={busy || selectedTaskIds.length === 0 || !targetUserId || usersState !== "ready" || loadState !== "ready"} onClick={() => void previewChanges()}>
+            {pointMode && <label className="field-label">Комментарий к назначению<textarea rows={4} maxLength={4000} value={comment} placeholder="Напишите комментарий, который появится в чате задачи" onChange={(event) => { setComment(event.target.value); setPreview(null); }} /></label>}
+            <button className="btn-primary assignment-preview-button" disabled={busy || selectedTaskIds.length === 0 || !targetUserId || (pointMode && !comment.trim()) || usersState !== "ready" || loadState !== "ready"} onClick={() => void previewChanges()}>
               {busy ? "Проверяем…" : <><ShieldCheck size={16} /> Проверить изменения</>}
             </button>
             {notice && <div className="assignment-error">{notice}</div>}
@@ -1183,6 +1247,7 @@ export function AssignmentPage({
             <div className="panel assignment-preview-panel" ref={previewStepRef}>
               <div className="assignment-panel-heading"><div><h2>3. Предпросмотр</h2><p>{preview.user.name} · {countRu(preview.items.length, siteForms)}</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
               <div className="preview-summary">Будет добавлен новый ответственный. Текущие инженеры останутся назначенными.</div>
+              {pointMode && <div className="preview-summary">Комментарий в чат: {comment}</div>}
               <div className="assignment-preview-list">
                 {preview.items.map((item) => (
                   <div className="assignment-preview-row" key={item.taskId}>
@@ -1231,11 +1296,11 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Отчёт Naumen" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Назначить инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,
-      title: "Снять инженеров",
+      title: "Массовое снятие с площадки",
       description: "Выберите XLSX-файл и проверьте назначения перед снятием инженеров с площадок.",
       points: ["Источник — загруженный или сохранённый XLSX", "Предпросмотр текущих и оставшихся ответственных", "Снятие только инженеров из выбранных строк"]
     },

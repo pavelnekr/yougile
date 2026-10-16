@@ -67,7 +67,8 @@ export async function registerCommentRoutes(
               beforeData: {
                 taskId: item.taskId,
                 title: item.title,
-                commentText: preview.comment
+                commentText: preview.comment,
+                engineerName: item.currentEngineers.map((engineer) => engineer.name).join(", ")
               }
             }))
           }

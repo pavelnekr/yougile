@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertCircle, ArrowRight, CheckCircle2, ClipboardCheck, Clock3, LoaderCircle } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, ClipboardCheck, LoaderCircle, X } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import Modal from "./Modal";
 import OperationSites from "./OperationSites";
@@ -15,8 +15,10 @@ type RecentOperation = {
   completed: number;
   failed: number;
   message: string | null;
+  metadata: unknown;
   finishedAt: string;
-  expiresAt: string;
+  launchedBy: string | null;
+  fileName: string | null;
 };
 
 type OperationDetail = {
@@ -33,6 +35,8 @@ type OperationDetail = {
     status: string;
     errorMessage: string | null;
     label: string;
+    engineerName: string | null;
+    assignmentComment: string | null;
     rowNumber: number | null;
     comment: string | null;
     commentedAt: string | null;
@@ -41,22 +45,30 @@ type OperationDetail = {
 };
 
 const titles: Record<OperationType, string> = {
-  ASSIGN: "Назначить инженера",
-  REMOVE: "Снять с площадки",
+  ASSIGN: "Массовое назначение инженеров",
+  REMOVE: "Массовое снятие с площадки",
   COMMENT: "Написать комментарий",
   WORK_CHECK: "Проверить работы"
 };
+
+function operationTitle(operation: Pick<RecentOperation, "type" | "metadata">): string {
+  if (isPointAssignment(operation)) return "Точечное назначение инженера";
+  return titles[operation.type];
+}
+
+function isPointAssignment(operation: Pick<RecentOperation, "type" | "metadata">): boolean {
+  const metadata = operation.metadata;
+  return Boolean(
+    operation.type === "ASSIGN" && metadata && typeof metadata === "object" && !Array.isArray(metadata) &&
+    "pointAssignmentNotice" in metadata && metadata.pointAssignmentNotice === true
+  );
+}
 
 const statusLabels: Record<OperationStatus, string> = {
   SUCCEEDED: "Выполнено",
   PARTIAL: "Завершено с ошибками",
   FAILED: "Не выполнено"
 };
-
-function formatRemaining(expiresAt: string, now: number) {
-  const seconds = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - now) / 1000));
-  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-}
 
 function formatDate(value: string) {
   return new Date(value).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
@@ -65,7 +77,7 @@ function formatDate(value: string) {
 export default function CompletedOperationsPanel() {
   const [operations, setOperations] = useState<RecentOperation[]>([]);
   const [loadError, setLoadError] = useState("");
-  const [now, setNow] = useState(Date.now());
+  const [showList, setShowList] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState<OperationDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,11 +103,9 @@ export default function CompletedOperationsPanel() {
     };
     void load();
     const pollTimer = window.setInterval(() => void load(), 10_000);
-    const clockTimer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => {
       active = false;
       window.clearInterval(pollTimer);
-      window.clearInterval(clockTimer);
     };
   }, []);
 
@@ -118,41 +128,64 @@ export default function CompletedOperationsPanel() {
     return () => controller.abort();
   }, [selectedId]);
 
-  const visibleOperations = operations.filter((operation) => new Date(operation.expiresAt).getTime() > now);
+  const visibleOperations = operations;
+  const selectedOperation = operations.find((operation) => operation.id === selectedId);
+  const selectedTitle = selectedOperation
+    ? operationTitle(selectedOperation)
+    : detail ? titles[detail.type] : "Результат операции";
   return (
     <>
-      {visibleOperations.length > 0 && <section className="overview-active-panel completed-operations-panel" aria-label="Выполненные операции">
-        <div className="section-heading">
-          <h2>Выполненные операции</h2>
-          <p>Результаты доступны в течение 10 минут после завершения.</p>
-        </div>
-        {loadError ? (
-          <p className="completed-operations-empty completed-operations-error">{loadError}</p>
-        ) : (
-          <div className="overview-active-list">
-            {visibleOperations.map((operation) => (
-              <button className="overview-active-card completed-operation-card" key={operation.id} onClick={() => setSelectedId(operation.id)}>
-                <span className={`overview-active-icon completed-operation-icon completed-operation-${operation.status.toLowerCase()}`}>
-                  {operation.status === "SUCCEEDED" ? <CheckCircle2 size={17} /> : operation.status === "FAILED" ? <AlertCircle size={17} /> : <ClipboardCheck size={17} />}
-                </span>
-                <span className="overview-active-copy">
-                  <strong>{titles[operation.type]}</strong>
-                  <small>{statusLabels[operation.status]} · {operation.completed} / {operation.total} · {formatDate(operation.finishedAt)}</small>
-                </span>
-                <span className="completed-operation-expiry"><Clock3 size={13} /> {formatRemaining(operation.expiresAt, now)}</span>
-                <span className="overview-active-open">Результат <ArrowRight size={14} /></span>
-              </button>
-            ))}
+      <section className="overview-active-panel completed-operations-panel" aria-label="Выполненные операции">
+        <button className="overview-active-card completed-operations-entry" onClick={() => setShowList(true)} aria-haspopup="dialog">
+          <span className="overview-active-icon completed-operation-icon"><ClipboardCheck size={17} /></span>
+          <span className="overview-active-copy">
+            <strong>Выполненные операции</strong>
+            <small>Последние 5 завершённых операций</small>
+          </span>
+          <span className="overview-active-open">Открыть список <ArrowRight size={14} /></span>
+        </button>
+      </section>
+
+      {showList && !selectedId && (
+        <Modal className="completed-operations-list-dialog" labelledBy="completed-operations-list-title" onDismiss={() => setShowList(false)}>
+          <div className="modal-heading">
+            <span className="modal-icon"><ClipboardCheck size={17} /></span>
+            <div>
+              <h2 id="completed-operations-list-title">Выполненные операции</h2>
+              <p>Последние 5 завершённых операций</p>
+            </div>
+            <button className="icon-button" aria-label="Закрыть список" onClick={() => setShowList(false)}><X size={16} /></button>
           </div>
-        )}
-      </section>}
+          {loadError ? (
+            <p className="completed-operations-empty completed-operations-error">{loadError}</p>
+          ) : visibleOperations.length === 0 ? (
+            <p className="completed-operations-empty">Завершённых операций пока нет.</p>
+          ) : (
+            <div className="overview-active-list completed-operations-list">
+              {visibleOperations.map((operation) => (
+                <button className="overview-active-card completed-operation-card" key={operation.id} onClick={() => setSelectedId(operation.id)}>
+                  <span className={`overview-active-icon completed-operation-icon completed-operation-${operation.status.toLowerCase()}`}>
+                    {operation.status === "SUCCEEDED" ? <CheckCircle2 size={17} /> : operation.status === "FAILED" ? <AlertCircle size={17} /> : <ClipboardCheck size={17} />}
+                  </span>
+                  <span className="overview-active-copy">
+                    <strong>{operationTitle(operation)}</strong>
+                    <small>{statusLabels[operation.status]} · {operation.completed} / {operation.total} · {formatDate(operation.finishedAt)}</small>
+                    <small className="completed-operation-meta">Запустил: {operation.launchedBy ?? "Неизвестно"}{operation.fileName ? ` · XLSX: ${operation.fileName}` : ""}</small>
+                  </span>
+                  <span className="overview-active-open">Результат <ArrowRight size={14} /></span>
+                </button>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
 
       {selectedId && (
         <Modal className="completed-operation-dialog" labelledBy="completed-operation-title" onDismiss={() => { setSelectedId(""); setDetail(null); setError(""); }}>
           <div className="modal-heading">
             <span className="modal-icon"><ClipboardCheck size={17} /></span>
             <div>
-              <h2 id="completed-operation-title">{detail ? titles[detail.type] : "Результат операции"}</h2>
+              <h2 id="completed-operation-title">{selectedTitle}</h2>
               <p>{detail ? statusLabels[detail.status] : "Недавно выполненный сценарий"}</p>
             </div>
           </div>
@@ -179,8 +212,30 @@ export default function CompletedOperationsPanel() {
                       </tbody>
                     </table>
                   </div>
+                ) : selectedOperation && isPointAssignment(selectedOperation) ? (
+                  <div className="completed-work-check-table-wrap">
+                    <table className="work-check-table">
+                      <thead><tr><th>Площадка</th><th>Адрес</th><th>Назначенный инженер</th><th>Комментарий</th><th>Статус</th></tr></thead>
+                      <tbody>
+                        {detail.items.map((item) => (
+                          <tr key={item.siteId}>
+                            <td>{item.siteId}</td>
+                            <td>{item.label}</td>
+                            <td>{item.engineerName ?? "—"}</td>
+                            <td>{item.assignmentComment?.trim() || "—"}</td>
+                            <td title={item.errorMessage ?? undefined}>{item.status === "SUCCEEDED" ? "Выполнено" : item.status === "FAILED" ? "Ошибка" : item.status === "SKIPPED" ? "Без изменений" : item.status}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
-                  <OperationSites items={detail.items} labelColumn="Данные" labels={Object.fromEntries(detail.items.map((item) => [item.siteId, item.label]))} />
+                  <OperationSites
+                    items={detail.items}
+                    labelColumn="Адрес"
+                    labels={Object.fromEntries(detail.items.map((item) => [item.siteId, item.label]))}
+                    engineerNames={Object.fromEntries(detail.items.map((item) => [item.siteId, item.engineerName]))}
+                  />
                 )}
               </>
             )}

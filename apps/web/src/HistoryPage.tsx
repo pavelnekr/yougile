@@ -24,6 +24,8 @@ type HistorySummary = {
   totals: {
     uploads: number;
     operations: number;
+    finishedOperations: number;
+    totalExecutionMs: number;
     assignmentOperations: number;
     assignments: number;
     removals: number;
@@ -73,6 +75,19 @@ function formatDate(value: string) {
 
 function number(value: number) {
   return value.toLocaleString("ru-RU");
+}
+
+function formatDuration(milliseconds: number) {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  if (totalSeconds < 60) return `${number(totalSeconds)} сек`;
+  const minutes = Math.floor(milliseconds / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  const remainingMinutes = minutes % 60;
+  if (days > 0) return `${number(days)} д ${remainingHours} ч ${remainingMinutes} мин`;
+  if (hours > 0) return `${number(hours)} ч ${remainingMinutes} мин`;
+  return `${number(remainingMinutes)} мин`;
 }
 
 // Первый знак для аватара берётся из общего модуля: правило одно на весь портал.
@@ -200,6 +215,16 @@ const maxEngineerActivity = Math.max(
         <HistoryStat icon={ArrowDownToLine} label="Работ снято" value={total?.removals} foot="Инженеры сняты с площадок" tone="violet" loading={loadingSummary} />
         <HistoryStat icon={MessageSquarePlus} label="Комментариев отправлено" value={total?.comments} foot={`${countRu(total?.commentOperations ?? 0, operationForms)} комментариев`} tone="blue" loading={loadingSummary} />
         <HistoryStat icon={Activity} label="С ошибкой" value={total?.failedItems} foot={`${number(total?.successfulItems ?? 0)} успешно · ${number(total?.pendingOperations ?? 0)} выполняется`} tone="amber" loading={loadingSummary} />
+        <section className="panel history-stat-card history-execution-summary" aria-label="Сводка выполнения операций">
+          <div className="history-execution-row">
+            <span>Количество выполненных операций</span>
+            <strong>{loadingSummary ? "Загрузка…" : number(total?.finishedOperations ?? 0)}</strong>
+          </div>
+          <div className="history-execution-row">
+            <span>Суммарное время выполнения процессов</span>
+            <strong>{loadingSummary ? "Загрузка…" : formatDuration(total?.totalExecutionMs ?? 0)}</strong>
+          </div>
+        </section>
       </div>
 
       <div className="history-charts-grid">

@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS "DapsImportBatch";
+DROP TABLE IF EXISTS "DapsReportRow";
+DROP TABLE IF EXISTS "DapsKpiDay";
+DROP TYPE IF EXISTS "DapsDataset";

@@ -131,6 +131,11 @@ export async function processRemovalOperation(
         !Array.isArray(item.beforeData) && "taskId" in item.beforeData
         ? item.beforeData.taskId
         : null;
+      const engineerName = item.beforeData && typeof item.beforeData === "object" &&
+        !Array.isArray(item.beforeData) && "engineerName" in item.beforeData &&
+        typeof item.beforeData.engineerName === "string"
+        ? item.beforeData.engineerName
+        : "";
       const userId = item.requestedUserId;
       let status: OperationItemStatus = OperationItemStatus.FAILED;
       let beforeData: object | undefined;
@@ -149,7 +154,7 @@ export async function processRemovalOperation(
         }
 
         const assigned = task.assigned ?? [];
-        beforeData = { taskId: task.id, title: task.title, assignedUserIds: assigned, removedUserId: userId };
+        beforeData = { taskId: task.id, title: task.title, assignedUserIds: assigned, engineerName, removedUserId: userId };
         const nextAssigned = assigned.filter((assignedUserId) => assignedUserId !== userId);
         if (nextAssigned.length === assigned.length) {
           status = OperationItemStatus.SKIPPED;

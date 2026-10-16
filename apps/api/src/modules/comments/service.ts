@@ -157,6 +157,7 @@ export async function processCommentOperation(
     if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
 
     const taskId = jsonString(item.beforeData, "taskId");
+    const engineerName = jsonString(item.beforeData, "engineerName") ?? "";
     let status: OperationItemStatus = OperationItemStatus.FAILED;
     let beforeData: object | undefined;
     let afterData: object | undefined;
@@ -174,7 +175,7 @@ export async function processCommentOperation(
       // Разметка шаблона (`**слово**`) уходит в HTML-версию сообщения,
       // в `text` — чистый текст без звёздочек.
       const message = renderCommentForYougile(comment);
-      beforeData = { taskId: task.id, title: task.title, commentText: message.text };
+      beforeData = { taskId: task.id, title: task.title, commentText: message.text, engineerName };
       await postChatMessage(client, task.id, message.text, message.textHtml);
       status = OperationItemStatus.SUCCEEDED;
       afterData = { taskId: task.id, title: task.title, commentPosted: true };

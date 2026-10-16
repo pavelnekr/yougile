@@ -329,7 +329,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     <section className="section-view assignment-page removal-page">
       <div className="eyebrow"><span className="eyebrow-line" /> СНЯТИЕ НАЗНАЧЕНИЙ ПО XLSX</div>
       <div className="sites-page-heading">
-        <div><h1>Снять инженеров</h1><p>Будут сняты только инженеры из выбранных строк XLSX и только с указанных в них площадок.</p></div>
+        <div><h1>Массовое снятие с площадки</h1><p>Будут сняты только инженеры из выбранных строк XLSX и только с указанных в них площадок.</p></div>
         {planImport && <span className="sites-total">{countRu(selectedReadyRows.length, rowForms)} выбрано</span>}
       </div>
 

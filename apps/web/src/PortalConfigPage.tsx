@@ -1232,7 +1232,7 @@ export default function PortalConfigPage({
             <div className="portal-config-section-heading">
               <div>
                 <h2>PostgreSQL для DAPS</h2>
-                <p>Отдельная база для отчётов Naumen, истории импортов и KPI. Соединение проверяется перед сохранением.</p>
+                <p>Отдельная база для источников ежедневного отчёта KPI. Соединение проверяется перед сохранением.</p>
               </div>
               <span className="portal-config-save-state">{dapsDatabaseConfigured ? "Подключение сохранено" : "Не настроено"}</span>
             </div>
@@ -1277,7 +1277,7 @@ export default function PortalConfigPage({
                     />
                   </label>
                 </div>
-              <div className="portal-config-note"><Info size={14} /><span>Оба набора таблиц находятся в одной базе PostgreSQL, схемы задаются отдельно. Таблицы DAPS из apps/api/prisma/daps-database.sql остаются в public; исходная all_k и Aggregate_for_KPI — в схемах выше. Строка подключения хранится зашифрованной.</span></div>
+              <div className="portal-config-note"><Info size={14} /><span>Таблицы all_k и Aggregate_for_KPI находятся в одной базе PostgreSQL, схемы задаются отдельно. Строка подключения хранится зашифрованной.</span></div>
               </>
             )}
             {dapsDatabaseError && dapsDatabaseUrl && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{dapsDatabaseError}</div>}

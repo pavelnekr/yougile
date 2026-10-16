@@ -1,11 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { OperationStatus, OperationType, PrismaClient } from "@prisma/client";
+import { z } from "zod";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { operationQueue } from "../../jobs/queue.js";
 import { getActiveWorkChecks } from "../../lib/active-work-checks.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
 import { requireWorkspaceAccess } from "../auth/service.js";
+import { loadAvrColumns } from "../portal-config/service.js";
 import {
   assignmentPreviewBodySchema,
   AssignmentValidationError,
@@ -80,7 +82,7 @@ export async function registerAssignmentRoutes(
 
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
-      return await previewAssignments(yougile, parsed.data);
+      return await previewAssignments(yougile, parsed.data, await loadAvrColumns(prisma));
     } catch (error) {
       if (error instanceof UserYougileCredentialError) {
         return reply.code(error.statusCode).send({ error: error.message });
@@ -125,6 +127,14 @@ export async function registerAssignmentRoutes(
         status: item.status,
         errorMessage: item.errorMessage,
         label: operationItemLabel(item.beforeData, item.siteId),
+        engineerName: item.beforeData && typeof item.beforeData === "object" && !Array.isArray(item.beforeData) &&
+          "engineerName" in item.beforeData && typeof item.beforeData.engineerName === "string"
+          ? item.beforeData.engineerName
+          : null,
+        assignmentComment: item.beforeData && typeof item.beforeData === "object" && !Array.isArray(item.beforeData) &&
+          "commentText" in item.beforeData && typeof item.beforeData.commentText === "string"
+          ? item.beforeData.commentText
+          : null,
         rowNumber: item.beforeData && typeof item.beforeData === "object" && !Array.isArray(item.beforeData) && "rowNumber" in item.beforeData
           ? (item.beforeData as { rowNumber?: number }).rowNumber ?? null
           : null,
@@ -144,16 +154,13 @@ export async function registerAssignmentRoutes(
 
   app.get("/api/operations/recent", { preHandler: readAccess }, async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
-    const now = new Date();
-    const retainedSince = new Date(now.getTime() - 10 * 60 * 1000);
     const operations = await prisma.operation.findMany({
       where: {
         type: { in: visibleOperationTypes },
-        status: { in: [OperationStatus.SUCCEEDED, OperationStatus.PARTIAL, OperationStatus.FAILED] },
-        finishedAt: { gte: retainedSince }
+        status: { in: [OperationStatus.SUCCEEDED, OperationStatus.PARTIAL, OperationStatus.FAILED] }
       },
       orderBy: { finishedAt: "desc" },
-      take: 50,
+      take: 5,
       select: {
         id: true,
         type: true,
@@ -163,7 +170,8 @@ export async function registerAssignmentRoutes(
         failed: true,
         message: true,
         finishedAt: true,
-        metadata: true
+        metadata: true,
+        createdBy: { select: { displayName: true } }
       }
     });
 
@@ -171,8 +179,10 @@ export async function registerAssignmentRoutes(
       items: operations.map((operation) => ({
         ...operation,
         finishedAt: operation.finishedAt?.toISOString() ?? null,
-        expiresAt: operation.finishedAt
-          ? new Date(operation.finishedAt.getTime() + 10 * 60 * 1000).toISOString()
+        launchedBy: operation.createdBy?.displayName ?? null,
+        fileName: operation.metadata && typeof operation.metadata === "object" && !Array.isArray(operation.metadata) &&
+          "fileName" in operation.metadata && typeof operation.metadata.fileName === "string"
+          ? operation.metadata.fileName
           : null,
         importId: operation.type === OperationType.WORK_CHECK && operation.metadata &&
           typeof operation.metadata === "object" && !Array.isArray(operation.metadata) &&
@@ -232,14 +242,17 @@ export async function registerAssignmentRoutes(
   });
 
   app.post("/api/assignments", { preHandler: writeAccess }, async (request, reply) => {
-    const parsed = assignmentPreviewBodySchema.safeParse(request.body);
+    const parsed = assignmentPreviewBodySchema.extend({
+      comment: z.string().trim().max(4000).optional(),
+      pointAssignmentNotice: z.boolean().optional()
+    }).safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "Некорректные данные назначения." });
     }
 
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
-      const preview = await previewAssignments(yougile, parsed.data);
+      const preview = await previewAssignments(yougile, parsed.data, await loadAvrColumns(prisma));
       const operation = await prisma.operation.create({
         data: {
           type: "ASSIGN",
@@ -247,7 +260,12 @@ export async function registerAssignmentRoutes(
           // Автор операции: по нему считается статистика сотрудников в админке.
           createdById: request.sessionUser?.id ?? null,
           total: preview.items.length,
-          metadata: { targetUserId: preview.user.id, targetUserName: preview.user.name },
+          metadata: {
+            targetUserId: preview.user.id,
+            targetUserName: preview.user.name,
+            comment: parsed.data.comment ?? "",
+            pointAssignmentNotice: parsed.data.pointAssignmentNotice === true
+          },
           items: {
             create: preview.items.map((item, index) => ({
               siteId: item.siteNumber,
@@ -257,7 +275,8 @@ export async function registerAssignmentRoutes(
                 taskId: item.taskId,
                 title: item.title,
                 assignedUserIds: item.currentUserIds,
-                engineerName: preview.user.name
+                engineerName: preview.user.name,
+                commentText: parsed.data.comment ?? ""
               }
             }))
           }

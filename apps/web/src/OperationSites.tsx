@@ -23,17 +23,20 @@ const STATUS_META: Record<string, { label: string; icon: typeof CheckCircle2; cl
 export default function OperationSites({
   items,
   labelColumn,
-  labels
+  labels,
+  engineerNames
 }: {
   items: OperationSiteItem[];
   labelColumn: string;
   labels?: Record<string, string | null>;
+  engineerNames?: Record<string, string | null>;
 }) {
   return (
-    <div className="operation-sites">
+    <div className={`operation-sites ${engineerNames ? "operation-sites-engineer" : ""}`}>
       <div className="operation-sites-head">
         <span>Площадка</span>
         <span>{labelColumn}</span>
+        {engineerNames && <span>Назначенный инженер</span>}
         <span>Статус</span>
       </div>
       {items.map((item) => {
@@ -44,6 +47,7 @@ export default function OperationSites({
           <div className={`operation-site-row ${meta?.className ?? ""}`} key={item.siteId}>
             <span className="site-number">{item.siteId}</span>
             <span className="operation-site-label" title={label ?? ""}>{label || "—"}</span>
+            {engineerNames && <span className="operation-site-label" title={engineerNames[item.siteId] ?? ""}>{engineerNames[item.siteId] || "—"}</span>}
             <span className="operation-site-status" title={item.errorMessage ?? undefined}>
               <Icon size={13} /> {meta?.label ?? item.status}
             </span>
