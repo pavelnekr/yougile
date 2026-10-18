@@ -35,11 +35,17 @@ body { margin: 0; min-width: 360px; min-height: 100vh; min-height: 100dvh; }
 /* На широких экранах интерфейс чуть увеличен целиком: многие компоненты
    используют фиксированные размеры в px, поэтому одного font-size недостаточно. */
 @media (min-width: 761px) { body { zoom: 1.25; } }
+/* CSS zoom увеличивает и высоту страницы. У авторизации высота уже задана
+   размером окна, поэтому компенсируем масштаб на уровне body. */
+@media (min-width: 811px) {
+  body:has(.login-page) { zoom: 1; height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+  .login-page { zoom: 1.25; width: 80vw; height: 80vh; height: 80dvh; }
+}
 button, a { font: inherit; }
 button { color: inherit; }
 
-.login-page { display: grid; min-height: 100vh; min-height: 100dvh; grid-template-columns: minmax(380px, .95fr) minmax(430px, 1.05fr); background: #fff; }
-.login-brand-panel { position: relative; display: flex; min-height: 100vh; min-height: 100dvh; flex-direction: column; overflow: hidden; padding: 37px clamp(32px, 6vw, 88px) 25px; color: #fff; background: radial-gradient(ellipse at 16% 86%, #344a9d 0, transparent 38%), linear-gradient(145deg, #1b2851 0%, #26396f 57%, #314985 100%); }
+.login-page { display: grid; height: 100vh; height: 100dvh; min-height: 0; grid-template-columns: minmax(380px, .95fr) minmax(430px, 1.05fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; background: #fff; }
+.login-brand-panel { position: relative; display: flex; min-height: 0; flex-direction: column; overflow: hidden; padding: 37px clamp(32px, 6vw, 88px) 25px; color: #fff; background: radial-gradient(ellipse at 16% 86%, #344a9d 0, transparent 38%), linear-gradient(145deg, #1b2851 0%, #26396f 57%, #314985 100%); }
 .login-brand { position: relative; z-index: 1; display: inline-flex; width: fit-content; align-items: center; gap: 11px; color: #fff; text-decoration: none; }
 .login-brand .brand-copy strong, .login-mobile-brand .brand-copy strong { font: 800 19px "Avenir Next", "Trebuchet MS", sans-serif; letter-spacing: 1.1px; }
 .login-brand .brand-copy small, .login-mobile-brand .brand-copy small { margin-top: 5px; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
@@ -48,23 +54,23 @@ button { color: inherit; }
 .login-brand .brand-mark span:nth-child(2) { background: #b7c6ff; }
 .login-brand .brand-mark span:nth-child(3) { background: #819ce9; }
 .login-brand .brand-mark span:nth-child(4) { background: #d5ddfb; }
-.login-brand-content { position: relative; z-index: 1; width: min(440px, 100%); margin: auto 0; padding: 52px 0 64px; }
+.login-brand-content { position: absolute; z-index: 1; top: 50%; left: 50%; width: min(440px, 100%); margin: 0; padding: 52px 0 64px; transform: translate(-50%, calc(-50% - 100px)); text-align: center; }
 .login-overline { display: inline-flex; align-items: center; gap: 7px; color: #becbf2; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; }
 .login-overline svg { color: #aebfff; }
 .login-brand-content h1 { margin: 24px 0 14px; font-size: clamp(34px, 4vw, 50px); font-weight: 650; letter-spacing: -1.8px; line-height: 1.12; }
 .login-brand-content > p { max-width: 365px; margin: 0; color: #c2cbe1; font-size: 13px; line-height: 1.75; }
-.login-security-note { display: flex; align-items: center; gap: 11px; margin-top: 38px; padding: 13px 14px; border: 1px solid #ffffff20; border-radius: 9px; background: #ffffff0b; }
+.login-security-note { display: flex; align-items: center; justify-content: center; gap: 11px; margin-top: 38px; padding: 13px 14px; border: 1px solid #ffffff20; border-radius: 9px; background: #ffffff0b; text-align: left; }
 .login-security-note > svg { flex: 0 0 auto; color: #a9c6ff; }
 .login-security-note > span { display: grid; gap: 4px; }
 .login-security-note strong { color: #edf1ff; font-size: 10px; font-weight: 600; }
 .login-security-note small { color: #b8c3e0; font-size: 9px; }
-.login-brand-footer { position: relative; z-index: 1; color: #aebbdc; font-size: 8px; font-weight: 650; letter-spacing: 1px; }
+.login-brand-footer { position: relative; z-index: 1; margin-top: auto; color: #aebbdc; font-size: 8px; font-weight: 650; letter-spacing: 1px; }
 .login-brand-footer span { padding: 0 5px; color: #7f94ce; }
 .login-decoration { position: absolute; border: 1px solid #ffffff0b; border-radius: 50%; pointer-events: none; }
 .login-decoration-one { right: -245px; bottom: -360px; width: 650px; height: 650px; }
 .login-decoration-two { right: -180px; bottom: -295px; width: 520px; height: 520px; }
-.login-form-panel { display: grid; min-height: 100vh; min-height: 100dvh; place-items: center; padding: 40px 30px; background: #fff; }
-.login-form-wrap { width: min(380px, 100%); }
+.login-form-panel { position: relative; display: grid; min-height: 0; place-items: center; overflow-y: auto; padding: 40px 30px; background: #fff; }
+.login-form-wrap { position: absolute; top: 50%; left: 50%; width: min(380px, 100%); transform: translate(-50%, calc(-50% - 100px)); }
 .login-mobile-brand { display: none; align-items: center; gap: 10px; margin-bottom: 34px; color: #28365e; }
 .login-mobile-brand .brand-copy small { color: #9099aa; }
 .login-heading { margin-bottom: 28px; }
@@ -104,6 +110,17 @@ button { color: inherit; }
 .login-mode-switch strong { color: #536bc7; font-weight: 650; }
 .login-mode-switch:disabled { opacity: .6; cursor: default; }
 .login-field-hint { color: #9aa3b2; font-size: 8px; font-weight: 400; line-height: 1.4; }
+
+@media (min-width: 811px) and (max-height: 760px) {
+  .login-form-panel { padding-block: 8px; }
+  .login-form-wrap { transform: translate(-50%, calc(-50% - 115px)); }
+  .login-lock-icon { margin-bottom: 14px; }
+  .login-heading { margin-bottom: 14px; }
+  .login-form { gap: 13px; }
+  .login-brand-content { padding-block: 8px; transform: translate(-50%, calc(-50% - 120px)); }
+  .login-brand-content h1 { margin-top: 16px; }
+  .login-security-note { margin-top: 14px; }
+}
 
 .app-shell { min-height: 100vh; min-height: 100dvh; }
 .sidebar { position: fixed; z-index: 5; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 252px; padding: 24px 15px 13px; padding-top: calc(24px + env(safe-area-inset-top, 0px)); padding-bottom: calc(13px + env(safe-area-inset-bottom, 0px)); padding-left: calc(15px + env(safe-area-inset-left, 0px)); background: #fff; border-right: 1px solid #edf0f5; }
@@ -963,9 +980,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
    не помещается и страница получает горизонтальную прокрутку — так было
    в окне шириной 761…809px, в частности в портретном iPad 768px. */
 @media (max-width: 810px) {
-  .login-page { grid-template-columns: 1fr; }
+  .login-page { height: auto; min-height: 100vh; min-height: 100dvh; grid-template-columns: 1fr; grid-template-rows: auto; overflow: visible; }
   .login-brand-panel { display: none; }
-  .login-form-panel { min-height: 100vh; min-height: 100dvh; align-items: start; padding: 36px 22px; background: #f8f9fc; }
+  .login-form-panel { position: static; display: grid; min-height: 100vh; min-height: 100dvh; align-items: start; overflow: visible; padding: 36px 22px; background: #f8f9fc; }
+  .login-form-wrap { position: static; transform: none; }
+  .login-brand-content { transform: none; }
   .login-form-wrap { width: min(410px, 100%); margin: auto; padding: 23px; border: 1px solid #edf0f4; border-radius: 12px; background: #fff; box-shadow: 0 10px 35px #24365c0a; }
   .login-mobile-brand { display: flex; }
   .login-lock-icon { margin-bottom: 18px; }
