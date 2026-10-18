@@ -1208,7 +1208,7 @@ export function AssignmentPage({
                           <input type={pointMode ? "radio" : "checkbox"} name={pointMode ? "point-site" : undefined} checked={checked} onChange={(event) => updateSelection(site.taskId, event.target.checked)} />
                           <span className="site-number">{site.siteNumber}</span>
                           <span className="site-title" title={site.title}>{site.title}</span>
-                          {"sourceLabel" in site && <span className="site-source-label">{site.sourceLabel}</span>}
+                          {"sourceLabel" in site && typeof site.sourceLabel === "string" && <span className="site-source-label">{site.sourceLabel}</span>}
                           <span className="site-assignees">{site.assignedCount} назн.</span>
                         </label>
                       );
@@ -1296,7 +1296,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

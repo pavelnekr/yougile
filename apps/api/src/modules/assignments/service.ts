@@ -1,7 +1,7 @@
 import { OperationItemStatus, OperationStatus, OperationType, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { YougileApiError, YougileClient } from "../../integrations/yougile/client.js";
-import { postChatMessage } from "../../integrations/yougile/chat.js";
+import { hasRecentChatMessage, postChatMessage } from "../../integrations/yougile/chat.js";
 import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { describeError } from "../../lib/error-details.js";
@@ -283,7 +283,9 @@ export async function processAssignmentOperation(
         if (pointAssignmentNotice && engineerName) {
           phase = "comment";
           const notice = renderCommentForYougile(`**${engineerName}**, возьми в работу, пожалуйста`);
-          await postChatMessage(client, task.id, notice.text, notice.textHtml);
+          if (!(await hasRecentChatMessage(client, task.id, notice.text, notice.textHtml))) {
+            await postChatMessage(client, task.id, notice.text, notice.textHtml);
+          }
           afterData = { ...afterData, assignmentNoticePosted: true };
           await delayBetweenYougileActions();
         }
@@ -292,7 +294,9 @@ export async function processAssignmentOperation(
           phase = "comment";
           // `**слово**` из шаблона уходит в HTML-версию, в `text` — чистый текст.
           const message = renderCommentForYougile(commentText);
-          await postChatMessage(client, task.id, message.text, message.textHtml);
+          if (!(await hasRecentChatMessage(client, task.id, message.text, message.textHtml))) {
+            await postChatMessage(client, task.id, message.text, message.textHtml);
+          }
           afterData = { ...afterData, commentPosted: true };
           await delayBetweenYougileActions();
         }
@@ -300,7 +304,9 @@ export async function processAssignmentOperation(
         if (cluster) {
           phase = "cluster";
           const clusterContent = clusterMessage(item.siteId, cluster);
-          await postChatMessage(client, task.id, clusterContent.text, clusterContent.textHtml);
+          if (!(await hasRecentChatMessage(client, task.id, clusterContent.text, clusterContent.textHtml))) {
+            await postChatMessage(client, task.id, clusterContent.text, clusterContent.textHtml);
+          }
           afterData = { ...afterData, clusterCommentPosted: true };
           await delayBetweenYougileActions();
         }

@@ -11,7 +11,8 @@ import { loadAvrColumns } from "../portal-config/service.js";
 import {
   assignmentPreviewBodySchema,
   AssignmentValidationError,
-  previewAssignments
+  previewAssignments,
+  readTask
 } from "./service.js";
 
 const visibleOperationTypes: OperationType[] = [
@@ -147,9 +148,56 @@ export async function registerAssignmentRoutes(
         resultMessage: operation.type === OperationType.WORK_CHECK && item.afterData && typeof item.afterData === "object" && !Array.isArray(item.afterData) && "message" in item.afterData
           ? (item.afterData as { message?: string }).message ?? null
           : null,
-        details: errorDetailsFrom(item.afterData)
+        details: errorDetailsFrom(item.afterData),
+        retryableTimeout: item.status === "FAILED" && errorDetailsFrom(item.afterData) != null && (() => {
+          const details = errorDetailsFrom(item.afterData) as { message?: unknown };
+          return typeof details.message === "string" && /aborted due to timeout|request timed out|timeout/i.test(details.message);
+        })()
       }))
     };
+  });
+
+  app.post<{ Params: { id: string } }>("/api/operations/:id/retry-timeouts", { preHandler: writeAccess }, async (request, reply) => {
+    const original = await prisma.operation.findUnique({ where: { id: request.params.id }, include: { items: { orderBy: { sortOrder: "asc" } } } });
+    if (!original || (original.type !== OperationType.ASSIGN && original.type !== OperationType.REMOVE)) {
+      return reply.code(404).send({ error: "Операция назначения или снятия не найдена." });
+    }
+    const isTimeout = (value: unknown): boolean => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+      const details = (value as { error?: { message?: unknown } }).error;
+      return typeof details?.message === "string" && /aborted due to timeout|request timed out|timeout/i.test(details.message);
+    };
+    const failed = original.items.filter((item) => item.status === "FAILED" && isTimeout(item.afterData));
+    if (!failed.length) return reply.code(400).send({ error: "В операции нет площадок с ошибкой timeout для повтора." });
+    try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
+      // Полная предварительная проверка всех площадок завершается до постановки
+      // повторной операции: задача и текущие ответственные читаются заново.
+      const prepared = [];
+      for (const item of failed) {
+        const data = item.beforeData as { taskId?: unknown } | null;
+        if (!data || typeof data.taskId !== "string") throw new AssignmentValidationError(`Не удалось восстановить задачу площадки ${item.siteId}.`);
+        const task = await readTask(yougile, data.taskId);
+        prepared.push({ item, task });
+      }
+      const retry = await prisma.operation.create({
+        data: {
+          type: original.type, status: OperationStatus.QUEUED, createdById: request.sessionUser?.id ?? null,
+          total: prepared.length, metadata: original.metadata ?? {},
+          items: { create: prepared.map(({ item, task }, index) => ({
+            siteId: item.siteId, sortOrder: index, requestedUserId: item.requestedUserId,
+            beforeData: { ...(item.beforeData as Record<string, unknown>), assignedUserIds: task.assigned ?? [] }
+          })) }
+        }
+      });
+      await operationQueue.add(original.type === OperationType.REMOVE ? "remove-engineers" : "assign-engineer", { operationId: retry.id }, { jobId: retry.id });
+      return reply.code(202).send({ operationId: retry.id, count: prepared.length });
+    } catch (error) {
+      if (error instanceof UserYougileCredentialError) return reply.code(error.statusCode).send({ error: error.message });
+      if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
+      app.log.error({ err: error }, "Could not retry timeout operation items");
+      return reply.code(502).send({ error: "Не удалось проверить площадки перед повтором. Повтор не запущен." });
+    }
   });
 
   app.get("/api/operations/recent", { preHandler: readAccess }, async (_request, reply) => {

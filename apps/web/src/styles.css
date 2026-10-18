@@ -368,6 +368,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .operation-progress span { display: block; width: 100%; height: 100%; border-radius: inherit; background: #5986dc; transform-origin: left center; transition: transform var(--dur-progress) var(--ease-out); }
 .operation-failures { max-height: 180px; overflow: auto; padding: 0 10px; border-left: 2px solid #d37c68; }
 .operation-failures p { margin: 5px 0; color: #a75c4e; font-size: 9px; }
+  .operation-retry-timeouts { display: grid; gap: 6px; margin-top: 12px; padding: 12px; border: 1px solid #ead8b1; border-radius: 8px; background: #fffaf0; color: #75613b; font-size: 11px; }
+  .operation-retry-timeouts p { margin: 0; color: #81765f; }
 /* Блок «Диагностика для поддержки»: копируемый JSON с техническими деталями
    ошибки операции. Жёлтая палитра, чтобы блок отличался от ошибки (красный) и
    подсказок (серый). Показывается только при сбойной операции. */

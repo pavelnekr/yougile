@@ -260,6 +260,15 @@ async function messageWasDelivered(client: YougileClient, taskId: string, text: 
   return false;
 }
 
+/** Проверяет недавнюю историю перед ручным повтором операции после таймаута. */
+export async function hasRecentChatMessage(client: YougileClient, taskId: string, text: string, textHtml?: string): Promise<boolean> {
+  const expected = new Set([normalizeText(text)]);
+  if (textHtml) expected.add(normalizeText(getMessageText({ textHtml }) ?? ""));
+  expected.delete("");
+  const { messages } = await readAllChatMessages(client, taskId, Date.now() - deliveryCheckWindowMs);
+  return messages.some((message) => expected.has(normalizeText(message.text)));
+}
+
 /**
  * Отправка сообщения в чат задачи. Текст можно дополнить `textHtml` — тогда
  * YouGile получит оба поля, как это делал n8n-воркфлоу назначения для

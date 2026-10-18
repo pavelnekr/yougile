@@ -55,7 +55,7 @@ type Operation = {
   completed: number;
   failed: number;
   message: string | null;
-  items: { siteId: string; status: string; errorMessage: string | null; label: string | null; details?: ErrorDetail | null }[];
+  items: { siteId: string; status: string; errorMessage: string | null; label: string | null; details?: ErrorDetail | null; retryableTimeout?: boolean }[];
   errorDetails?: ErrorDetail | null;
 };
 type Source = "upload" | "history";
@@ -323,6 +323,19 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     }
   };
 
+  const retryTimeouts = async () => {
+    if (!operation) return;
+    setBusy(true); setError("");
+    try {
+      const response = await apiFetch(`/api/operations/${encodeURIComponent(operation.id)}/retry-timeouts`, { method: "POST" });
+      const data = await response.json() as { operationId?: string; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадки для повтора.");
+      if (!data.operationId) throw new Error("Сервер не вернул номер повторной операции.");
+      setOperation(null); setOperationId(data.operationId);
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusy(false); }
+  };
+
   const terminal = Boolean(operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status));
 
   return (
@@ -466,6 +479,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
           {operation && operation.items.length > 0 && <OperationSites items={operation.items} labelColumn="Адрес" labels={siteLabels} />}
           {operation && skippedCount > 0 && <p className="removal-result-note">{countRu(skippedCount, rowForms)} без изменений: инженер уже не был назначен.</p>}
           {operation && operation.failed > 0 && <div className="operation-failures">{operation.items.filter((item) => item.status === "FAILED").map((item) => <p key={item.siteId}>Площадка {item.siteId}: {item.errorMessage}</p>)}</div>}
+          {operation?.items.some((item) => item.retryableTimeout) && <div className="operation-retry-timeouts"><strong>Площадки с таймаутом</strong><p>Сначала повторно проверим состояние в YouGile, затем выполним только незавершённые действия.</p><button className="outline-button" disabled={busy || operationPending} onClick={() => void retryTimeouts()}>{busy ? "Проверяем и запускаем…" : "Повторить незавершённые действия"}</button></div>}
           {(Boolean(error) || Boolean(operation && (operation.failed > 0 || operation.errorDetails || ["FAILED", "PARTIAL"].includes(operation.status)))) && (
             <ErrorDiagnostics payload={operationDiagnosticsPayload({ action: "Снятие инженеров по XLSX", operation, apiError: error || null })} />
           )}

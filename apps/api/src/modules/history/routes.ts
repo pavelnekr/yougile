@@ -228,7 +228,12 @@ export async function registerHistoryRoutes(app: FastifyInstance, prisma: Prisma
       const pendingOperations = operations.filter((operation) =>
         operation.status === OperationStatus.QUEUED || operation.status === OperationStatus.RUNNING).length;
       const finishedOperations = operations.filter((operation) =>
-        operation.finishedAt !== null && [OperationStatus.SUCCEEDED, OperationStatus.PARTIAL, OperationStatus.FAILED, OperationStatus.CANCELLED].includes(operation.status));
+        operation.finishedAt !== null && new Set<OperationStatus>([
+          OperationStatus.SUCCEEDED,
+          OperationStatus.PARTIAL,
+          OperationStatus.FAILED,
+          OperationStatus.CANCELLED
+        ]).has(operation.status));
       const totalExecutionMs = finishedOperations.reduce((sum, operation) => {
         if (!operation.startedAt || !operation.finishedAt) return sum;
         return sum + Math.max(0, operation.finishedAt.getTime() - operation.startedAt.getTime());
