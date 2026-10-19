@@ -145,8 +145,11 @@ button { color: inherit; }
 .netbox-lookup-loading { color: #7c8799; }
 .netbox-lookup-found { color: #368263; font-weight: 650; }
 .netbox-lookup-missing, .netbox-lookup-error { color: #ad5f4a; }
+.netbox-cell-main, .netbox-cell-meta { display: block; }
+.netbox-cell-meta { margin-top: 3px; color: #8791a1; font-size: 9px; }
+.netbox-empty-row { padding: 18px !important; color: #8791a1; text-align: center; }
 .daps-daily-controls input, .daps-manual-row input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
-.daps-daily-controls > .outline-button, .daps-daily-save { min-height: 34px; align-self: end; }
+.daps-daily-controls > .outline-button, .daps-daily-controls > .btn-primary, .daps-daily-save { min-height: 34px; align-self: end; }
 .daps-daily-source { flex: 1 0 100%; color: #8790a0; font-size: 9px; text-align: right; }
 .daps-daily-table-panel, .daps-daily-chart-panel { margin-top: 14px; padding: 16px; }
 .daps-daily-table-panel .panel-heading, .daps-daily-chart-panel .panel-heading { margin-bottom: 12px; }

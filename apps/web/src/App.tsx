@@ -616,47 +616,63 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
 
 function NetboxPage({ onBack }: { onBack: () => void }) {
   const [siteNumber, setSiteNumber] = useState("");
+  const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ state: "idle" | "loading" | "found" | "missing" | "error"; message?: string }>({ state: "idle" });
-  const hasSite = siteNumber.trim().length > 0;
+  const [netboxInterfaces, setNetboxInterfaces] = useState<{ id: string; role: string; port: string; host: string; bypassHost: string; bypassPort: string }[]>([]);
   useEffect(() => {
-    const slug = siteNumber.trim();
-    if (!slug) {
-      setLookup({ state: "idle" });
-      return;
-    }
+    if (searchedSiteNumber === null) return;
     const controller = new AbortController();
     setLookup({ state: "loading" });
-    const timer = window.setTimeout(() => {
-      apiFetch(`/api/daps/netbox/site?slug=${encodeURIComponent(slug)}`, { signal: controller.signal })
-        .then(async (response) => {
-          const data = await response.json() as { found?: boolean; error?: string };
-          if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
-          setLookup({ state: data.found ? "found" : "missing" });
-        })
-        .catch((error: unknown) => {
-          if (!controller.signal.aborted) setLookup({ state: "error", message: error instanceof Error ? error.message : "Не удалось проверить площадку в NetBox." });
-        });
-    }, 350);
+    setNetboxInterfaces([]);
+    apiFetch(`/api/daps/netbox/site?slug=${encodeURIComponent(searchedSiteNumber)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json() as {
+          found?: boolean;
+          interfaces?: { id: string; role: string; port: string; host: string; bypassHost: string; bypassPort: string }[];
+          error?: string;
+        };
+        if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
+        setNetboxInterfaces(data.interfaces ?? []);
+        setLookup({ state: data.found ? "found" : "missing" });
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) setLookup({ state: "error", message: error instanceof Error ? error.message : "Не удалось проверить площадку в NetBox." });
+      });
     return () => {
-      window.clearTimeout(timer);
       controller.abort();
     };
-  }, [siteNumber]);
+  }, [searchedSiteNumber]);
+  const handleSiteNumberChange = (value: string) => {
+    setSiteNumber(value);
+    setSearchedSiteNumber(null);
+    setLookup({ state: "idle" });
+    setNetboxInterfaces([]);
+  };
   return <section className="section-view daps-report-page">
     <div className="eyebrow"><span className="eyebrow-line" /> DAPS · NETBOX</div>
     <div className="section-hero daps-report-hero"><span className="section-hero-icon"><Network size={22} /></span><div><h1>Netbox</h1><p>Порты ОС и байпаса по площадке.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
-    <section className="panel daps-daily-controls netbox-controls">
+    <form className="panel daps-daily-controls netbox-controls" onSubmit={(event) => { event.preventDefault(); if (siteNumber.trim()) setSearchedSiteNumber(siteNumber.trim()); }}>
       <label className="field-label" htmlFor="netbox-site-number"><span>Номер площадки</span>
-        <input id="netbox-site-number" type="text" inputMode="text" value={siteNumber} onChange={(event) => setSiteNumber(event.target.value)} placeholder="Введите номер площадки" />
+        <input id="netbox-site-number" type="text" inputMode="text" value={siteNumber} onChange={(event) => handleSiteNumberChange(event.target.value)} placeholder="Введите номер площадки" />
       </label>
+      <button type="submit" className="btn-primary" disabled={!siteNumber.trim() || lookup.state === "loading"}><Search size={15} /> Поиск</button>
       {lookup.state === "loading" && <span className="netbox-lookup netbox-lookup-loading" role="status">Поиск в NetBox…</span>}
       {lookup.state === "found" && <span className="netbox-lookup netbox-lookup-found" role="status">Площадка найдена</span>}
       {lookup.state === "missing" && <span className="netbox-lookup netbox-lookup-missing" role="status">Площадка не найдена</span>}
       {lookup.state === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{lookup.message}</span>}
-    </section>
-    {hasSite && <section className="panel daps-daily-table-panel">
-      <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {siteNumber.trim()}</p></div></div>
-      <div className="daps-daily-table-wrap"><table className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Порт ОС</th><th>Хост ОС</th><th>Порт Байпаса</th><th>Хост Байпаса</th></tr></thead><tbody /></table></div>
+    </form>
+    {searchedSiteNumber !== null && <section className="panel daps-daily-table-panel">
+      <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}</p></div></div>
+      <div className="daps-daily-table-wrap"><table className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Хост ОС</th><th>Порт ОС</th><th>Хост Байпаса</th><th>Порт Байпаса</th></tr></thead><tbody>
+        {netboxInterfaces.map((item, index) => <tr key={item.id}>
+          <td>{index + 1}</td>
+          <td><span className="netbox-cell-main">{item.host || "—"}</span></td>
+          <td><span className="netbox-cell-main">{item.port}</span><span className="netbox-cell-meta">{item.role}</span></td>
+          <td><span className="netbox-cell-main">{item.bypassHost || "—"}</span></td>
+          <td><span className="netbox-cell-main">{item.bypassPort || "—"}</span></td>
+        </tr>)}
+        {lookup.state === "found" && netboxInterfaces.length === 0 && <tr><td className="netbox-empty-row" colSpan={5}>Не найдены порты ОС, связанные с байпасом.</td></tr>}
+      </tbody></table></div>
     </section>}
   </section>;
 }
@@ -1360,7 +1376,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Netbox" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

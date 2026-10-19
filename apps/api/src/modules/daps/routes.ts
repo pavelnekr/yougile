@@ -55,7 +55,134 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
       return reply.code(502).send({ error: "NetBox вернул некорректный ответ." });
     }
     const site = data.results?.find((item) => item.slug === slug.data);
-    return { found: Boolean(site), site: site ? { id: site.id, name: site.name, slug: site.slug } : null };
+    if (!site) return { found: false, site: null, interfaces: [] };
+
+    const apiBase = new URL("/api/dcim/", settings.url);
+    let siteDevices: { id: number; name: string; role?: { name?: string } | null }[];
+    try {
+      const devicesUrl = new URL("devices/", apiBase);
+      devicesUrl.searchParams.set("site_id", String(site.id));
+      devicesUrl.searchParams.set("limit", "1000");
+      const devicesResponse = await fetch(devicesUrl, {
+        headers: { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (!devicesResponse.ok) {
+        request.log.warn({ statusCode: devicesResponse.status }, "NetBox site device lookup failed");
+        return reply.code(502).send({ error: "Не удалось загрузить устройства площадки из NetBox." });
+      }
+      const devicesData = await devicesResponse.json() as { results?: typeof siteDevices };
+      siteDevices = devicesData.results ?? [];
+    } catch {
+      return reply.code(502).send({ error: "Не удалось загрузить устройства площадки из NetBox." });
+    }
+    type NetboxPeer = { id: number; url?: string; name?: string | null; display?: string; device?: { id?: number; name?: string | null } | null };
+    type OdfPort = { id: number; name: string; device?: { id?: number } | null; link_peers?: NetboxPeer[] | null; rear_ports?: { rear_port: number }[]; front_ports?: { front_port: number }[] };
+    const deviceById = new Map(siteDevices.map((device) => [device.id, device]));
+    const isBypassRole = (role?: string) => role === "Комбинированный байпас" || role === "Пассивный байпас";
+    const odfDevices = siteDevices.filter((device) => device.role?.name === "ODF оператора");
+    const osDevices = siteDevices.filter((device) => device.role?.name === "Устройство LAN" || device.role?.name === "Устройство WAN");
+    const authHeaders = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
+    const odfPortsByNode = new Map<string, { port: OdfPort; kind: "front" | "rear" }>();
+    const odfLinks = new Map<string, Set<string>>();
+    const endpointKind = (peer: NetboxPeer): "front" | "rear" | "interface" | null => {
+      if (peer.url?.includes("/front-ports/")) return "front";
+      if (peer.url?.includes("/rear-ports/")) return "rear";
+      if (peer.url?.includes("/interfaces/")) return "interface";
+      return null;
+    };
+    const nodeKey = (kind: "front" | "rear", id: number) => `${kind}:${id}`;
+    try {
+      await Promise.all(odfDevices.flatMap((device) => (["front-ports", "rear-ports"] as const).map(async (portType) => {
+        const portsUrl = new URL(`${portType}/`, apiBase);
+        portsUrl.searchParams.set("device_id", String(device.id));
+        portsUrl.searchParams.set("limit", "1000");
+        const portsResponse = await fetch(portsUrl, { headers: authHeaders, signal: AbortSignal.timeout(10_000) });
+        if (!portsResponse.ok) throw new Error("NetBox ODF port request failed");
+        const portsData = await portsResponse.json() as { results?: OdfPort[] };
+        const kind = portType === "front-ports" ? "front" : "rear";
+        for (const port of portsData.results ?? []) odfPortsByNode.set(nodeKey(kind, port.id), { port, kind });
+      })));
+      const connectNodes = (a: string, b: string) => {
+        if (!odfLinks.has(a)) odfLinks.set(a, new Set());
+        if (!odfLinks.has(b)) odfLinks.set(b, new Set());
+        odfLinks.get(a)!.add(b);
+        odfLinks.get(b)!.add(a);
+      };
+      for (const [key, entry] of odfPortsByNode) {
+        const { port, kind } = entry;
+        if (kind === "front") for (const rear of port.rear_ports ?? []) connectNodes(key, nodeKey("rear", rear.rear_port));
+        else for (const front of port.front_ports ?? []) connectNodes(key, nodeKey("front", front.front_port));
+      }
+    } catch {
+      return reply.code(502).send({ error: "Не удалось загрузить порты ODF площадки из NetBox." });
+    }
+
+    const interfaceGroups = await Promise.all(osDevices.map(async (device) => {
+      try {
+        const interfacesUrl = new URL("interfaces/", apiBase);
+        interfacesUrl.searchParams.set("device_id", String(device.id));
+        interfacesUrl.searchParams.set("limit", "1000");
+        const interfacesResponse = await fetch(interfacesUrl, { headers: authHeaders, signal: AbortSignal.timeout(10_000) });
+        if (!interfacesResponse.ok) throw new Error("NetBox interface request failed");
+        const interfacesData = await interfacesResponse.json() as { results?: { id: number; name: string; link_peers?: NetboxPeer[] | null }[] };
+        return (interfacesData.results ?? []).flatMap((item) => {
+          const matches = new Map<string, { host: string; port: string }>();
+          const queue: { kind: "front" | "rear"; id: number }[] = [];
+          for (const peer of item.link_peers ?? []) {
+            const peerDevice = peer.device?.id ? deviceById.get(peer.device.id) : undefined;
+            if (isBypassRole(peerDevice?.role?.name)) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "" });
+            else if (peerDevice?.role?.name === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
+              queue.push({ kind: endpointKind(peer) as "front" | "rear", id: peer.id });
+            }
+          }
+          const visited = new Set<string>();
+          while (queue.length) {
+            const current = queue.shift()!;
+            const key = nodeKey(current.kind, current.id);
+            if (visited.has(key)) continue;
+            visited.add(key);
+            const entry = odfPortsByNode.get(key);
+            if (!entry) continue;
+            for (const peer of entry.port.link_peers ?? []) {
+              const peerDevice = peer.device?.id ? deviceById.get(peer.device.id) : undefined;
+              if (isBypassRole(peerDevice?.role?.name)) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "" });
+              else if (peerDevice?.role?.name === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
+                const peerKey = nodeKey(endpointKind(peer) as "front" | "rear", peer.id);
+                if (!visited.has(peerKey)) queue.push({ kind: endpointKind(peer) as "front" | "rear", id: peer.id });
+              }
+            }
+            for (const neighbor of odfLinks.get(key) ?? []) {
+              const [kind, id] = neighbor.split(":") as ["front" | "rear", string];
+              if (!visited.has(neighbor)) queue.push({ kind, id: Number(id) });
+            }
+          }
+          const bypasses = [...matches.values()];
+          return bypasses.map((bypass, index) => ({
+            id: `${device.id}-${item.id}-${index}`,
+            role: device.role?.name ?? "",
+            port: item.name,
+            host: device.name,
+            bypassHost: bypass.host,
+            bypassPort: bypass.port
+          }));
+        });
+      } catch {
+        throw new Error("Не удалось загрузить интерфейсы устройств площадки из NetBox.");
+      }
+    })).catch(() => null);
+    if (!interfaceGroups) return reply.code(502).send({ error: "Не удалось загрузить интерфейсы устройств площадки из NetBox." });
+
+    return {
+      found: true,
+      site: { id: site.id, name: site.name, slug: site.slug },
+      interfaces: interfaceGroups.flat().sort((a, b) =>
+        a.bypassHost.localeCompare(b.bypassHost, "ru", { numeric: true, sensitivity: "base" }) ||
+        a.bypassPort.localeCompare(b.bypassPort, "ru", { numeric: true, sensitivity: "base" }) ||
+        a.host.localeCompare(b.host, "ru", { numeric: true, sensitivity: "base" }) ||
+        a.port.localeCompare(b.port, "ru", { numeric: true, sensitivity: "base" })
+      )
+    };
   });
 
   app.get<{ Querystring: { date?: string } }>("/api/daps/daily-kpi", { preHandler: readAccess }, async (request, reply) => {
