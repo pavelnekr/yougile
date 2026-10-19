@@ -676,7 +676,7 @@ export default function PortalConfigPage({
         <span className="section-hero-icon"><SlidersHorizontal size={22} /></span>
         <div>
           <h1>Конфигурация портала</h1>
-          <p>Столбцы YouGile («Фильтрация» и АВР), период «Проверки работ» и получатели писем раздела «Согласование/Оповещение». Изменения вступают в силу после сохранения.</p>
+          <p>Столбцы YouGile («Фильтрация» и АВР), период «Проверки работ» и параметры SMTP. Изменения вступают в силу после сохранения.</p>
         </div>
       </div>
 
@@ -741,7 +741,7 @@ export default function PortalConfigPage({
                 className={`portal-config-tab ${tab === "mail" ? "portal-config-tab-active" : ""}`}
                 onClick={() => switchTab("mail")}
               >
-                Оповещение <span className="portal-config-tab-count">{mailRecipients.length}</span>
+                SMTP
               </button>
             </div>
             <div className="portal-config-tab-group" role="tablist" aria-label="DAPS">
@@ -955,6 +955,8 @@ export default function PortalConfigPage({
             aria-labelledby="portal-config-tab-mail"
             hidden={tab !== "mail"}
           >
+            <p className="portal-config-note">Получатели писем и шаблон перенесены в рабочее пространство «Согласование/Оповещение».</p>
+            <div hidden>
             <div className="portal-config-section-heading">
               <div>
                 <h2>Получатели писем</h2>
@@ -1049,6 +1051,7 @@ export default function PortalConfigPage({
               )}
             </div>
 
+            </div>
             <div className="portal-config-subsection">
               <div className="portal-config-section-heading">
                 <div>

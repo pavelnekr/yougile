@@ -31,6 +31,21 @@ export type BuiltLetter = {
   warnings: string[];
 };
 
+export type LetterTemplate = { subject: string; body: string };
+
+export const defaultLetterTemplate: LetterTemplate = {
+  subject: "Согласование АВР №{{avrNumber}} на УС ID{{site}}, {{region}}",
+  body: [
+    "<p>Уважаемые коллеги, добрый день!</p>",
+    "<p>В рамках ТП ТСПУ необходимо провести АВР на узле связи: ID {{site}}</p>",
+    "<p>Работы по замене:<br>{{equipmentList}}</p>",
+    "<p>Работы будет выполнять инженер ТП, субподрядчик ГРЧЦ – {{contractor}}<br>Данные инженеров предоставит представитель {{contractor}}</p>",
+    "<p>Прошу согласовать:<br>- допуск инженера {{contractor}} для выполнения АВР;<br>- время и дату проведения работ (по возможности в ночь с {{workDate}} на ..).</p>",
+    "<p>Ответным письмом прошу указать контактное лицо на УС (ФИО и контактный номер телефона) инженера,<br>который сможет осуществлять технадзор и поддерживать связь с работниками технической поддержки во время проведения работ,<br>а так же на какое число и время согласованы АВР.</p>",
+    "<p>Алгоритм работ:</p>{{algoTable}}"
+  ].join("\n")
+};
+
 const htmlEntityMap: Record<string, string> = {
   "&nbsp;": " ",
   "&amp;": "&",
@@ -176,7 +191,7 @@ function formatWorkDate(value: string): string {
  * Собирает тему и HTML-тело письма по тому же шаблону, что и узел
  * «node-формирование_письма» из воркфлоу.
  */
-export function buildLetter(source: ParsedLetterSource, fields: PreviewFields): BuiltLetter {
+export function buildLetter(source: ParsedLetterSource, fields: PreviewFields, template: LetterTemplate = defaultLetterTemplate): BuiltLetter {
   const avrNumber = source.avrNumber ?? "";
   const site = source.site ?? "";
   const region = fields.region;
@@ -214,37 +229,21 @@ export function buildLetter(source: ParsedLetterSource, fields: PreviewFields): 
   </tbody>
 </table>`;
 
-  const body = [
-    "Уважаемые коллеги, добрый день!",
-    "<br><br>",
-    `В рамках ТП ТСПУ необходимо провести АВР на узле связи: ID ${escapeHtml(site)}`,
-    "<br><br>",
-    "Работы по замене: ",
-    "<br>",
+  const defaultValues: Record<string, string> = {
+    avrNumber: escapeHtml(avrNumber),
+    site: escapeHtml(site),
+    region: escapeHtml(region),
+    contractor: escapeHtml(contractor),
+    workDate: escapeHtml(workDate),
     equipmentList,
-    "<br><br>",
-    `Работы будет выполнять инженер ТП, субподрядчик ГРЧЦ – ${escapeHtml(contractor)}`,
-    "<br>",
-    `Данные инженеров предоставит представитель ${escapeHtml(contractor)}`,
-    "<br><br>",
-    "Прошу согласовать:",
-    "<br>",
-    `- допуск инженера ${escapeHtml(contractor)} для выполнения АВР;`,
-    "<br>",
-    `- время и дату проведения работ (по возможности в ночь с ${escapeHtml(workDate)} на ..).`,
-    "<br><br>",
-    "Ответным письмом прошу указать контактное лицо на УС (ФИО и контактный номер телефона) инженера,",
-    "<br>",
-    "который сможет осуществлять технадзор и поддерживать связь с работниками технической поддержки во время проведения работ,",
-    "<br>",
-    "а так же на какое число и время согласованы АВР.",
-    "<br><br>",
-    "Алгоритм работ:",
-    "<br><br>",
     algoTable
-  ].join("");
-
-  const subject = `Согласование АВР №${avrNumber} на УС ID${site}, ${region}`;
+  };
+  const render = (sourceText: string, values: Record<string, string>) => sourceText.replace(/{{([A-Za-z]+)}}/g, (token, key: string) => values[key] ?? token);
+  const defaultSubject = render(defaultLetterTemplate.subject, defaultValues);
+  const defaultBody = render(defaultLetterTemplate.body, defaultValues);
+  const templateValues = { ...defaultValues, subject: defaultSubject, body: defaultBody };
+  const subject = render(template.subject, templateValues);
+  const body = render(template.body, templateValues);
 
   return {
     subject,

@@ -22,6 +22,7 @@
 }
 
 * { box-sizing: border-box; }
+html, #root { height: 100%; min-height: 0; }
 
 /* Платформенный слой для телефонов. Ниже только то, что нужно устройству,
    а не оформлению: подсветка нажатия, задержка тапа, выделение текста.
@@ -31,10 +32,12 @@ button, a, [role="button"], select, input[type="checkbox"], input[type="radio"] 
 /* Текст кнопки при долгом нажатии выделять нельзя. На содержимое страницы
    правило не распространяется: адреса и сообщения об ошибках копируются. */
 button, [role="button"] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-body { margin: 0; min-width: 360px; min-height: 100vh; min-height: 100dvh; }
+body { height: 100vh; height: 100dvh; min-width: 360px; min-height: 0; margin: 0; overflow: hidden; }
 /* На широких экранах интерфейс чуть увеличен целиком: многие компоненты
    используют фиксированные размеры в px, поэтому одного font-size недостаточно. */
-@media (min-width: 761px) { body { zoom: 1.25; } }
+@media (min-width: 761px) {
+  body { zoom: 1.25; height: 80vh; height: 80dvh; }
+}
 /* CSS zoom увеличивает и высоту страницы. У авторизации высота уже задана
    размером окна, поэтому компенсируем масштаб на уровне body. */
 @media (min-width: 811px) {
@@ -122,7 +125,7 @@ button { color: inherit; }
   .login-security-note { margin-top: 14px; }
 }
 
-.app-shell { min-height: 100vh; min-height: 100dvh; }
+.app-shell { display: flex; width: 100%; height: 100%; min-height: 0; }
 .sidebar { position: fixed; z-index: 5; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 252px; padding: 24px 15px 13px; padding-top: calc(24px + env(safe-area-inset-top, 0px)); padding-bottom: calc(13px + env(safe-area-inset-bottom, 0px)); padding-left: calc(15px + env(safe-area-inset-left, 0px)); background: #fff; border-right: 1px solid #edf0f5; }
 .brand { display: flex; align-items: center; gap: 11px; margin: 0 10px 32px; color: inherit; text-decoration: none; }
 .brand-mark { display: grid; grid-template-columns: repeat(2, 10px); grid-template-rows: repeat(2, 10px); gap: 3px; transform: rotate(-8deg); }
@@ -186,7 +189,7 @@ button { color: inherit; }
 .profile { display: flex; width: 100%; align-items: center; gap: 10px; margin-top: 14px; padding: 13px 4px 2px; border: 0; border-top: 1px solid #edf0f5; background: none; text-align: left; cursor: pointer; }
 .profile-avatar, .topbar-avatar { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(145deg, #90a5e9, #586db8); font-size: 10px; font-weight: 600; }
 
-.main-area { min-height: 100vh; min-height: 100dvh; margin-left: 252px; }
+.main-area { display: flex; min-width: 0; height: 100%; min-height: 0; flex: 1; flex-direction: column; margin-left: 252px; }
 .topbar { position: sticky; z-index: 3; top: 0; display: flex; height: 65px; height: calc(65px + env(safe-area-inset-top, 0px)); align-items: center; justify-content: space-between; padding: 0 39px; padding-top: env(safe-area-inset-top, 0px); border-bottom: 1px solid #e9edf3; background: rgba(255,255,255,.88); backdrop-filter: blur(14px); }
 .breadcrumbs { display: flex; align-items: center; gap: 11px; color: #939bac; font-size: 11px; }
 .breadcrumbs strong { color: #3d4658; font-weight: 600; }
@@ -199,7 +202,7 @@ button { color: inherit; }
 .icon-button { position: relative; display: grid; width: 31px; height: 31px; place-items: center; border: 0; border-radius: 7px; color: #727d8e; background: transparent; cursor: pointer; }
 .topbar-avatar { width: 29px; height: 29px; font-size: 9px; }
 .mobile-menu { display: none; }
-.page-content { max-width: 1440px; margin: 0 auto; padding: 34px 40px 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+.page-content { width: 100%; max-width: 1440px; min-height: 0; flex: 1; overflow-y: auto; margin: 0 auto; padding: 34px 40px 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 .welcome-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 27px; }
 .eyebrow { display: flex; align-items: center; gap: 8px; color: #818ca0; font-size: 9px; font-weight: 700; letter-spacing: 1.15px; }
 .eyebrow-line { display: inline-block; width: 15px; height: 2px; border-radius: 2px; background: #6882e2; }
@@ -600,6 +603,49 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 /* Карточки сценариев на странице раздела: не растягиваются на всю ширину,
    а складываются в сетку фиксированного размера, как карточки на обзоре. */
 .coordination-landing-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 360px)); }
+.coordination-landing-divider { height: 1px; margin: 28px 0 24px; background: #e8ebf1; }
+.coordination-settings-group-title { margin: 0 0 14px; font: 700 14px "Segoe UI", sans-serif; color: #263146; }
+.coordination-settings-panel { display: grid; max-width: 760px; gap: 20px; padding: 18px; }
+.coordination-settings-subsection + .coordination-settings-subsection { margin-top: 24px; padding-top: 20px; border-top: 1px solid #edf0f4; }
+.coordination-settings-subsection h2 { margin: 0 0 5px; font-size: 14px; }
+.coordination-settings-subsection > p { margin: 0 0 12px; color: #8790a0; font-size: 11px; line-height: 1.5; }
+.coordination-settings-subsection label { display: grid; gap: 6px; margin-top: 12px; color: #5f6878; font-size: 11px; }
+.coordination-settings-subsection label input, .coordination-settings-subsection label textarea { width: 100%; padding: 9px 10px; border: 1px solid #dfe4ec; border-radius: 6px; color: #202a3b; font: inherit; }
+.coordination-settings-subsection label textarea { resize: vertical; font-family: Consolas, monospace; line-height: 1.5; }
+.coordination-template-editor { min-height: 280px; padding: 14px 16px; border: 1px solid #dfe4ec; border-radius: 7px; color: #354056; background: #fff; font: 13px/1.65 "Segoe UI", sans-serif; }
+
+/* Короткие страницы сценариев должны помещаться в небольшое окно без
+   прокрутки только из-за декоративных отступов. Длинные формы остаются
+   прокручиваемыми по содержимому. */
+@media (max-height: 760px) {
+  .page-content:has(> .section-view) { padding-top: 18px; padding-bottom: 8px; }
+  .section-view > .section-hero { margin-top: 9px; margin-bottom: 15px; }
+  .section-view > .section-heading { margin-top: 16px; margin-bottom: 9px; }
+  .section-view > .page-footer { margin-top: 12px; }
+  .coordination-landing-page .sites-page-heading { margin: 8px 0 12px; }
+  .coordination-landing-page .action-card { min-height: 132px; padding: 9px 12px 8px; }
+  .coordination-landing-page .action-card h3 { margin-top: 7px; }
+  .coordination-landing-page .action-card p { margin-bottom: 5px; font-size: 9px; line-height: 1.4; }
+  .coordination-landing-divider { margin: 10px 0 8px; }
+  .coordination-settings-group-title { margin-bottom: 5px; }
+  .coordination-landing-page > .page-footer { margin-top: 8px; }
+}
+@media (max-height: 500px) {
+  .page-content:has(> .coordination-landing-page) { padding-top: 8px; padding-bottom: 0; }
+  .coordination-landing-page .sites-page-heading { margin: 5px 0 8px; }
+  .coordination-landing-page .sites-page-heading p { font-size: 9px; line-height: 1.35; }
+  .coordination-landing-page .action-card { min-height: 115px; padding: 6px 10px; }
+  .coordination-landing-page .action-card h3 { margin: 5px 0 3px; }
+  .coordination-landing-page .action-card p { margin-bottom: 3px; font-size: 8px; line-height: 1.3; }
+  .coordination-landing-divider { margin: 6px 0 4px; }
+  .coordination-settings-group-title { margin-bottom: 2px; }
+  .coordination-landing-page > .page-footer { margin-top: 4px; }
+  .coordination-landing-page > .page-footer > span:last-child { display: none; }
+}
+.coordination-template-editor:focus { outline: 0; border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; }
+.coordination-template-editor p { margin: 0 0 14px; }
+.coordination-template-editor p:last-child { margin-bottom: 0; }
+.coordination-settings-subsection .portal-config-row { margin-bottom: 8px; }
 .coordination-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .coordination-build-button { justify-self: start; }
 .coordination-form-hint { color: #929aaa; font-size: 9px; line-height: 1.5; }

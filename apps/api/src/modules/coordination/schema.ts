@@ -50,6 +50,11 @@ export const mailRecipientsSchema = z.object({
     )
 });
 
+export const letterTemplateSchema = z.object({
+  subject: z.string().trim().min(1, "Шаблон темы письма не может быть пустым.").max(500),
+  body: z.string().trim().min(1, "Шаблон письма не может быть пустым.").max(100_000)
+});
+
 // Параметры SMTP раздела «Согласование/Оповещение». Живут в AppSetting и
 // редактируются в «Конфигурации портала» → «Оповещения»; пустой host означает,
 // что отправка отключена. Пароль в ответах API не возвращается, только флаг

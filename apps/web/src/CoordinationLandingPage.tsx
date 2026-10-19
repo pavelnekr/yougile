@@ -1,12 +1,8 @@
-import { ArrowRight, FileText } from "lucide-react";
+import { ArrowRight, FileText, Settings2 } from "lucide-react";
 import type { Section } from "./router.js";
 import { PORTAL_VERSION } from "./version";
 
-/**
- * Страница раздела «Согласование/Оповещение»: карточки сценариев, как на обзоре.
- * Пока сценарий один — «Согласование АВР», он открывает подраздел
- * `/coordination/avr` со страницей письма.
- */
+/** Главная страница пространства «Согласование/Оповещение». */
 export default function CoordinationLandingPage({ onNavigate }: { onNavigate: (section: Section) => void }) {
   return (
     <section className="section-view coordination-landing-page">
@@ -30,9 +26,24 @@ export default function CoordinationLandingPage({ onNavigate }: { onNavigate: (s
         </button>
       </section>
 
+      <div className="coordination-landing-divider" aria-hidden="true" />
+
+      <h2 className="coordination-settings-group-title">Настройки рабочего пространства</h2>
+
+      <section className="actions-grid coordination-landing-grid" aria-label="Настройки раздела">
+        <button className="action-card" onClick={() => onNavigate("Настройки согласования")}>
+          <div className="action-card-top">
+            <span className="action-icon orange"><Settings2 size={19} /></span>
+          </div>
+          <h3>Настройки</h3>
+          <p>Управляйте получателями писем и шаблоном письма для сценариев этого пространства.</p>
+          <span className="action-link">Открыть настройки <ArrowRight size={15} /></span>
+        </button>
+      </section>
+
       <footer className="page-footer">
         <span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span>
-        <span>Получатели настраиваются в разделе «Конфигурация портала», отправка журналируется</span>
+        <span>Параметры SMTP задаются в конфигурации портала, отправка журналируется</span>
       </footer>
     </section>
   );

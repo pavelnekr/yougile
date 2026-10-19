@@ -5,14 +5,16 @@ import { YougileTokenEncryptionKeyError } from "../../integrations/yougile/token
 import { previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
 import { requireRole, requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
-import { mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
+import { letterTemplateSchema, mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
 import {
   buildLetterFromDocx,
   describeSendError,
   isSmtpConfigured,
   loadMailRecipients,
+  loadLetterTemplate,
   loadSmtpSettings,
   saveMailRecipients,
+  saveLetterTemplate,
   saveSmtpSettings,
   sendLetter,
   type SmtpSettings
@@ -43,12 +45,14 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
 
   app.get("/api/coordination/config", { preHandler: readAccess }, async (_request, reply) => {
     try {
-      const [recipients, settings] = await Promise.all([
+      const [recipients, settings, template] = await Promise.all([
         loadMailRecipients(prisma),
-        loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message))
+        loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message)),
+        loadLetterTemplate(prisma)
       ]);
       return {
         recipients,
+        template,
         smtpConfigured: isSmtpConfigured(settings),
         // Пароль в ответ не попадает — только флаг, что он задан.
         smtp: {
@@ -62,6 +66,19 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     } catch (error) {
       app.log.error({ err: error }, "Could not read coordination config");
       return reply.code(500).send({ error: "Не удалось загрузить конфигурацию оповещений." });
+    }
+  });
+
+  app.put("/api/coordination/template", { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = letterTemplateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте шаблон письма." });
+    try {
+      await saveLetterTemplate(prisma, parsed.data);
+      app.log.warn({ actor: request.sessionUser?.login }, "Coordination letter template updated");
+      return { template: parsed.data };
+    } catch (error) {
+      app.log.error({ err: error }, "Could not save coordination letter template");
+      return reply.code(500).send({ error: "Не удалось сохранить шаблон письма." });
     }
   });
 
@@ -176,7 +193,8 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     }
 
     try {
-      const letter = await buildLetterFromDocx(buffer, fieldsParsed.data);
+      const template = await loadLetterTemplate(prisma);
+      const letter = await buildLetterFromDocx(buffer, fieldsParsed.data, template);
       return { ...letter, fileName: normalized.slice(0, 255) };
     } catch (error) {
       app.log.error({ err: error }, "Could not parse coordination DOCX");

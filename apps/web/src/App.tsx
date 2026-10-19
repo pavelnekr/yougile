@@ -28,6 +28,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   TrendingUp,
+  Network,
   UsersRound
 } from "lucide-react";
 import XlsxAssignmentPage from "./XlsxAssignmentPage.js";
@@ -37,6 +38,7 @@ import XlsxRemovalPage from "./XlsxRemovalPage.js";
 import CommentPage from "./CommentPage.js";
 import CoordinationPage from "./CoordinationPage.js";
 import CoordinationLandingPage from "./CoordinationLandingPage.js";
+import CoordinationSettingsPage from "./CoordinationSettingsPage.js";
 import XlsxWorkCheckPage from "./XlsxWorkCheckPage.js";
 import PlanningWorkPage from "./PlanningWorkPage.js";
 import DapsDailyKpiPage from "./DapsDailyKpiPage.js";
@@ -121,6 +123,7 @@ const workspaceBySection: Partial<Record<Section, string>> = {
   "Управление работами в YouGile": "WORK_MANAGEMENT",
   "DAPS": "DAPS",
   "Ежедневный отчет по KPI": "DAPS",
+  "Netbox": "DAPS",
   "Площадки": "WORK_MANAGEMENT",
   "Площадки АВР": "WORK_MANAGEMENT",
   "Массовое назначение инженеров": "WORK_MANAGEMENT",
@@ -133,6 +136,7 @@ const workspaceBySection: Partial<Record<Section, string>> = {
   "Настройки": "WORK_MANAGEMENT",
   "Согласование/Оповещение": "COORDINATION",
   "Согласование АВР": "COORDINATION",
+  "Настройки согласования": "COORDINATION",
   "Планирование Работ": "WORK_PLANNING"
 };
 
@@ -396,7 +400,9 @@ function App() {
   // и пункт навигации остаются у родительского раздела.
   const parentSectionOf: Partial<Record<Section, Section>> = {
     "Согласование АВР": "Согласование/Оповещение",
-    "Ежедневный отчет по KPI": "DAPS"
+    "Настройки согласования": "Согласование/Оповещение",
+    "Ежедневный отчет по KPI": "DAPS",
+    "Netbox": "DAPS"
   };
   const activeNavSection = parentSectionOf[activeSection] ?? activeSection;
 
@@ -515,10 +521,14 @@ function App() {
             <DapsLandingPage onNavigate={chooseSection} />
           ) : activeSection === "Ежедневный отчет по KPI" ? (
             <DapsDailyKpiPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
+          ) : activeSection === "Netbox" ? (
+            <NetboxPage onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Согласование/Оповещение" ? (
             <CoordinationLandingPage onNavigate={chooseSection} />
           ) : activeSection === "Согласование АВР" ? (
             <CoordinationPage onBack={() => chooseSection("Согласование/Оповещение")} />
+          ) : activeSection === "Настройки согласования" ? (
+            <CoordinationSettingsPage onBack={() => chooseSection("Согласование/Оповещение")} />
           ) : activeSection === "Планирование Работ" ? (
             <PlanningWorkPage canEdit={sessionUser.role !== "VIEWER"} />
           ) : activeSection === "Площадки" ? (
@@ -582,7 +592,7 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
         <div><h1>DAPS</h1><p>Рабочее пространство ежедневного контроля KPI.</p></div>
       </div>
       <section className="section-heading">
-        <div><h2>Инструменты</h2><p>Ежедневная сводка показателей KPI.</p></div>
+        <div><h2>Инструменты</h2><p>Ежедневная сводка показателей и сетевые данные площадок.</p></div>
       </section>
       <section className="actions-grid daps-card-grid">
         <button className="action-card" onClick={() => onNavigate("Ежедневный отчет по KPI")}>
@@ -591,10 +601,35 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
           <p>Сводка показателей за день, месячные средние и динамика КПЭ К3.</p>
           <span className="action-link">Открыть отчёт <ArrowRight size={15} /></span>
         </button>
+        <button className="action-card" onClick={() => onNavigate("Netbox")}>
+          <div className="action-card-top"><span className="action-icon green"><Network size={19} /></span></div>
+          <h3>Netbox</h3>
+          <p>Просмотр портов ОС и байпаса по номеру площадки.</p>
+          <span className="action-link">Открыть Netbox <ArrowRight size={15} /></span>
+        </button>
       </section>
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
     </section>
   );
+}
+
+function NetboxPage({ onBack }: { onBack: () => void }) {
+  const [siteNumber, setSiteNumber] = useState("");
+  const hasSite = siteNumber.trim().length > 0;
+  return <section className="section-view daps-report-page">
+    <div className="eyebrow"><span className="eyebrow-line" /> DAPS · NETBOX</div>
+    <div className="section-hero"><span className="section-hero-icon"><Network size={22} /></span><div><h1>Netbox</h1><p>Порты ОС и байпаса по площадке.</p></div></div>
+    <button type="button" className="text-button" onClick={onBack}>← Назад в DAPS</button>
+    <section className="panel daps-daily-controls netbox-controls">
+      <label className="field-label" htmlFor="netbox-site-number"><span>Номер площадки</span>
+        <input id="netbox-site-number" type="text" inputMode="text" value={siteNumber} onChange={(event) => setSiteNumber(event.target.value)} placeholder="Введите номер площадки" />
+      </label>
+    </section>
+    {hasSite && <section className="panel daps-daily-table-panel">
+      <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {siteNumber.trim()}</p></div></div>
+      <div className="daps-daily-table-wrap"><table className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Порт ОС</th><th>Хост ОС</th><th>Порт Байпаса</th><th>Хост Байпаса</th></tr></thead><tbody /></table></div>
+    </section>}
+  </section>;
 }
 
 function Overview({
@@ -1296,7 +1331,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

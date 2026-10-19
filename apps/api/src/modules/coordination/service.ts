@@ -3,12 +3,34 @@ import mammoth from "mammoth";
 import nodemailer from "nodemailer";
 import { config } from "../../config.js";
 import { decryptSmtpPassword, encryptSmtpPassword } from "../../integrations/yougile/token-crypto.js";
-import { buildLetter, parseLetterSource, type BuiltLetter } from "./letter.js";
+import { buildLetter, defaultLetterTemplate, parseLetterSource, type BuiltLetter, type LetterTemplate } from "./letter.js";
 import type { PreviewFields, SendLetter } from "./schema.js";
 
 // Ключ настройки со списком получателей. Живёт в AppSetting, как и столбцы
 // «Конфигурации портала»: правка не требует миграции и применяется сразу.
 export const mailRecipientsSettingKey = "coordination:mail-recipients";
+export const letterTemplateSettingKey = "coordination:letter-template";
+
+export async function loadLetterTemplate(prisma: PrismaClient): Promise<LetterTemplate> {
+  try {
+    const setting = await prisma.appSetting.findUnique({ where: { key: letterTemplateSettingKey } });
+    const value = setting?.value as Partial<LetterTemplate> | null;
+    return {
+      subject: typeof value?.subject === "string" && value.subject !== "{{subject}}" ? value.subject : defaultLetterTemplate.subject,
+      body: typeof value?.body === "string" && value.body !== "{{body}}" ? value.body : defaultLetterTemplate.body
+    };
+  } catch {
+    return { ...defaultLetterTemplate };
+  }
+}
+
+export async function saveLetterTemplate(prisma: PrismaClient, template: LetterTemplate): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key: letterTemplateSettingKey },
+    create: { key: letterTemplateSettingKey, value: template },
+    update: { value: template }
+  });
+}
 
 // Получатели по умолчанию — те же адреса, что были зашиты в n8n-воркфлоу.
 // Пока их никто не менял, письмо уходит тем же людям, что и раньше.
@@ -171,10 +193,10 @@ export function isSmtpConfigured(settings: SmtpSettings): boolean {
  * Разбирает DOCX и собирает письмо. Mammoth превращает документ в HTML —
  * дальше работают те же регулярные выражения, что и в n8n.
  */
-export async function buildLetterFromDocx(buffer: Buffer, fields: PreviewFields): Promise<BuiltLetter> {
+export async function buildLetterFromDocx(buffer: Buffer, fields: PreviewFields, template: LetterTemplate = defaultLetterTemplate): Promise<BuiltLetter> {
   const converted = await mammoth.convertToHtml({ buffer });
   const source = parseLetterSource(converted.value);
-  return buildLetter(source, fields);
+  return buildLetter(source, fields, template);
 }
 
 export type SendResult = {

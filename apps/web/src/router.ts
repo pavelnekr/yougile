@@ -14,6 +14,7 @@ export type Section =
   | "Управление работами в YouGile"
   | "DAPS"
   | "Ежедневный отчет по KPI"
+  | "Netbox"
   | "Площадки"
   | "Площадки АВР"
   | "Массовое назначение инженеров"
@@ -23,6 +24,7 @@ export type Section =
   | "Проверить работы"
   | "Согласование/Оповещение"
   | "Согласование АВР"
+  | "Настройки согласования"
   | "Планирование Работ"
   | "Аудит"
   | "История"
@@ -35,6 +37,7 @@ export const sectionSlugs: Record<Section, string> = {
   "Управление работами в YouGile": "",
   "DAPS": "daps",
   "Ежедневный отчет по KPI": "daps/daily-kpi",
+  "Netbox": "daps/netbox",
   "Площадки": "sites",
   "Площадки АВР": "sites/avr",
   "Массовое назначение инженеров": "assign",
@@ -44,6 +47,7 @@ export const sectionSlugs: Record<Section, string> = {
   "Проверить работы": "work-check",
   "Согласование/Оповещение": "coordination",
   "Согласование АВР": "coordination/avr",
+  "Настройки согласования": "coordination/settings",
   "Планирование Работ": "planning",
   "Аудит": "audit",
   "История": "history",
