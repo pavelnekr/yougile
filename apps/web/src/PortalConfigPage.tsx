@@ -6,7 +6,7 @@ import { PORTAL_VERSION } from "./version";
 
 type PortalColumn = { id: string; name: string };
 type LoadState = "loading" | "ready" | "error";
-type TabKey = "filter" | "avr" | "mail" | "workcheck" | "daps";
+type TabKey = "filter" | "avr" | "mail" | "workcheck" | "daps" | "netbox";
 
 // Состояние проверки ID столбца в YouGile. «none» — проверка ещё не запускалась
 // (пустой ID), «invalid» — фронтовая проверка формата, остальное — ответ API.
@@ -195,6 +195,17 @@ export default function PortalConfigPage({
   const [dapsDatabaseError, setDapsDatabaseError] = useState("");
   const [dapsDatabaseNotice, setDapsDatabaseNotice] = useState("");
 
+  const [netboxUrl, setNetboxUrl] = useState("");
+  const [savedNetboxUrl, setSavedNetboxUrl] = useState("");
+  const [netboxTokenType, setNetboxTokenType] = useState<"Bearer" | "Token">("Bearer");
+  const [savedNetboxTokenType, setSavedNetboxTokenType] = useState<"Bearer" | "Token">("Bearer");
+  const [netboxToken, setNetboxToken] = useState("");
+  const [netboxTokenConfigured, setNetboxTokenConfigured] = useState(false);
+  const [netboxLoading, setNetboxLoading] = useState(true);
+  const [netboxSaving, setNetboxSaving] = useState(false);
+  const [netboxError, setNetboxError] = useState("");
+  const [netboxNotice, setNetboxNotice] = useState("");
+
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingAvr, setSavingAvr] = useState(false);
   const [savingMail, setSavingMail] = useState(false);
@@ -362,6 +373,32 @@ export default function PortalConfigPage({
     return () => controller.abort();
   }, [loadDapsDatabase]);
 
+  const loadNetbox = useCallback(async (signal?: AbortSignal) => {
+    setNetboxLoading(true);
+    setNetboxError("");
+    try {
+      const response = await apiFetch("/api/portal-config/netbox", { signal });
+      const data = await response.json() as { url?: string; tokenType?: "Bearer" | "Token"; tokenConfigured?: boolean; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить настройки NetBox.");
+      const url = data.url ?? "";
+      const tokenType = data.tokenType ?? "Bearer";
+      setNetboxUrl(url); setSavedNetboxUrl(url);
+      setNetboxTokenType(tokenType); setSavedNetboxTokenType(tokenType);
+      setNetboxTokenConfigured(Boolean(data.tokenConfigured));
+    } catch (reason) {
+      if (signal?.aborted) return;
+      setNetboxError(errorMessage(reason));
+    } finally {
+      if (!signal?.aborted) setNetboxLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadNetbox(controller.signal);
+    return () => controller.abort();
+  }, [loadNetbox]);
+
   const planChanged = plan.id !== savedPlan.id || plan.name !== savedPlan.name;
   const avrChanged = JSON.stringify(avr) !== JSON.stringify(savedAvr);
   const mailChanged = JSON.stringify(mailRecipients) !== JSON.stringify(savedMailRecipients);
@@ -372,6 +409,7 @@ export default function PortalConfigPage({
     smtp.user !== savedSmtp.user || smtp.from !== savedSmtp.from || smtpPassword !== "";
   const windowChanged = windowHours !== savedWindowHours;
   const dapsSchemaChanged = dapsSourceSchema.trim() !== savedDapsSourceSchema || dapsAggregateSchema.trim() !== savedDapsAggregateSchema;
+  const netboxChanged = netboxUrl.trim() !== savedNetboxUrl || netboxTokenType !== savedNetboxTokenType || netboxToken.trim().length > 0;
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -383,6 +421,33 @@ export default function PortalConfigPage({
     setWindowNotice("");
     setDapsDatabaseError("");
     setDapsDatabaseNotice("");
+    setNetboxError("");
+    setNetboxNotice("");
+  };
+
+  const saveNetbox = async () => {
+    if (netboxSaving || !netboxChanged) return;
+    setNetboxSaving(true);
+    setNetboxError("");
+    setNetboxNotice("");
+    try {
+      const response = await apiFetch("/api/portal-config/netbox", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: netboxUrl.trim(), tokenType: netboxTokenType, ...(netboxToken.trim() ? { token: netboxToken.trim() } : {}) })
+      });
+      const data = await response.json() as { configured?: boolean; tokenConfigured?: boolean; error?: string };
+      if (!response.ok || !data.configured) throw new Error(data.error ?? "Не удалось проверить и сохранить настройки NetBox.");
+      setSavedNetboxUrl(netboxUrl.trim());
+      setSavedNetboxTokenType(netboxTokenType);
+      setNetboxToken("");
+      setNetboxTokenConfigured(Boolean(data.tokenConfigured));
+      setNetboxNotice("Подключение к NetBox проверено и сохранено.");
+    } catch (reason) {
+      setNetboxError(errorMessage(reason));
+    } finally {
+      setNetboxSaving(false);
+    }
   };
 
   const saveDapsDatabase = async () => {
@@ -756,6 +821,20 @@ export default function PortalConfigPage({
                 onClick={() => switchTab("daps")}
               >
                 PostgreSQL
+              </button>
+            </div>
+            <div className="portal-config-tab-group" role="tablist" aria-label="NetBox">
+              <span className="portal-config-tab-group-label" role="presentation">NetBox</span>
+              <button
+                id="portal-config-tab-netbox"
+                type="button"
+                role="tab"
+                aria-selected={tab === "netbox"}
+                aria-controls="portal-config-panel-netbox"
+                className={`portal-config-tab ${tab === "netbox" ? "portal-config-tab-active" : ""}`}
+                onClick={() => switchTab("netbox")}
+              >
+                NetBox
               </button>
             </div>
           </div>
@@ -1291,6 +1370,53 @@ export default function PortalConfigPage({
                 {dapsDatabaseSaving ? "Проверяем и сохраняем…" : "Проверить и сохранить"}
               </button>
               {dapsDatabaseUrl && <button className="text-button" disabled={dapsDatabaseSaving} onClick={() => { setDapsDatabaseUrl(""); setDapsDatabaseError(""); setDapsDatabaseNotice(""); }}>Очистить</button>}
+            </div>
+          </div>
+
+          <div
+            className="portal-config-section"
+            id="portal-config-panel-netbox"
+            role="tabpanel"
+            aria-labelledby="portal-config-tab-netbox"
+            hidden={tab !== "netbox"}
+          >
+            <div className="portal-config-section-heading">
+              <div>
+                <h2>NetBox</h2>
+                <p>Подключение к NetBox API для поиска площадок по slug. Перед сохранением проверяются адрес и доступ к списку площадок.</p>
+              </div>
+              <span className="portal-config-save-state">{netboxTokenConfigured ? "Токен настроен" : "Токен не настроен"}</span>
+            </div>
+            {netboxLoading ? (
+              <div className="portal-config-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем настройки NetBox…</div>
+            ) : netboxError && !netboxUrl ? (
+              <div className="portal-config-feedback portal-config-feedback-error" role="alert">{netboxError}<button className="text-button" onClick={() => void loadNetbox()}>Повторить</button></div>
+            ) : (
+              <>
+                <div className="portal-config-fields">
+                  <label className="field-label" htmlFor="portal-config-netbox-url"><span>URL NetBox</span>
+                    <input id="portal-config-netbox-url" type="url" value={netboxUrl} disabled={netboxSaving} placeholder="http://netbox:8000" onChange={(event) => { setNetboxUrl(event.target.value); setNetboxError(""); setNetboxNotice(""); }} />
+                  </label>
+                  <label className="field-label" htmlFor="portal-config-netbox-token-type"><span>Тип токена</span>
+                    <select id="portal-config-netbox-token-type" value={netboxTokenType} disabled={netboxSaving} onChange={(event) => { setNetboxTokenType(event.target.value as "Bearer" | "Token"); setNetboxError(""); setNetboxNotice(""); }}>
+                      <option value="Bearer">Bearer (v2)</option>
+                      <option value="Token">Token (v1)</option>
+                    </select>
+                  </label>
+                  <label className="field-label" htmlFor="portal-config-netbox-token"><span>API-токен NetBox</span>
+                    <input id="portal-config-netbox-token" type="password" autoComplete="new-password" value={netboxToken} disabled={netboxSaving} placeholder={netboxTokenConfigured ? "Сохранённый токен скрыт; пустое поле оставит его без изменений" : "Вставьте API-токен"} onChange={(event) => { setNetboxToken(event.target.value); setNetboxError(""); setNetboxNotice(""); }} />
+                  </label>
+                </div>
+                <div className="portal-config-note"><Info size={14} /><span>URL должен быть доступен с сервера API. Токен хранится зашифрованным с помощью YOUGILE_TOKEN_ENCRYPTION_KEY и не возвращается в браузер. Создайте в NetBox токен с правом чтения площадок.</span></div>
+              </>
+            )}
+            {netboxError && netboxUrl && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{netboxError}</div>}
+            {netboxNotice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{netboxNotice}</div>}
+            <div className="portal-config-actions">
+              <button className="btn-primary" disabled={netboxSaving || netboxLoading || !netboxChanged} onClick={() => void saveNetbox()}>
+                {netboxSaving ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
+                {netboxSaving ? "Проверяем и сохраняем…" : "Проверить и сохранить"}
+              </button>
             </div>
           </div>
         </div>

@@ -78,3 +78,11 @@ export function encryptDapsDatabaseUrl(value: string) {
 export function decryptDapsDatabaseUrl(value: string) {
   return decryptWithAad(value, "daps-database-url:v1", "DAPS database URL");
 }
+
+export function encryptNetboxApiToken(token: string) {
+  return encryptWithAad(token, "netbox-api-token:v1");
+}
+
+export function decryptNetboxApiToken(value: string) {
+  return decryptWithAad(value, "netbox-api-token:v1", "NetBox API token");
+}

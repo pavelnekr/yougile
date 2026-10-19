@@ -141,6 +141,10 @@ button { color: inherit; }
 .daps-daily-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 12px; margin-top: 18px; padding: 13px 15px; }
 .daps-daily-controls > label, .daps-manual-row label { display: grid; min-width: 135px; flex: 1 1 145px; gap: 5px; color: #737e92; font-size: 9px; }
 .daps-daily-controls > .field-label { min-width: 145px; flex: 0 1 160px; }
+.netbox-lookup { padding-bottom: 10px; font-size: 10px; }
+.netbox-lookup-loading { color: #7c8799; }
+.netbox-lookup-found { color: #368263; font-weight: 650; }
+.netbox-lookup-missing, .netbox-lookup-error { color: #ad5f4a; }
 .daps-daily-controls input, .daps-manual-row input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
 .daps-daily-controls > .outline-button, .daps-daily-save { min-height: 34px; align-self: end; }
 .daps-daily-source { flex: 1 0 100%; color: #8790a0; font-size: 9px; text-align: right; }

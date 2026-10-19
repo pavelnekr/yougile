@@ -11,6 +11,11 @@ const envSchema = z.object({
   // API: регистрация просто отключается (см. isRegistrationKeyEnabled).
   REGISTRATION_KEY: z.string().default(""),
   YOUGILE_API_URL: z.string().url(),
+  // NetBox REST API подключается только с сервера. Токен задаётся в окружении
+  // API и никогда не передаётся браузеру.
+  NETBOX_API_URL: z.string().url().default("http://localhost:8000"),
+  NETBOX_API_TOKEN: z.string().trim().default(""),
+  NETBOX_API_TOKEN_TYPE: z.enum(["Bearer", "Token"]).default("Bearer"),
   YOUGILE_TOKEN_ENCRYPTION_KEY: z.string().regex(/^(?:[a-fA-F0-9]{64})?$/, "YOUGILE_TOKEN_ENCRYPTION_KEY must be 64 hexadecimal characters").default(""),
   // Значение по умолчанию — нейтральный пример: реальный ID колонки живёт в .env
   // (не коммитится) или в «Конфигурация портала» (таблица AppSetting). Чужой ID

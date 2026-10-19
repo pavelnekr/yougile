@@ -5,7 +5,7 @@ import { getUserYougileClient, UserYougileCredentialError } from "../../integrat
 import type { YougileClient } from "../../integrations/yougile/client.js";
 import { invalidateAvrSitesCache, invalidateSitesCache } from "../sites/service.js";
 import { avrColumnsSchema, planColumnSchema } from "./schema.js";
-import { decryptDapsDatabaseUrl, encryptDapsDatabaseUrl } from "../../integrations/yougile/token-crypto.js";
+import { decryptDapsDatabaseUrl, decryptNetboxApiToken, encryptDapsDatabaseUrl, encryptNetboxApiToken } from "../../integrations/yougile/token-crypto.js";
 import {
   defaultDapsAggregateSchema,
   defaultDapsSourceSchema,
@@ -13,6 +13,8 @@ import {
   resetDapsDatabaseClient
 } from "../daps/database.js";
 import { PrismaClient as DapsPrismaClient } from "@prisma/client";
+import { config } from "../../config.js";
+import { netboxSettingKey } from "../daps/netbox.js";
 import { z } from "zod";
 import {
   avrColumnsSettingKey,
@@ -38,6 +40,64 @@ import {
 export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const adminOnly = requireRole(PortalRole.ADMIN);
   const postgresSchema = z.string().trim().min(1).max(63).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Имя схемы: латинские буквы, цифры и _; первый символ — буква или _.");
+
+  app.get("/api/portal-config/netbox", { preHandler: adminOnly }, async () => {
+    const setting = await prisma.appSetting.findUnique({ where: { key: netboxSettingKey } });
+    const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
+      ? setting.value as Record<string, unknown> : {};
+    const hasSavedToken = typeof value.encryptedToken === "string" && value.encryptedToken.length > 0;
+    return {
+      url: typeof value.url === "string" ? value.url : config.NETBOX_API_URL,
+      tokenType: value.tokenType === "Token" ? "Token" : value.tokenType === "Bearer" ? "Bearer" : config.NETBOX_API_TOKEN_TYPE,
+      tokenConfigured: hasSavedToken || Boolean(config.NETBOX_API_TOKEN)
+    };
+  });
+
+  app.put("/api/portal-config/netbox", { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = z.object({
+      url: z.string().trim().url().max(1000),
+      token: z.string().trim().max(2000).optional(),
+      tokenType: z.enum(["Bearer", "Token"])
+    }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте настройки NetBox." });
+    const apiUrl = new URL(parsed.data.url);
+    if ((apiUrl.protocol !== "http:" && apiUrl.protocol !== "https:") || apiUrl.username || apiUrl.password) {
+      return reply.code(400).send({ error: "Для NetBox укажите HTTP(S) URL без логина и пароля." });
+    }
+    const currentSetting = await prisma.appSetting.findUnique({ where: { key: netboxSettingKey } });
+    const currentValue = currentSetting?.value && typeof currentSetting.value === "object" && !Array.isArray(currentSetting.value)
+      ? currentSetting.value as Record<string, unknown> : {};
+    const currentEncryptedToken = typeof currentValue.encryptedToken === "string" ? currentValue.encryptedToken : "";
+    const token = parsed.data.token || (currentEncryptedToken ? decryptNetboxApiToken(currentEncryptedToken) : config.NETBOX_API_TOKEN);
+    if (!token) return reply.code(400).send({ error: "Укажите API-токен NetBox." });
+
+    const checkUrl = new URL("/api/dcim/sites/?limit=1", apiUrl);
+    try {
+      const check = await fetch(checkUrl, {
+        headers: { Authorization: `${parsed.data.tokenType} ${token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (!check.ok) {
+        request.log.warn({ statusCode: check.status, actor: request.sessionUser?.login }, "NetBox configuration check failed");
+        return reply.code(400).send({ error: "NetBox отклонил запрос. Проверьте адрес, тип токена и права чтения площадок." });
+      }
+    } catch {
+      return reply.code(400).send({ error: "Не удалось подключиться к NetBox. Проверьте адрес и доступность API-сервера." });
+    }
+
+    try {
+      const encryptedToken = parsed.data.token ? encryptNetboxApiToken(token) : currentEncryptedToken;
+      await prisma.appSetting.upsert({
+        where: { key: netboxSettingKey },
+        create: { key: netboxSettingKey, value: { url: apiUrl.origin, tokenType: parsed.data.tokenType, encryptedToken: parsed.data.token ? encryptedToken : null } },
+        update: { value: { url: apiUrl.origin, tokenType: parsed.data.tokenType, encryptedToken: encryptedToken || null } }
+      });
+      return { configured: true, tokenConfigured: true };
+    } catch (error) {
+      app.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save NetBox settings");
+      return reply.code(500).send({ error: "Не удалось сохранить настройки NetBox." });
+    }
+  });
 
   app.get("/api/portal-config/daps-database", { preHandler: adminOnly }, async () => {
     const setting = await prisma.appSetting.findUnique({ where: { key: dapsDatabaseSettingKey } });

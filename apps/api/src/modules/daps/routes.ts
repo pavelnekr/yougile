@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
 import { getDapsDatabase, getDapsSchemas, quoteDapsSchema } from "./database.js";
+import { getNetboxApiSettings } from "./netbox.js";
 
 const kpiFields = ["KPI-01", "KPI-02", "KPI-03", "KPI-04", "KPI-05", "KPI-06", "KPI-07"] as const;
 const dailyKpiSaveSchema = z.object({
@@ -21,6 +22,41 @@ function parseDate(value: unknown): Date | null {
 export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const readAccess = requireWorkspaceAccess("DAPS");
   const writeAccess = requireWorkspaceAccess("DAPS", true);
+
+  app.get<{ Querystring: { slug?: string } }>("/api/daps/netbox/site", { preHandler: readAccess }, async (request, reply) => {
+    const slug = z.string().trim().min(1).max(100).safeParse(request.query.slug);
+    if (!slug.success) return reply.code(400).send({ error: "Введите номер площадки." });
+    const settings = await getNetboxApiSettings(prisma);
+    if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
+
+    const url = new URL("/api/dcim/sites/", settings.url);
+    url.searchParams.set("slug", slug.data);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: {
+          Authorization: `${settings.tokenType} ${settings.token}`,
+          Accept: "application/json"
+        },
+        signal: AbortSignal.timeout(10_000)
+      });
+    } catch {
+      return reply.code(502).send({ error: "Не удалось связаться с NetBox. Проверьте адрес контейнера и доступность API." });
+    }
+    if (!response.ok) {
+      request.log.warn({ statusCode: response.status }, "NetBox site lookup failed");
+      return reply.code(502).send({ error: "NetBox отклонил запрос. Проверьте API-токен и права чтения площадок." });
+    }
+
+    let data: { results?: { id?: number; name?: string; slug?: string }[] };
+    try {
+      data = await response.json() as typeof data;
+    } catch {
+      return reply.code(502).send({ error: "NetBox вернул некорректный ответ." });
+    }
+    const site = data.results?.find((item) => item.slug === slug.data);
+    return { found: Boolean(site), site: site ? { id: site.id, name: site.name, slug: site.slug } : null };
+  });
 
   app.get<{ Querystring: { date?: string } }>("/api/daps/daily-kpi", { preHandler: readAccess }, async (request, reply) => {
     const date = parseDate(request.query.date);
