@@ -58,7 +58,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     if (!site) return { found: false, site: null, interfaces: [] };
 
     const apiBase = new URL("/api/dcim/", settings.url);
-    let siteDevices: { id: number; name: string; role?: { name?: string } | null }[];
+    let siteDevices: { id: number; name: string; role?: { name?: string } | null; device_role?: { name?: string } | null }[];
     try {
       const devicesUrl = new URL("devices/", apiBase);
       devicesUrl.searchParams.set("site_id", String(site.id));
@@ -77,12 +77,21 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
       return reply.code(502).send({ error: "Не удалось загрузить устройства площадки из NetBox." });
     }
     type NetboxPeer = { id: number; url?: string; name?: string | null; display?: string; device?: { id?: number; name?: string | null } | null };
-    type OdfPort = { id: number; name: string; device?: { id?: number } | null; link_peers?: NetboxPeer[] | null; rear_ports?: { rear_port: number }[]; front_ports?: { front_port: number }[] };
+    type NetboxDevice = (typeof siteDevices)[number];
+    type LinkedPorts = { link_peers?: NetboxPeer[] | null; link_peer?: NetboxPeer | null; cable_peer?: NetboxPeer | null; connected_endpoints?: NetboxPeer[] | null };
+    type OdfPort = LinkedPorts & { id: number; name: string; device?: { id?: number } | null; rear_ports?: { rear_port: number }[]; front_ports?: { front_port: number }[] };
     const deviceById = new Map(siteDevices.map((device) => [device.id, device]));
     const bypassRoleNames = new Set(settings.bypassRoles);
     const isBypassRole = (role?: string) => role !== undefined && bypassRoleNames.has(role);
-    const odfDevices = siteDevices.filter((device) => device.role?.name === "ODF оператора");
-    const osDevices = siteDevices.filter((device) => device.role?.name === "Устройство LAN" || device.role?.name === "Устройство WAN");
+    const roleName = (device: NetboxDevice | undefined) => device?.role?.name ?? device?.device_role?.name ?? "";
+    const peerList = (item: LinkedPorts) => {
+      if (Object.prototype.hasOwnProperty.call(item, "link_peers")) return item.link_peers ?? [];
+      if (item.link_peer) return [item.link_peer];
+      if (item.cable_peer) return [item.cable_peer];
+      return item.connected_endpoints ?? [];
+    };
+    const odfDevices = siteDevices.filter((device) => roleName(device) === "ODF оператора");
+    const osDevices = siteDevices.filter((device) => roleName(device) === "Устройство LAN" || roleName(device) === "Устройство WAN");
     const authHeaders = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
     const odfPortsByNode = new Map<string, { port: OdfPort; kind: "front" | "rear" }>();
     const odfLinks = new Map<string, Set<string>>();
@@ -126,14 +135,14 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
         interfacesUrl.searchParams.set("limit", "1000");
         const interfacesResponse = await fetch(interfacesUrl, { headers: authHeaders, signal: AbortSignal.timeout(10_000) });
         if (!interfacesResponse.ok) throw new Error("NetBox interface request failed");
-        const interfacesData = await interfacesResponse.json() as { results?: { id: number; name: string; link_peers?: NetboxPeer[] | null }[] };
+        const interfacesData = await interfacesResponse.json() as { results?: ({ id: number; name: string } & LinkedPorts)[] };
         return (interfacesData.results ?? []).flatMap((item) => {
           const matches = new Map<string, { host: string; port: string }>();
           const queue: { kind: "front" | "rear"; id: number }[] = [];
-          for (const peer of item.link_peers ?? []) {
+          for (const peer of peerList(item)) {
             const peerDevice = peer.device?.id ? deviceById.get(peer.device.id) : undefined;
-            if (isBypassRole(peerDevice?.role?.name)) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "" });
-            else if (peerDevice?.role?.name === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
+            if (isBypassRole(roleName(peerDevice))) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "" });
+            else if (roleName(peerDevice) === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
               queue.push({ kind: endpointKind(peer) as "front" | "rear", id: peer.id });
             }
           }
@@ -145,10 +154,10 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
             visited.add(key);
             const entry = odfPortsByNode.get(key);
             if (!entry) continue;
-            for (const peer of entry.port.link_peers ?? []) {
+            for (const peer of peerList(entry.port)) {
               const peerDevice = peer.device?.id ? deviceById.get(peer.device.id) : undefined;
-              if (isBypassRole(peerDevice?.role?.name)) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "" });
-              else if (peerDevice?.role?.name === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
+              if (isBypassRole(roleName(peerDevice))) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "" });
+              else if (roleName(peerDevice) === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
                 const peerKey = nodeKey(endpointKind(peer) as "front" | "rear", peer.id);
                 if (!visited.has(peerKey)) queue.push({ kind: endpointKind(peer) as "front" | "rear", id: peer.id });
               }
@@ -161,7 +170,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
           const bypasses = [...matches.values()];
           return bypasses.map((bypass, index) => ({
             id: `${device.id}-${item.id}-${index}`,
-            role: device.role?.name ?? "",
+            role: roleName(device),
             port: item.name,
             host: device.name,
             bypassHost: bypass.host,
@@ -174,10 +183,14 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     })).catch(() => null);
     if (!interfaceGroups) return reply.code(502).send({ error: "Не удалось загрузить интерфейсы устройств площадки из NetBox." });
 
+    const interfaces = interfaceGroups.flat();
+    if (interfaces.length === 0) {
+      request.log.warn({ siteSlug: slug.data, siteDeviceCount: siteDevices.length, osDeviceCount: osDevices.length, odfDeviceCount: odfDevices.length }, "NetBox site found but no OS-to-bypass links matched");
+    }
     return {
       found: true,
       site: { id: site.id, name: site.name, slug: site.slug },
-      interfaces: interfaceGroups.flat().sort((a, b) =>
+      interfaces: interfaces.sort((a, b) =>
         a.bypassHost.localeCompare(b.bypassHost, "ru", { numeric: true, sensitivity: "base" }) ||
         a.bypassPort.localeCompare(b.bypassPort, "ru", { numeric: true, sensitivity: "base" }) ||
         a.host.localeCompare(b.host, "ru", { numeric: true, sensitivity: "base" }) ||
