@@ -493,7 +493,7 @@ function App() {
         </header>
 
         <div className="page-content">
-          {!yougileConnected && health !== "loading" && (
+          {activeSection === "Управление работами в YouGile" && !yougileConnected && health !== "loading" && (
             <div className="yougile-offline-banner">
               <AlertCircle size={16} />
               <div>

@@ -157,12 +157,12 @@ button { color: inherit; }
 .daps-report-heading-actions { display: flex; align-items: center; gap: 9px; }
 .daps-report-heading-actions .outline-button, .daps-report-heading-actions .text-button { height: 36px; min-height: 36px; align-items: center; gap: 8px; padding: 0 12px; border-radius: 7px; font-size: 10px; }
 .daps-daily-table-wrap { overflow-x: auto; }
-.daps-daily-table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; }
+.daps-daily-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
 .daps-daily-table th, .daps-daily-table td { padding: 9px 8px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }
 .daps-daily-table th { color: #000; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .daps-daily-table td { color: #445066; }
 .daps-daily-table td:nth-child(2) { min-width: 210px; line-height: 1.45; }
-.daps-kpi-status { display: inline-flex; padding: 4px 7px; border-radius: 20px; font-size: 8px; font-weight: 650; white-space: nowrap; }
+.daps-kpi-status { display: inline-flex; padding: 4px 7px; border-radius: 20px; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .daps-kpi-status.ok { color: #327657; background: #eaf6ef; }
 .daps-kpi-status.warning { color: #9a7023; background: #fff5df; }
 .daps-kpi-status.bad { color: #ad5f4a; background: #fbefec; }

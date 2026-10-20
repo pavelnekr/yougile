@@ -299,7 +299,7 @@ export default function DapsDailyKpiPage({ onBack, canEdit }: { onBack: () => vo
             const average = customOpen ? numeric(custom[`${field.code}:average`]) : numeric(data?.monthlyAverages?.[field.code]);
             const accumulated = field.code === "KPI-03" ? numeric(k3Accum) : average;
             const state = status(daily, average, field);
-            return <tr key={field.code}><td><span className="kpi-code">К{field.code.slice(-2).replace(/^0/, "")}</span></td><td>{field.title}</td><td>{field.greater ? "≥" : "≤"}{field.target.toLocaleString("ru-RU")}%</td><td>{field.greater ? "≥" : "≤"}{field.minimum.toLocaleString("ru-RU")}%</td><td>{display(daily)}%</td><td>{display(accumulated)}%</td><td><span className={`daps-kpi-status ${state.className}`}>{state.label}</span></td></tr>;
+            return <tr key={field.code}><td><span className="kpi-code">К{field.code.slice(-2).replace(/^0/, "")}</span></td><td>{field.title}</td><td>{field.greater ? "≥" : "≤"}{field.target.toLocaleString("ru-RU")} %</td><td>{field.greater ? "≥" : "≤"}{field.minimum.toLocaleString("ru-RU")} %</td><td>{display(daily)} %</td><td>{display(accumulated)} %</td><td><span className={`daps-kpi-status ${state.className}`}>{state.label}</span></td></tr>;
           })}
         </tbody></table></div>
     </section>
