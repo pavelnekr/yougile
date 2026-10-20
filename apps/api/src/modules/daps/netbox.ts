@@ -3,12 +3,20 @@ import { config } from "../../config.js";
 import { decryptNetboxApiToken } from "../../integrations/yougile/token-crypto.js";
 
 export const netboxSettingKey = "netbox:api-settings";
+export const defaultNetboxBypassRoles = ["Комбинированный байпас", "Пассивный байпас"];
+
+export function normalizeNetboxBypassRoles(value: unknown): string[] {
+  if (!Array.isArray(value)) return defaultNetboxBypassRoles;
+  const roles = [...new Set(value.filter((role): role is string => typeof role === "string").map((role) => role.trim()).filter(Boolean))];
+  return roles.length ? roles : defaultNetboxBypassRoles;
+}
 
 export type NetboxApiSettings = {
   url: string;
   token: string;
   tokenType: "Bearer" | "Token";
   tokenConfigured: boolean;
+  bypassRoles: string[];
 };
 
 export async function getNetboxApiSettings(prisma: PrismaClient): Promise<NetboxApiSettings> {
@@ -22,6 +30,7 @@ export async function getNetboxApiSettings(prisma: PrismaClient): Promise<Netbox
     url: typeof value.url === "string" ? value.url : config.NETBOX_API_URL,
     token,
     tokenType,
-    tokenConfigured: Boolean(token)
+    tokenConfigured: Boolean(token),
+    bypassRoles: normalizeNetboxBypassRoles(value.bypassRoles)
   };
 }

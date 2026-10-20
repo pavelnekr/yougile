@@ -79,7 +79,8 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     type NetboxPeer = { id: number; url?: string; name?: string | null; display?: string; device?: { id?: number; name?: string | null } | null };
     type OdfPort = { id: number; name: string; device?: { id?: number } | null; link_peers?: NetboxPeer[] | null; rear_ports?: { rear_port: number }[]; front_ports?: { front_port: number }[] };
     const deviceById = new Map(siteDevices.map((device) => [device.id, device]));
-    const isBypassRole = (role?: string) => role === "Комбинированный байпас" || role === "Пассивный байпас";
+    const bypassRoleNames = new Set(settings.bypassRoles);
+    const isBypassRole = (role?: string) => role !== undefined && bypassRoleNames.has(role);
     const odfDevices = siteDevices.filter((device) => device.role?.name === "ODF оператора");
     const osDevices = siteDevices.filter((device) => device.role?.name === "Устройство LAN" || device.role?.name === "Устройство WAN");
     const authHeaders = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };

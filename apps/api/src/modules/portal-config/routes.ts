@@ -14,7 +14,7 @@ import {
 } from "../daps/database.js";
 import { PrismaClient as DapsPrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
-import { netboxSettingKey } from "../daps/netbox.js";
+import { defaultNetboxBypassRoles, netboxSettingKey, normalizeNetboxBypassRoles } from "../daps/netbox.js";
 import { z } from "zod";
 import {
   avrColumnsSettingKey,
@@ -49,7 +49,8 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     return {
       url: typeof value.url === "string" ? value.url : config.NETBOX_API_URL,
       tokenType: value.tokenType === "Token" ? "Token" : value.tokenType === "Bearer" ? "Bearer" : config.NETBOX_API_TOKEN_TYPE,
-      tokenConfigured: hasSavedToken || Boolean(config.NETBOX_API_TOKEN)
+      tokenConfigured: hasSavedToken || Boolean(config.NETBOX_API_TOKEN),
+      bypassRoles: normalizeNetboxBypassRoles(value.bypassRoles)
     };
   });
 
@@ -57,7 +58,8 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     const parsed = z.object({
       url: z.string().trim().url().max(1000),
       token: z.string().trim().max(2000).optional(),
-      tokenType: z.enum(["Bearer", "Token"])
+      tokenType: z.enum(["Bearer", "Token"]),
+      bypassRoles: z.array(z.string().trim().min(1).max(200)).min(1).max(100).optional()
     }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте настройки NetBox." });
     const apiUrl = new URL(parsed.data.url);
@@ -67,6 +69,7 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     const currentSetting = await prisma.appSetting.findUnique({ where: { key: netboxSettingKey } });
     const currentValue = currentSetting?.value && typeof currentSetting.value === "object" && !Array.isArray(currentSetting.value)
       ? currentSetting.value as Record<string, unknown> : {};
+    const bypassRoles = normalizeNetboxBypassRoles(parsed.data.bypassRoles ?? currentValue.bypassRoles ?? defaultNetboxBypassRoles);
     const currentEncryptedToken = typeof currentValue.encryptedToken === "string" ? currentValue.encryptedToken : "";
     const token = parsed.data.token || (currentEncryptedToken ? decryptNetboxApiToken(currentEncryptedToken) : config.NETBOX_API_TOKEN);
     if (!token) return reply.code(400).send({ error: "Укажите API-токен NetBox." });
@@ -89,8 +92,8 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
       const encryptedToken = parsed.data.token ? encryptNetboxApiToken(token) : currentEncryptedToken;
       await prisma.appSetting.upsert({
         where: { key: netboxSettingKey },
-        create: { key: netboxSettingKey, value: { url: apiUrl.origin, tokenType: parsed.data.tokenType, encryptedToken: parsed.data.token ? encryptedToken : null } },
-        update: { value: { url: apiUrl.origin, tokenType: parsed.data.tokenType, encryptedToken: encryptedToken || null } }
+        create: { key: netboxSettingKey, value: { url: apiUrl.origin, tokenType: parsed.data.tokenType, encryptedToken: parsed.data.token ? encryptedToken : null, bypassRoles } },
+        update: { value: { url: apiUrl.origin, tokenType: parsed.data.tokenType, encryptedToken: encryptedToken || null, bypassRoles } }
       });
       return { configured: true, tokenConfigured: true };
     } catch (error) {

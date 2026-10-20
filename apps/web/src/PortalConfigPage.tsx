@@ -201,6 +201,9 @@ export default function PortalConfigPage({
   const [savedNetboxTokenType, setSavedNetboxTokenType] = useState<"Bearer" | "Token">("Bearer");
   const [netboxToken, setNetboxToken] = useState("");
   const [netboxTokenConfigured, setNetboxTokenConfigured] = useState(false);
+  const [netboxBypassRoles, setNetboxBypassRoles] = useState<string[]>(["Комбинированный байпас", "Пассивный байпас"]);
+  const [savedNetboxBypassRoles, setSavedNetboxBypassRoles] = useState<string[]>(["Комбинированный байпас", "Пассивный байпас"]);
+  const [netboxBypassRoleDraft, setNetboxBypassRoleDraft] = useState("");
   const [netboxLoading, setNetboxLoading] = useState(true);
   const [netboxSaving, setNetboxSaving] = useState(false);
   const [netboxError, setNetboxError] = useState("");
@@ -378,13 +381,15 @@ export default function PortalConfigPage({
     setNetboxError("");
     try {
       const response = await apiFetch("/api/portal-config/netbox", { signal });
-      const data = await response.json() as { url?: string; tokenType?: "Bearer" | "Token"; tokenConfigured?: boolean; error?: string };
+      const data = await response.json() as { url?: string; tokenType?: "Bearer" | "Token"; tokenConfigured?: boolean; bypassRoles?: string[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить настройки NetBox.");
       const url = data.url ?? "";
       const tokenType = data.tokenType ?? "Bearer";
       setNetboxUrl(url); setSavedNetboxUrl(url);
       setNetboxTokenType(tokenType); setSavedNetboxTokenType(tokenType);
       setNetboxTokenConfigured(Boolean(data.tokenConfigured));
+      const roles = data.bypassRoles?.length ? data.bypassRoles : ["Комбинированный байпас", "Пассивный байпас"];
+      setNetboxBypassRoles(roles); setSavedNetboxBypassRoles(roles);
     } catch (reason) {
       if (signal?.aborted) return;
       setNetboxError(errorMessage(reason));
@@ -409,7 +414,7 @@ export default function PortalConfigPage({
     smtp.user !== savedSmtp.user || smtp.from !== savedSmtp.from || smtpPassword !== "";
   const windowChanged = windowHours !== savedWindowHours;
   const dapsSchemaChanged = dapsSourceSchema.trim() !== savedDapsSourceSchema || dapsAggregateSchema.trim() !== savedDapsAggregateSchema;
-  const netboxChanged = netboxUrl.trim() !== savedNetboxUrl || netboxTokenType !== savedNetboxTokenType || netboxToken.trim().length > 0;
+  const netboxChanged = netboxUrl.trim() !== savedNetboxUrl || netboxTokenType !== savedNetboxTokenType || netboxToken.trim().length > 0 || JSON.stringify(netboxBypassRoles) !== JSON.stringify(savedNetboxBypassRoles);
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -434,12 +439,13 @@ export default function PortalConfigPage({
       const response = await apiFetch("/api/portal-config/netbox", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: netboxUrl.trim(), tokenType: netboxTokenType, ...(netboxToken.trim() ? { token: netboxToken.trim() } : {}) })
+        body: JSON.stringify({ url: netboxUrl.trim(), tokenType: netboxTokenType, bypassRoles: netboxBypassRoles, ...(netboxToken.trim() ? { token: netboxToken.trim() } : {}) })
       });
       const data = await response.json() as { configured?: boolean; tokenConfigured?: boolean; error?: string };
       if (!response.ok || !data.configured) throw new Error(data.error ?? "Не удалось проверить и сохранить настройки NetBox.");
       setSavedNetboxUrl(netboxUrl.trim());
       setSavedNetboxTokenType(netboxTokenType);
+      setSavedNetboxBypassRoles(netboxBypassRoles);
       setNetboxToken("");
       setNetboxTokenConfigured(Boolean(data.tokenConfigured));
       setNetboxNotice("Подключение к NetBox проверено и сохранено.");
@@ -448,6 +454,15 @@ export default function PortalConfigPage({
     } finally {
       setNetboxSaving(false);
     }
+  };
+
+  const addNetboxBypassRole = () => {
+    const role = netboxBypassRoleDraft.trim();
+    if (!role || netboxBypassRoles.some((item) => item.toLocaleLowerCase("ru") === role.toLocaleLowerCase("ru"))) return;
+    setNetboxBypassRoles((current) => [...current, role]);
+    setNetboxBypassRoleDraft("");
+    setNetboxError("");
+    setNetboxNotice("");
   };
 
   const saveDapsDatabase = async () => {
@@ -1406,6 +1421,28 @@ export default function PortalConfigPage({
                   <label className="field-label" htmlFor="portal-config-netbox-token"><span>API-токен NetBox</span>
                     <input id="portal-config-netbox-token" type="password" autoComplete="new-password" value={netboxToken} disabled={netboxSaving} placeholder={netboxTokenConfigured ? "Сохранённый токен скрыт; пустое поле оставит его без изменений" : "Вставьте API-токен"} onChange={(event) => { setNetboxToken(event.target.value); setNetboxError(""); setNetboxNotice(""); }} />
                   </label>
+                </div>
+                <div className="portal-config-subsection netbox-role-settings">
+                  <div className="portal-config-section-heading">
+                    <div>
+                      <h2>Роли байпаса</h2>
+                      <p>Устройства с этими ролями будут считаться хостами байпаса. Названия должны совпадать с ролями NetBox.</p>
+                    </div>
+                  </div>
+                  <div className="netbox-role-list">
+                    {netboxBypassRoles.map((role, index) => (
+                      <div className="netbox-role-item" key={`${role}-${index}`}>
+                        <span>{role}</span>
+                        <button type="button" className="icon-button portal-config-row-remove" disabled={netboxSaving || netboxBypassRoles.length <= 1} aria-label={`Удалить роль ${role}`} onClick={() => { setNetboxBypassRoles((current) => current.filter((_, roleIndex) => roleIndex !== index)); setNetboxError(""); setNetboxNotice(""); }}>
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="netbox-role-add">
+                    <input value={netboxBypassRoleDraft} disabled={netboxSaving} maxLength={200} placeholder="Название роли NetBox" aria-label="Новая роль байпаса" onChange={(event) => setNetboxBypassRoleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addNetboxBypassRole(); } }} />
+                    <button type="button" className="outline-button" disabled={netboxSaving || !netboxBypassRoleDraft.trim() || netboxBypassRoles.some((role) => role.toLocaleLowerCase("ru") === netboxBypassRoleDraft.trim().toLocaleLowerCase("ru"))} onClick={addNetboxBypassRole}><Plus size={14} /> Добавить роль</button>
+                  </div>
                 </div>
                 <div className="portal-config-note"><Info size={14} /><span>URL должен быть доступен с сервера API. Токен хранится зашифрованным с помощью YOUGILE_TOKEN_ENCRYPTION_KEY и не возвращается в браузер. Создайте в NetBox токен с правом чтения площадок.</span></div>
               </>

@@ -1372,6 +1372,13 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 
 .portal-config-list-count { margin-bottom: 9px; color: #8b95a5; font-size: 9px; }
 .portal-config-list { display: grid; gap: 8px; }
+.netbox-role-settings { max-width: 760px; }
+.netbox-role-list { display: grid; gap: 7px; }
+.netbox-role-item { display: flex; min-height: 37px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 8px 0 11px; border: 1px solid #e5e9f0; border-radius: 7px; color: #475367; background: #fff; font-size: 10px; }
+.netbox-role-add { display: flex; align-items: center; gap: 9px; margin-top: 10px; }
+.netbox-role-add input { width: min(100%, 360px); min-height: 36px; padding: 0 10px; border: 1px solid #e5e9f0; border-radius: 7px; outline: 0; color: #475367; background: #fff; font: inherit; font-size: 10px; }
+.netbox-role-add input:focus { border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; }
+.netbox-role-add .outline-button { min-height: 36px; align-items: center; }
 .portal-config-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 31px; gap: 9px; align-items: center; }
 /* Строка с одним полем — почтовые получатели: широкий инпут и кнопка удаления. */
 .portal-config-row-single { grid-template-columns: minmax(0, 1fr) 31px; }
