@@ -621,6 +621,8 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
   const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ state: "idle" | "loading" | "found" | "missing" | "error"; message?: string }>({ state: "idle" });
   const [netboxInterfaces, setNetboxInterfaces] = useState<NetboxInterfaceRow[]>([]);
+  const [netboxExporting, setNetboxExporting] = useState(false);
+  const [netboxExportError, setNetboxExportError] = useState("");
   useEffect(() => {
     if (searchedSiteNumber === null) return;
     const controller = new AbortController();
@@ -696,6 +698,38 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     }
   };
   const saveStateLabel = (state: NetboxSaveState, message?: string) => state === "saving" ? "Сохранение в NetBox…" : state === "saved" ? "Сохранено" : state === "duplicate" ? message ?? "Дубликат" : state === "error" ? "Не сохранено — измените поле и повторите" : state === "dirty" ? "Изменение не сохранено" : "";
+  const exportNetboxXlsx = async () => {
+    if (!searchedSiteNumber || netboxInterfaces.length === 0 || netboxExporting) return;
+    setNetboxExporting(true);
+    setNetboxExportError("");
+    try {
+      const response = await apiFetch("/api/daps/netbox/site.xlsx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteSlug: searchedSiteNumber,
+          rows: netboxInterfaces.map(({ host, port, bypassHost, bypassPort }) => ({ host, port, bypassHost, bypassPort }))
+        })
+      });
+      if (!response.ok) {
+        const data = await response.json() as { error?: string };
+        throw new Error(data.error ?? "Не удалось скачать таблицу XLSX.");
+      }
+      const file = await response.blob();
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `netbox-links-${searchedSiteNumber.replace(/[^a-zA-Z0-9_-]/g, "_")}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setNetboxExportError(error instanceof Error ? error.message : "Не удалось скачать таблицу XLSX.");
+    } finally {
+      setNetboxExporting(false);
+    }
+  };
   return <section className="section-view daps-report-page">
     <div className="eyebrow"><span className="eyebrow-line" /> DAPS · NETBOX</div>
     <div className="section-hero daps-report-hero"><span className="section-hero-icon"><Network size={22} /></span><div><h1>Netbox</h1><p>Порты ОС и байпаса по площадке.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
@@ -708,6 +742,8 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       {lookup.state === "found" && <span className="netbox-lookup netbox-lookup-found" role="status">Площадка найдена</span>}
       {lookup.state === "missing" && <span className="netbox-lookup netbox-lookup-missing" role="status">Площадка не найдена</span>}
       {lookup.state === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{lookup.message}</span>}
+      {searchedSiteNumber !== null && netboxInterfaces.length > 0 && <button type="button" className="outline-button netbox-export-button" disabled={netboxExporting} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>}
+      {netboxExportError && <span className="netbox-lookup netbox-lookup-error" role="alert">{netboxExportError}</span>}
     </form>
     {searchedSiteNumber !== null && <section className="panel daps-daily-table-panel">
       <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}. Изменения сохраняются в NetBox после выхода из поля.</p></div></div>

@@ -141,6 +141,7 @@ button { color: inherit; }
 .daps-daily-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 12px; margin-top: 18px; padding: 13px 15px; }
 .daps-daily-controls > label, .daps-manual-row label { display: grid; min-width: 135px; flex: 1 1 145px; gap: 5px; color: #737e92; font-size: 9px; }
 .daps-daily-controls > .field-label { min-width: 145px; flex: 0 1 160px; }
+.netbox-export-button { min-height: 34px; align-items: center; gap: 7px; margin-left: auto; white-space: nowrap; }
 .netbox-lookup { padding-bottom: 10px; font-size: 10px; }
 .netbox-lookup-loading { color: #7c8799; }
 .netbox-lookup-found { color: #368263; font-weight: 650; }

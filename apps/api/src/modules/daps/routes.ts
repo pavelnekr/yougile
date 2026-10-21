@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { Prisma, type PrismaClient } from "@prisma/client";
+import ExcelJS from "exceljs";
 import { z } from "zod";
 import { requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
@@ -11,6 +12,15 @@ const dailyKpiSaveSchema = z.object({
   k0Fact: z.number().finite(),
   k0Accum: z.number().finite(),
   k3Accum: z.number().finite()
+});
+const netboxExportSchema = z.object({
+  siteSlug: z.string().trim().min(1).max(100),
+  rows: z.array(z.object({
+    host: z.string().max(200),
+    port: z.string().max(200),
+    bypassHost: z.string().max(200),
+    bypassPort: z.string().max(200)
+  })).min(1).max(20_000)
 });
 
 function parseDate(value: unknown): Date | null {
@@ -223,6 +233,35 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
       return { saved: true, deviceId: targetDevice.id, interfaceId: targetInterface.id, host: input.data.hostName, port: input.data.portName };
     } catch {
       return reply.code(502).send({ error: "Не удалось связаться с NetBox для сохранения изменения." });
+    }
+  });
+
+  app.post<{ Body: unknown }>("/api/daps/netbox/site.xlsx", { preHandler: readAccess }, async (request, reply) => {
+    const parsed = netboxExportSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Не удалось сформировать XLSX: проверьте данные таблицы." });
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Линки");
+      worksheet.columns = [
+        { header: "№", key: "number", width: 8 },
+        { header: "Хост ОС", key: "host", width: 36 },
+        { header: "Порт ОС", key: "port", width: 20 },
+        { header: "Хост Байпаса", key: "bypassHost", width: 36 },
+        { header: "Порт Байпаса", key: "bypassPort", width: 24 }
+      ];
+      worksheet.addRows(parsed.data.rows.map((row, index) => ({ number: index + 1, ...row })));
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.views = [{ state: "frozen", ySplit: 1 }];
+      worksheet.autoFilter = { from: "A1", to: "E1" };
+      const buffer = await workbook.xlsx.writeBuffer();
+      const filenameSlug = parsed.data.siteSlug.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60) || "site";
+      return reply
+        .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        .header("Content-Disposition", `attachment; filename="netbox-links-${filenameSlug}.xlsx"`)
+        .send(Buffer.from(buffer));
+    } catch (error) {
+      app.log.error({ err: error }, "Could not export NetBox links to XLSX");
+      return reply.code(500).send({ error: "Не удалось сформировать XLSX с линками площадки." });
     }
   });
 
