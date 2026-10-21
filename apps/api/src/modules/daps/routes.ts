@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import ExcelJS from "exceljs";
 import { z } from "zod";
+import { config } from "../../config.js";
 import { requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
 import { getDapsDatabase, getDapsSchemas, quoteDapsSchema } from "./database.js";
@@ -262,6 +263,48 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     } catch (error) {
       app.log.error({ err: error }, "Could not export NetBox links to XLSX");
       return reply.code(500).send({ error: "Не удалось сформировать XLSX с линками площадки." });
+    }
+  });
+
+  app.post("/api/daps/netbox/site.xlsx/parse", { preHandler: writeAccess }, async (request, reply) => {
+    if (!request.isMultipart()) return reply.code(406).send({ error: "Ожидается XLSX-файл в формате multipart/form-data." });
+    try {
+      const upload = await request.file();
+      if (!upload) return reply.code(400).send({ error: "Выберите XLSX-файл с таблицей линков." });
+      const filename = upload.filename.split(/[\\/]/).pop() ?? "";
+      if (!filename.toLocaleLowerCase("en").endsWith(".xlsx")) {
+        await upload.toBuffer();
+        return reply.code(400).send({ error: "Поддерживаются файлы .xlsx." });
+      }
+      const buffer = await upload.toBuffer();
+      if (upload.file.truncated || buffer.length > config.UPLOAD_MAX_BYTES) return reply.code(413).send({ error: `Файл превышает лимит ${Math.round(config.UPLOAD_MAX_BYTES / 1024 / 1024)} МБ.` });
+      const workbook = new ExcelJS.Workbook();
+      const workbookData = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+      await workbook.xlsx.load(workbookData);
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet || worksheet.rowCount < 2) return reply.code(400).send({ error: "В XLSX нет строк с линками." });
+      const normalizeHeader = (value: string) => value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru");
+      const headers = new Map<string, number>();
+      worksheet.getRow(1).eachCell((cell, column) => headers.set(normalizeHeader(cell.text), column));
+      const requiredColumns = ["хост ос", "порт ос", "хост байпаса", "порт байпаса"];
+      const missingColumns = requiredColumns.filter((header) => !headers.has(header));
+      if (missingColumns.length) return reply.code(400).send({ error: `В XLSX отсутствуют столбцы: ${missingColumns.join(", ")}.` });
+      const getValue = (row: ExcelJS.Row, header: string) => row.getCell(headers.get(header)!).text.trim();
+      const rows: { rowNumber: number; host: string; port: string; bypassHost: string; bypassPort: string }[] = [];
+      for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+        const row = worksheet.getRow(rowNumber);
+        const values = requiredColumns.map((header) => getValue(row, header));
+        if (values.every((value) => value === "")) continue;
+        const [host, port, bypassHost, bypassPort] = values;
+        if (!bypassHost || !bypassPort) return reply.code(400).send({ error: `В строке ${rowNumber} не заполнены Хост Байпаса и/или Порт Байпаса.` });
+        if (!host || !port) return reply.code(400).send({ error: `В строке ${rowNumber} не заполнены Хост ОС и/или Порт ОС.` });
+        rows.push({ rowNumber, host, port, bypassHost, bypassPort });
+      }
+      if (rows.length === 0) return reply.code(400).send({ error: "В XLSX нет строк с линками." });
+      return { rows };
+    } catch (error) {
+      app.log.warn({ err: error }, "Could not parse uploaded NetBox XLSX");
+      return reply.code(400).send({ error: "Не удалось прочитать XLSX. Проверьте файл и заголовки столбцов." });
     }
   });
 

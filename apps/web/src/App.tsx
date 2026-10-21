@@ -616,13 +616,17 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
 
 function NetboxPage({ onBack }: { onBack: () => void }) {
   type NetboxSaveState = "idle" | "dirty" | "saving" | "saved" | "error" | "duplicate";
-  type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string };
+  type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string; hostChanged: boolean; portChanged: boolean };
   const [siteNumber, setSiteNumber] = useState("");
   const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ state: "idle" | "loading" | "found" | "missing" | "error"; message?: string }>({ state: "idle" });
   const [netboxInterfaces, setNetboxInterfaces] = useState<NetboxInterfaceRow[]>([]);
   const [netboxExporting, setNetboxExporting] = useState(false);
   const [netboxExportError, setNetboxExportError] = useState("");
+  const [netboxImporting, setNetboxImporting] = useState(false);
+  const [netboxImportMessage, setNetboxImportMessage] = useState("");
+  const [netboxImportError, setNetboxImportError] = useState("");
+  const netboxImportFileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (searchedSiteNumber === null) return;
     const controller = new AbortController();
@@ -636,7 +640,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
           error?: string;
         };
         if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
-        setNetboxInterfaces((data.interfaces ?? []).map((item) => ({ ...item, savedHost: item.host, savedPort: item.port, hostSaveState: "idle", portSaveState: "idle" })));
+        setNetboxInterfaces((data.interfaces ?? []).map((item) => ({ ...item, savedHost: item.host, savedPort: item.port, hostSaveState: "idle", portSaveState: "idle", hostChanged: false, portChanged: false })));
         setLookup({ state: data.found ? "found" : "missing" });
       })
       .catch((error: unknown) => {
@@ -651,11 +655,14 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     setSearchedSiteNumber(null);
     setLookup({ state: "idle" });
     setNetboxInterfaces([]);
+    setNetboxImportMessage("");
+    setNetboxImportError("");
+    setNetboxExportError("");
   };
-  const saveNetboxValue = async (row: NetboxInterfaceRow, field: "host" | "port") => {
+  const saveNetboxValue = async (row: NetboxInterfaceRow, field: "host" | "port"): Promise<boolean> => {
     const value = row[field].trim();
     const savedValue = field === "host" ? row.savedHost : row.savedPort;
-    if (value === savedValue) return;
+    if (value === savedValue) return true;
     const statusField = field === "host" ? "hostSaveState" : "portSaveState";
     const messageField = field === "host" ? "hostSaveMessage" : "portSaveMessage";
     const rowMatches = (item: NetboxInterfaceRow) => item.id === row.id;
@@ -685,16 +692,20 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
         port: data.port ?? item.port,
         savedHost: data.host ?? item.host,
         savedPort: data.port ?? item.port,
+        hostChanged: (data.host ?? item.host) !== item.savedHost,
+        portChanged: (data.port ?? item.port) !== item.savedPort,
         hostSaveMessage: undefined,
         portSaveMessage: undefined,
         hostSaveState: "saved",
         portSaveState: "saved"
       } : item));
+      return true;
     } catch (error) {
       const isDuplicate = error instanceof Error && error.message === "DUPLICATE_LINK";
       setNetboxInterfaces((rows) => rows.map((item) => rowMatches(item) ? { ...item, [statusField]: isDuplicate ? "duplicate" : "error", [messageField]: isDuplicate ? duplicateMessage : undefined } : item));
       if (isDuplicate) setLookup((current) => current.state === "found" ? current : { state: "found" });
       else setLookup({ state: "error", message: error instanceof Error ? error.message : "Не удалось сохранить изменение в NetBox." });
+      return false;
     }
   };
   const saveStateLabel = (state: NetboxSaveState, message?: string) => state === "saving" ? "Сохранение в NetBox…" : state === "saved" ? "Сохранено" : state === "duplicate" ? message ?? "Дубликат" : state === "error" ? "Не сохранено — измените поле и повторите" : state === "dirty" ? "Изменение не сохранено" : "";
@@ -730,6 +741,69 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       setNetboxExporting(false);
     }
   };
+  const importNetboxXlsx = async (file: File) => {
+    if (!searchedSiteNumber || netboxImporting) return;
+    setNetboxImporting(true);
+    setNetboxImportError("");
+    setNetboxImportMessage("Читаем XLSX…");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await apiFetch("/api/daps/netbox/site.xlsx/parse", { method: "POST", body: form });
+      const data = await response.json() as { rows?: { rowNumber: number; host: string; port: string; bypassHost: string; bypassPort: string }[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось прочитать XLSX.");
+      const normalize = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("ru");
+      const pairKey = (host: string, port: string) => `${normalize(host)}\u0000${normalize(port)}`;
+      const byBypass = new Map<string, NetboxInterfaceRow[]>();
+      for (const row of netboxInterfaces) {
+        const key = pairKey(row.bypassHost, row.bypassPort);
+        byBypass.set(key, [...(byBypass.get(key) ?? []), row]);
+      }
+      const rows = data.rows ?? [];
+      const seen = new Set<string>();
+      let changed = 0;
+      let unchanged = 0;
+      let skipped = 0;
+      let failed = 0;
+      const skippedLines: number[] = [];
+      for (let index = 0; index < rows.length; index += 1) {
+        const uploaded = rows[index];
+        setNetboxImportMessage(`Применяем строки ${index + 1} из ${rows.length}…`);
+        const key = pairKey(uploaded.bypassHost, uploaded.bypassPort);
+        const matches = byBypass.get(key) ?? [];
+        if (seen.has(key) || matches.length !== 1) {
+          skipped += 1;
+          skippedLines.push(uploaded.rowNumber);
+          continue;
+        }
+        seen.add(key);
+        const current = matches[0];
+        const nextHost = uploaded.host.trim();
+        const nextPort = uploaded.port.trim();
+        const hostChanged = nextHost !== current.host.trim();
+        const portChanged = nextPort !== current.port.trim();
+        if (!hostChanged && !portChanged) {
+          unchanged += 1;
+          continue;
+        }
+        const updated = { ...current, host: nextHost, port: nextPort,
+          hostSaveState: hostChanged ? "dirty" as const : current.hostSaveState,
+          portSaveState: portChanged ? "dirty" as const : current.portSaveState };
+        setNetboxInterfaces((currentRows) => currentRows.map((item) => item.id === current.id ? updated : item));
+        const saved = await saveNetboxValue(updated, hostChanged ? "host" : "port");
+        if (saved) changed += 1;
+        else failed += 1;
+      }
+      const skippedDetail = skippedLines.length ? ` Строки без однозначной пары Байпаса: ${skippedLines.slice(0, 10).join(", ")}${skippedLines.length > 10 ? "…" : ""}.` : "";
+      setNetboxImportMessage(`Готово: изменено ${changed}, без изменений ${unchanged}, не сопоставлено ${skipped}, ошибок сохранения ${failed}.${skippedDetail}`);
+    } catch (error) {
+      setNetboxImportError(error instanceof Error ? error.message : "Не удалось загрузить XLSX.");
+      setNetboxImportMessage("");
+    } finally {
+      setNetboxImporting(false);
+      if (netboxImportFileRef.current) netboxImportFileRef.current.value = "";
+    }
+  };
   return <section className="section-view daps-report-page">
     <div className="eyebrow"><span className="eyebrow-line" /> DAPS · NETBOX</div>
     <div className="section-hero daps-report-hero"><span className="section-hero-icon"><Network size={22} /></span><div><h1>Netbox</h1><p>Порты ОС и байпаса по площадке.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
@@ -742,16 +816,24 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       {lookup.state === "found" && <span className="netbox-lookup netbox-lookup-found" role="status">Площадка найдена</span>}
       {lookup.state === "missing" && <span className="netbox-lookup netbox-lookup-missing" role="status">Площадка не найдена</span>}
       {lookup.state === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{lookup.message}</span>}
-      {searchedSiteNumber !== null && netboxInterfaces.length > 0 && <button type="button" className="outline-button netbox-export-button" disabled={netboxExporting} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>}
+      {searchedSiteNumber !== null && netboxInterfaces.length > 0 && <>
+        <input ref={netboxImportFileRef} className="netbox-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importNetboxXlsx(file); }} />
+        <div className="netbox-file-actions">
+          <button type="button" className="outline-button" disabled={netboxImporting || lookup.state !== "found"} onClick={() => netboxImportFileRef.current?.click()}><FileSpreadsheet size={15} />{netboxImporting ? "Загрузка…" : "Загрузить XLSX"}</button>
+          <button type="button" className="outline-button netbox-export-button" disabled={netboxExporting || netboxImporting} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>
+        </div>
+      </>}
       {netboxExportError && <span className="netbox-lookup netbox-lookup-error" role="alert">{netboxExportError}</span>}
+      {netboxImportMessage && <span className="netbox-lookup" role="status">{netboxImportMessage}</span>}
+      {netboxImportError && <span className="netbox-lookup netbox-lookup-error" role="alert">{netboxImportError}</span>}
     </form>
     {searchedSiteNumber !== null && <section className="panel daps-daily-table-panel">
       <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}. Изменения сохраняются в NetBox после выхода из поля.</p></div></div>
       <div className="daps-daily-table-wrap"><table className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Хост ОС</th><th>Порт ОС</th><th>Хост Байпаса</th><th>Порт Байпаса</th></tr></thead><tbody>
         {netboxInterfaces.map((item, index) => <tr key={item.id}>
           <td>{index + 1}</td>
-          <td><input className="netbox-edit-input netbox-edit-host" type="text" aria-label={`Хост ОС, строка ${index + 1}`} value={item.host} disabled={item.hostSaveState === "saving" || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, host: event.target.value, hostSaveState: event.target.value === row.savedHost ? "idle" : "dirty", hostSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "host")} /><span className={`netbox-save-note ${item.hostSaveState === "error" || item.hostSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.hostSaveState, item.hostSaveMessage)}</span></td>
-          <td><input className="netbox-edit-input netbox-edit-port" type="text" aria-label={`Порт ОС, строка ${index + 1}`} value={item.port} disabled={item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, port: event.target.value, portSaveState: event.target.value === row.savedPort ? "idle" : "dirty", portSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "port")} /><span className={`netbox-save-note ${item.portSaveState === "error" || item.portSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.portSaveState, item.portSaveMessage)}</span></td>
+          <td className={item.hostChanged ? "netbox-import-changed-cell" : undefined}><input className="netbox-edit-input netbox-edit-host" type="text" aria-label={`Хост ОС, строка ${index + 1}`} value={item.host} disabled={netboxImporting || item.hostSaveState === "saving" || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, host: event.target.value, hostSaveState: event.target.value === row.savedHost ? "idle" : "dirty", hostSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "host")} /><span className={`netbox-save-note ${item.hostSaveState === "error" || item.hostSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.hostSaveState, item.hostSaveMessage)}</span></td>
+          <td className={item.portChanged ? "netbox-import-changed-cell" : undefined}><input className="netbox-edit-input netbox-edit-port" type="text" aria-label={`Порт ОС, строка ${index + 1}`} value={item.port} disabled={netboxImporting || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, port: event.target.value, portSaveState: event.target.value === row.savedPort ? "idle" : "dirty", portSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "port")} /><span className={`netbox-save-note ${item.portSaveState === "error" || item.portSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.portSaveState, item.portSaveMessage)}</span></td>
           <td><span className="netbox-cell-main">{item.bypassHost || "—"}</span></td>
           <td><span className="netbox-cell-main">{item.bypassPort || "—"}</span></td>
         </tr>)}
