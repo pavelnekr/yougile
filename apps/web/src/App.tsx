@@ -616,7 +616,7 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
 
 function NetboxPage({ onBack }: { onBack: () => void }) {
   type NetboxSaveState = "idle" | "dirty" | "saving" | "saved" | "error" | "duplicate";
-  type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string; hostChanged: boolean; portChanged: boolean };
+  type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; linkUpdatedAt: string | null; behindDevice: string; behindPort: string; linkCapacity: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string; hostChanged: boolean; portChanged: boolean };
   const [siteNumber, setSiteNumber] = useState("");
   const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ state: "idle" | "loading" | "found" | "missing" | "error"; message?: string }>({ state: "idle" });
@@ -626,6 +626,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
   const [netboxImporting, setNetboxImporting] = useState(false);
   const [netboxImportMessage, setNetboxImportMessage] = useState("");
   const [netboxImportError, setNetboxImportError] = useState("");
+  const [showNetboxExtraFields, setShowNetboxExtraFields] = useState(false);
   const netboxImportFileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (searchedSiteNumber === null) return;
@@ -636,7 +637,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       .then(async (response) => {
         const data = await response.json() as {
           found?: boolean;
-          interfaces?: { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; bypassHost: string; bypassPort: string }[];
+          interfaces?: { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; bypassHost: string; bypassPort: string; linkUpdatedAt: string | null; behindDevice: string; behindPort: string; linkCapacity: string }[];
           error?: string;
         };
         if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
@@ -674,7 +675,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ siteSlug: searchedSiteNumber, sourceDeviceId: row.deviceId, sourceInterfaceId: row.interfaceId, hostName: field === "host" ? value : row.host.trim(), portName: field === "port" ? value : row.port.trim() })
       });
-      const data = await response.json() as { saved?: boolean; deviceId?: number; interfaceId?: number; host?: string; port?: string; code?: string; duplicateDeviceId?: number; duplicateInterfaceId?: number; error?: string };
+      const data = await response.json() as { saved?: boolean; deviceId?: number; interfaceId?: number; host?: string; port?: string; linkUpdatedAt?: string; code?: string; duplicateDeviceId?: number; duplicateInterfaceId?: number; error?: string };
       if (!response.ok || !data.saved) {
         if (data.code === "DUPLICATE_LINK") {
           const duplicate = netboxInterfaces.find((item) => item.deviceId === data.duplicateDeviceId && item.interfaceId === data.duplicateInterfaceId);
@@ -692,6 +693,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
         port: data.port ?? item.port,
         savedHost: data.host ?? item.host,
         savedPort: data.port ?? item.port,
+        linkUpdatedAt: data.linkUpdatedAt ?? item.linkUpdatedAt,
         hostChanged: (data.host ?? item.host) !== item.savedHost,
         portChanged: (data.port ?? item.port) !== item.savedPort,
         hostSaveMessage: undefined,
@@ -719,7 +721,10 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           siteSlug: searchedSiteNumber,
-          rows: netboxInterfaces.map(({ host, port, bypassHost, bypassPort }) => ({ host, port, bypassHost, bypassPort }))
+          rows: netboxInterfaces.map(({ host, port, bypassHost, bypassPort, linkUpdatedAt, behindDevice, behindPort, linkCapacity }) => ({
+            host, port, linkUpdatedAt: linkUpdatedAt ?? "", bypassHost, bypassPort,
+            ...(showNetboxExtraFields ? { behindDevice, behindPort, linkCapacity } : {})
+          }))
         })
       });
       if (!response.ok) {
@@ -819,7 +824,10 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       {searchedSiteNumber !== null && netboxInterfaces.length > 0 && <>
         <input ref={netboxImportFileRef} className="netbox-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importNetboxXlsx(file); }} />
         <div className="netbox-file-actions">
+          <div className="netbox-upload-actions">
           <button type="button" className="outline-button" disabled={netboxImporting || lookup.state !== "found"} onClick={() => netboxImportFileRef.current?.click()}><FileSpreadsheet size={15} />{netboxImporting ? "Загрузка…" : "Загрузить XLSX"}</button>
+          <button type="button" className="outline-button" aria-expanded={showNetboxExtraFields} aria-controls="netbox-links-table" onClick={() => setShowNetboxExtraFields((shown) => !shown)}>{showNetboxExtraFields ? "Скрыть доп. поля" : "Показать доп. поля"}</button>
+          </div>
           <button type="button" className="outline-button netbox-export-button" disabled={netboxExporting || netboxImporting} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>
         </div>
       </>}
@@ -829,15 +837,21 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     </form>
     {searchedSiteNumber !== null && <section className="panel daps-daily-table-panel">
       <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}. Изменения сохраняются в NetBox после выхода из поля.</p></div></div>
-      <div className="daps-daily-table-wrap"><table className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Хост ОС</th><th>Порт ОС</th><th>Хост Байпаса</th><th>Порт Байпаса</th></tr></thead><tbody>
+      <div className="daps-daily-table-wrap"><table id="netbox-links-table" className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Дата изменения линка</th><th>Хост ОС</th><th>Порт ОС</th><th>Хост Байпаса</th><th>Порт Байпаса</th>{showNetboxExtraFields && <><th>Устройство за байпасом</th><th>Порт устройства</th><th>Линк</th></>}</tr></thead><tbody>
         {netboxInterfaces.map((item, index) => <tr key={item.id}>
           <td>{index + 1}</td>
+          <td className="netbox-link-updated-cell">{item.linkUpdatedAt && Number.isFinite(new Date(item.linkUpdatedAt).getTime()) ? new Date(item.linkUpdatedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
           <td className={item.hostChanged ? "netbox-import-changed-cell" : undefined}><input className="netbox-edit-input netbox-edit-host" type="text" aria-label={`Хост ОС, строка ${index + 1}`} value={item.host} disabled={netboxImporting || item.hostSaveState === "saving" || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, host: event.target.value, hostSaveState: event.target.value === row.savedHost ? "idle" : "dirty", hostSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "host")} /><span className={`netbox-save-note ${item.hostSaveState === "error" || item.hostSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.hostSaveState, item.hostSaveMessage)}</span></td>
           <td className={item.portChanged ? "netbox-import-changed-cell" : undefined}><input className="netbox-edit-input netbox-edit-port" type="text" aria-label={`Порт ОС, строка ${index + 1}`} value={item.port} disabled={netboxImporting || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, port: event.target.value, portSaveState: event.target.value === row.savedPort ? "idle" : "dirty", portSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "port")} /><span className={`netbox-save-note ${item.portSaveState === "error" || item.portSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.portSaveState, item.portSaveMessage)}</span></td>
           <td><span className="netbox-cell-main">{item.bypassHost || "—"}</span></td>
           <td><span className="netbox-cell-main">{item.bypassPort || "—"}</span></td>
+          {showNetboxExtraFields && <>
+            <td><span className="netbox-cell-main">{item.behindDevice || "—"}</span></td>
+            <td><span className="netbox-cell-main">{item.behindPort || "—"}</span></td>
+            <td><span className="netbox-cell-main">{item.linkCapacity || "—"}</span></td>
+          </>}
         </tr>)}
-        {lookup.state === "found" && netboxInterfaces.length === 0 && <tr><td className="netbox-empty-row" colSpan={5}>Не найдены порты ОС, связанные с байпасом.</td></tr>}
+        {lookup.state === "found" && netboxInterfaces.length === 0 && <tr><td className="netbox-empty-row" colSpan={showNetboxExtraFields ? 9 : 6}>Не найдены порты ОС, связанные с байпасом.</td></tr>}
       </tbody></table></div>
     </section>}
   </section>;
