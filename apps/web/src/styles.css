@@ -147,6 +147,14 @@ button { color: inherit; }
 .netbox-lookup-missing, .netbox-lookup-error { color: #ad5f4a; }
 .netbox-cell-main, .netbox-cell-meta { display: block; }
 .netbox-cell-meta { margin-top: 3px; color: #8791a1; font-size: 9px; }
+.netbox-edit-input { width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; color: #354056; background: transparent; font: inherit; font-size: 11px; }
+.netbox-edit-input:hover { border-color: #e2e7ef; background: #fff; }
+.netbox-edit-input:focus { outline: none; border-color: #7489df; background: #fff; box-shadow: 0 0 0 3px #7489df20; }
+.netbox-edit-input:disabled { opacity: .7; }
+.netbox-edit-host { min-width: 190px; }
+.netbox-edit-port { min-width: 105px; }
+.netbox-save-note { display: block; min-height: 12px; margin: 2px 0 0 8px; color: #368263; font-size: 9px; }
+.netbox-save-error { color: #ad5f4a; }
 .netbox-empty-row { padding: 18px !important; color: #8791a1; text-align: center; }
 .daps-daily-controls input, .daps-manual-row input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
 .daps-daily-controls > .outline-button, .daps-daily-controls > .btn-primary, .daps-daily-save { min-height: 34px; align-self: end; }

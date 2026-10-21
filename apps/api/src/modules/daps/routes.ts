@@ -23,6 +23,209 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
   const readAccess = requireWorkspaceAccess("DAPS");
   const writeAccess = requireWorkspaceAccess("DAPS", true);
 
+  app.put<{ Body: { siteSlug?: string; sourceDeviceId?: number; sourceInterfaceId?: number; hostName?: string; portName?: string } }>("/api/daps/netbox/interface", { preHandler: writeAccess }, async (request, reply) => {
+    const input = z.object({
+      siteSlug: z.string().trim().min(1).max(100),
+      sourceDeviceId: z.number().int().positive(),
+      sourceInterfaceId: z.number().int().positive(),
+      hostName: z.string().trim().min(1).max(200),
+      portName: z.string().trim().min(1).max(200)
+    }).safeParse(request.body);
+    if (!input.success) return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Проверьте имя хоста и порта ОС." });
+    const settings = await getNetboxApiSettings(prisma);
+    if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
+
+    const apiBase = new URL("/api/dcim/", settings.url);
+    const headers = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
+    const writeHeaders = { ...headers, "Content-Type": "application/json" };
+    const requestJson = async (url: URL, init: RequestInit = {}) => fetch(url, { ...init, headers: init.headers ?? headers, signal: init.signal ?? AbortSignal.timeout(10_000) });
+    const isOsRole = (device: { role?: { id?: number; name?: string } | null; device_role?: { id?: number; name?: string } | null }) => {
+      const role = device.role?.name ?? device.device_role?.name;
+      return role === "Устройство LAN" || role === "Устройство WAN";
+    };
+    try {
+      const siteUrl = new URL("sites/", apiBase);
+      siteUrl.searchParams.set("slug", input.data.siteSlug);
+      const siteResponse = await requestJson(siteUrl);
+      if (!siteResponse.ok) return reply.code(502).send({ error: "Не удалось проверить площадку в NetBox перед сохранением." });
+      const siteData = await siteResponse.json() as { results?: { id: number; slug: string }[] };
+      const site = siteData.results?.find((item) => item.slug === input.data.siteSlug);
+      if (!site) return reply.code(404).send({ error: "Площадка не найдена в NetBox." });
+
+      const sourceDeviceResponse = await requestJson(new URL(`devices/${input.data.sourceDeviceId}/`, apiBase));
+      if (!sourceDeviceResponse.ok) return reply.code(404).send({ error: "Исходный хост ОС не найден в NetBox." });
+      const sourceDevice = await sourceDeviceResponse.json() as {
+        id: number; name?: string | null; site?: { id?: number } | null; role?: { id?: number; name?: string } | null; device_role?: { id?: number; name?: string } | null;
+        device_type?: { id?: number; u_height?: number } | null; status?: { value?: string } | null;
+      };
+      if (sourceDevice.site?.id !== site.id || !isOsRole(sourceDevice)) return reply.code(403).send({ error: "Можно переносить только интерфейсы устройств ОС на выбранной площадке." });
+      const sourceInterfaceResponse = await requestJson(new URL(`interfaces/${input.data.sourceInterfaceId}/`, apiBase));
+      if (!sourceInterfaceResponse.ok) return reply.code(404).send({ error: "Исходный порт ОС не найден в NetBox." });
+      const sourceInterface = await sourceInterfaceResponse.json() as {
+        id: number; name: string; device?: { id?: number } | null; type?: { value?: string } | null; enabled?: boolean; mgmt_only?: boolean;
+        cable?: { id?: number } | null;
+      };
+      if (sourceInterface.device?.id !== sourceDevice.id) return reply.code(403).send({ error: "Указанный порт не принадлежит исходному хосту ОС." });
+      if (!sourceInterface.cable?.id) return reply.code(409).send({ error: "У исходного порта нет кабельного соединения. Перенос линка отменён." });
+
+      const devicesUrl = new URL("devices/", apiBase);
+      devicesUrl.searchParams.set("site_id", String(site.id));
+      devicesUrl.searchParams.set("name", input.data.hostName);
+      devicesUrl.searchParams.set("limit", "1000");
+      const devicesResponse = await requestJson(devicesUrl);
+      if (!devicesResponse.ok) return reply.code(502).send({ error: "Не удалось найти целевой хост ОС в NetBox." });
+      const devicesData = await devicesResponse.json() as { results?: { id: number; name?: string; site?: { id?: number }; role?: { id?: number; name?: string }; device_role?: { id?: number; name?: string }; rack?: { id?: number } | null; position?: number | string | null }[] };
+      let targetDevice = devicesData.results?.find((device) => device.name === input.data.hostName);
+      if (targetDevice && (targetDevice.site?.id !== site.id || !isOsRole(targetDevice))) return reply.code(409).send({ error: "Хост с таким именем найден, но его роль или площадка не совпадает с устройством ОС." });
+      const deviceTypeId = sourceDevice.device_type?.id;
+      if (!deviceTypeId) return reply.code(502).send({ error: "Не удалось определить тип исходного хоста ОС." });
+      const deviceTypeResponse = await requestJson(new URL(`device-types/${deviceTypeId}/`, apiBase));
+      if (!deviceTypeResponse.ok) return reply.code(502).send({ error: "Не удалось прочитать высоту типа устройства NetBox." });
+      const deviceType = await deviceTypeResponse.json() as { u_height?: number };
+      const deviceHeight = Number(deviceType.u_height);
+      if (!Number.isFinite(deviceHeight) || deviceHeight <= 0) return reply.code(409).send({ error: "У типа этого Хоста ОС задана высота 0U. Укажите высоту устройства в NetBox, чтобы назначить ему юнит стойки." });
+
+      const racksUrl = new URL("racks/", apiBase);
+      racksUrl.searchParams.set("site_id", String(site.id));
+      racksUrl.searchParams.set("name", "LAN & WAN (fake)");
+      racksUrl.searchParams.set("limit", "1000");
+      const racksResponse = await requestJson(racksUrl);
+      if (!racksResponse.ok) return reply.code(502).send({ error: "Не удалось найти стойку LAN & WAN (fake) в NetBox." });
+      const racksData = await racksResponse.json() as { results?: { id: number; name: string; site?: { id?: number }; u_height?: number; starting_unit?: number; descending_units?: boolean }[] };
+      const rack = racksData.results?.find((item) => item.name === "LAN & WAN (fake)" && item.site?.id === site.id);
+      if (!rack) return reply.code(424).send({ error: "На площадке не найдена стойка «LAN & WAN (fake)». Хост ОС не создан." });
+
+      const needsRackPlacement = !targetDevice || !targetDevice.rack || (targetDevice.rack.id === rack.id && targetDevice.position == null);
+      let position: number | null = targetDevice?.position == null ? null : Number(targetDevice.position);
+      if (needsRackPlacement) {
+        const rackDevicesUrl = new URL("devices/", apiBase);
+        rackDevicesUrl.searchParams.set("rack_id", String(rack.id));
+        rackDevicesUrl.searchParams.set("limit", "1000");
+        const rackDevicesResponse = await requestJson(rackDevicesUrl);
+        if (!rackDevicesResponse.ok) return reply.code(502).send({ error: "Не удалось определить свободное место в стойке NetBox." });
+        const rackDevicesData = await rackDevicesResponse.json() as { results?: { position?: number | string | null; device_type?: { id?: number; u_height?: number } | null }[] };
+        const rackHeight = Number(rack.u_height ?? 0);
+        const rackStart = Number(rack.starting_unit ?? 1);
+        if (!Number.isFinite(rackHeight) || rackHeight <= 0 || deviceHeight > rackHeight) return reply.code(409).send({ error: "Высота стойки или устройства не позволяет назначить позицию." });
+        const placedDeviceTypeIds = [...new Set((rackDevicesData.results ?? [])
+          .map((placed) => placed.device_type?.id)
+          .filter((id): id is number => typeof id === "number"))];
+        const placedTypeHeights = new Map<number, number>([[deviceTypeId, deviceHeight]]);
+        const otherTypeIds = placedDeviceTypeIds.filter((id) => id !== deviceTypeId && !(rackDevicesData.results ?? []).some((placed) => placed.device_type?.id === id && typeof placed.device_type.u_height === "number"));
+        const fetchedTypeHeights = await Promise.all(otherTypeIds.map(async (id) => {
+          const response = await requestJson(new URL(`device-types/${id}/`, apiBase));
+          if (!response.ok) throw new Error("Could not retrieve rack device type height");
+          const data = await response.json() as { u_height?: number };
+          return [id, Number(data.u_height)] as const;
+        })).catch(() => null);
+        if (!fetchedTypeHeights) return reply.code(502).send({ error: "Не удалось прочитать высоту устройств, уже установленных в стойке." });
+        for (const [id, height] of fetchedTypeHeights) placedTypeHeights.set(id, height);
+        const firstPosition = Math.round(rackStart * 2);
+        const lastPosition = Math.round((rackStart + rackHeight) * 2) - 1;
+        const deviceHeightSteps = Math.round(deviceHeight * 2);
+        const occupiedPositions = new Set<number>();
+        for (const placed of rackDevicesData.results ?? []) {
+          const placedPosition = Number(placed.position);
+          const placedHeight = placed.device_type?.u_height ?? (placed.device_type?.id ? placedTypeHeights.get(placed.device_type.id) : undefined) ?? 0;
+          const placedHeightSteps = Math.round(Number(placedHeight) * 2);
+          if (!Number.isFinite(placedPosition) || placedHeightSteps <= 0) continue;
+          for (let step = Math.round(placedPosition * 2); step < Math.round(placedPosition * 2) + placedHeightSteps; step += 1) occupiedPositions.add(step);
+        }
+        const candidates: number[] = [];
+        if (rack.descending_units) {
+          for (let candidate = lastPosition - deviceHeightSteps + 1; candidate >= firstPosition; candidate -= 1) candidates.push(candidate);
+        } else {
+          for (let candidate = firstPosition; candidate <= lastPosition - deviceHeightSteps + 1; candidate += 1) candidates.push(candidate);
+        }
+        const positionSteps = candidates.find((candidate) => Array.from({ length: deviceHeightSteps }, (_, offset) => candidate + offset).every((step) => !occupiedPositions.has(step)));
+        position = positionSteps === undefined ? null : positionSteps / 2;
+        if (position === null) return reply.code(409).send({ error: "В стойке «LAN & WAN (fake)» не осталось свободного места для Хоста ОС." });
+      }
+
+      if (!targetDevice) {
+        const roleId = sourceDevice.role?.id ?? sourceDevice.device_role?.id;
+        if (!roleId) return reply.code(502).send({ error: "Не удалось определить роль исходного хоста для создания нового устройства." });
+        const createDeviceBody: Record<string, unknown> = {
+          name: input.data.hostName, site: site.id, device_type: deviceTypeId,
+          status: sourceDevice.status?.value ?? "active", rack: rack.id, face: "front",
+          ...(position !== null ? { position } : {})
+        };
+        createDeviceBody[sourceDevice.role ? "role" : "device_role"] = roleId;
+        const createdDeviceResponse = await requestJson(new URL("devices/", apiBase), { method: "POST", headers: writeHeaders, body: JSON.stringify(createDeviceBody) });
+        if (!createdDeviceResponse.ok) {
+          request.log.warn({ statusCode: createdDeviceResponse.status, sourceDeviceId: sourceDevice.id }, "NetBox OS device creation failed");
+          return reply.code(502).send({ error: "Не удалось создать хост ОС в NetBox. Проверьте права и обязательные поля устройства." });
+        }
+        targetDevice = await createdDeviceResponse.json() as NonNullable<typeof targetDevice>;
+      } else if (needsRackPlacement) {
+        const placementResponse = await requestJson(new URL(`devices/${targetDevice.id}/`, apiBase), {
+          method: "PATCH", headers: writeHeaders,
+          body: JSON.stringify({ rack: rack.id, face: "front", position })
+        });
+        if (!placementResponse.ok) {
+          request.log.warn({ statusCode: placementResponse.status, targetDeviceId: targetDevice.id, rackId: rack.id, position }, "NetBox OS device rack placement failed");
+          return reply.code(502).send({ error: "Не удалось назначить Хосту ОС юнит в стойке NetBox." });
+        }
+      }
+
+      const interfacesUrl = new URL("interfaces/", apiBase);
+      interfacesUrl.searchParams.set("device_id", String(targetDevice.id));
+      interfacesUrl.searchParams.set("name", input.data.portName);
+      interfacesUrl.searchParams.set("limit", "1000");
+      const interfacesResponse = await requestJson(interfacesUrl);
+      if (!interfacesResponse.ok) return reply.code(502).send({ error: "Не удалось проверить порт на целевом хосте ОС." });
+      const interfacesData = await interfacesResponse.json() as { results?: { id: number; name: string; cable?: { id?: number } | null; device?: { id?: number } | null }[] };
+      let targetInterface = interfacesData.results?.find((item) => item.name === input.data.portName);
+      if (!targetInterface) {
+        if (!sourceInterface.type?.value) return reply.code(502).send({ error: "Не удалось определить тип исходного порта для создания нового интерфейса." });
+        const createdInterfaceResponse = await requestJson(new URL("interfaces/", apiBase), {
+          method: "POST", headers: writeHeaders,
+          body: JSON.stringify({ device: targetDevice.id, name: input.data.portName, type: sourceInterface.type.value, enabled: sourceInterface.enabled, mgmt_only: sourceInterface.mgmt_only })
+        });
+        if (!createdInterfaceResponse.ok) {
+          request.log.warn({ statusCode: createdInterfaceResponse.status, targetDeviceId: targetDevice.id }, "NetBox OS interface creation failed");
+          return reply.code(502).send({ error: "Не удалось создать порт ОС на целевом хосте в NetBox." });
+        }
+        targetInterface = await createdInterfaceResponse.json() as NonNullable<typeof targetInterface>;
+      }
+      if (targetInterface.id === sourceInterface.id) return { saved: true, deviceId: targetDevice.id, interfaceId: targetInterface.id, host: input.data.hostName, port: input.data.portName };
+      if (targetInterface.cable?.id) return reply.code(409).send({ error: "Дубликат", code: "DUPLICATE_LINK", duplicateDeviceId: targetDevice.id, duplicateInterfaceId: targetInterface.id });
+
+      const cableUrl = new URL(`cables/${sourceInterface.cable.id}/`, apiBase);
+      const cableResponse = await requestJson(cableUrl);
+      if (!cableResponse.ok) return reply.code(502).send({ error: "Не удалось загрузить кабель исходного линка из NetBox." });
+      const cable = await cableResponse.json() as {
+        a_terminations?: { object_type?: string; object_id?: number }[]; b_terminations?: { object_type?: string; object_id?: number }[];
+      };
+      const replaceTermination = (items: { object_type?: string; object_id?: number }[] | undefined) => {
+        if (!items) return null;
+        let found = false;
+        const updated = items.map((termination) => {
+          if (termination.object_type === "dcim.interface" && termination.object_id === sourceInterface.id) {
+            found = true;
+            return { object_type: "dcim.interface", object_id: targetInterface!.id };
+          }
+          return { object_type: termination.object_type, object_id: termination.object_id };
+        });
+        return found ? updated : null;
+      };
+      const aTerminations = replaceTermination(cable.a_terminations);
+      const bTerminations = replaceTermination(cable.b_terminations);
+      if (!aTerminations && !bTerminations) return reply.code(409).send({ error: "Исходный порт не найден среди окончаний кабеля; линк не изменён." });
+      const cableUpdateResponse = await requestJson(cableUrl, {
+        method: "PATCH", headers: writeHeaders,
+        body: JSON.stringify(aTerminations ? { a_terminations: aTerminations } : { b_terminations: bTerminations })
+      });
+      if (!cableUpdateResponse.ok) {
+        request.log.warn({ statusCode: cableUpdateResponse.status, cableId: sourceInterface.cable.id }, "NetBox cable termination update failed");
+        return reply.code(502).send({ error: "NetBox не переподключил линк. Проверьте права токена на изменение кабелей." });
+      }
+      return { saved: true, deviceId: targetDevice.id, interfaceId: targetInterface.id, host: input.data.hostName, port: input.data.portName };
+    } catch {
+      return reply.code(502).send({ error: "Не удалось связаться с NetBox для сохранения изменения." });
+    }
+  });
+
   app.get<{ Querystring: { slug?: string } }>("/api/daps/netbox/site", { preHandler: readAccess }, async (request, reply) => {
     const slug = z.string().trim().min(1).max(100).safeParse(request.query.slug);
     if (!slug.success) return reply.code(400).send({ error: "Введите номер площадки." });
@@ -170,6 +373,8 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
           const bypasses = [...matches.values()];
           return bypasses.map((bypass, index) => ({
             id: `${device.id}-${item.id}-${index}`,
+            deviceId: device.id,
+            interfaceId: item.id,
             role: roleName(device),
             port: item.name,
             host: device.name,

@@ -1398,7 +1398,7 @@ export default function PortalConfigPage({
             <div className="portal-config-section-heading">
               <div>
                 <h2>NetBox</h2>
-                <p>Подключение к NetBox API для поиска площадок по slug. Перед сохранением проверяются адрес и доступ к списку площадок.</p>
+                <p>Подключение к NetBox API для поиска площадок и сохранения изменений устройств и интерфейсов ОС.</p>
               </div>
               <span className="portal-config-save-state">{netboxTokenConfigured ? "Токен настроен" : "Токен не настроен"}</span>
             </div>
@@ -1444,7 +1444,7 @@ export default function PortalConfigPage({
                     <button type="button" className="outline-button" disabled={netboxSaving || !netboxBypassRoleDraft.trim() || netboxBypassRoles.some((role) => role.toLocaleLowerCase("ru") === netboxBypassRoleDraft.trim().toLocaleLowerCase("ru"))} onClick={addNetboxBypassRole}><Plus size={14} /> Добавить роль</button>
                   </div>
                 </div>
-                <div className="portal-config-note"><Info size={14} /><span>URL должен быть доступен с сервера API. Токен хранится зашифрованным с помощью YOUGILE_TOKEN_ENCRYPTION_KEY и не возвращается в браузер. Создайте в NetBox токен с правом чтения площадок.</span></div>
+                <div className="portal-config-note"><Info size={14} /><span>URL должен быть доступен с сервера API. Токен хранится зашифрованным с помощью YOUGILE_TOKEN_ENCRYPTION_KEY и не возвращается в браузер. Для поиска нужны права чтения площадок, устройств и стоек; для редактирования и переподключения линков — права создания устройств и интерфейсов, а также изменения кабелей.</span></div>
               </>
             )}
             {netboxError && netboxUrl && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{netboxError}</div>}

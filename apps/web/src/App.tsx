@@ -615,10 +615,12 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
 }
 
 function NetboxPage({ onBack }: { onBack: () => void }) {
+  type NetboxSaveState = "idle" | "dirty" | "saving" | "saved" | "error" | "duplicate";
+  type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string };
   const [siteNumber, setSiteNumber] = useState("");
   const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ state: "idle" | "loading" | "found" | "missing" | "error"; message?: string }>({ state: "idle" });
-  const [netboxInterfaces, setNetboxInterfaces] = useState<{ id: string; role: string; port: string; host: string; bypassHost: string; bypassPort: string }[]>([]);
+  const [netboxInterfaces, setNetboxInterfaces] = useState<NetboxInterfaceRow[]>([]);
   useEffect(() => {
     if (searchedSiteNumber === null) return;
     const controller = new AbortController();
@@ -628,11 +630,11 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       .then(async (response) => {
         const data = await response.json() as {
           found?: boolean;
-          interfaces?: { id: string; role: string; port: string; host: string; bypassHost: string; bypassPort: string }[];
+          interfaces?: { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; bypassHost: string; bypassPort: string }[];
           error?: string;
         };
         if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
-        setNetboxInterfaces(data.interfaces ?? []);
+        setNetboxInterfaces((data.interfaces ?? []).map((item) => ({ ...item, savedHost: item.host, savedPort: item.port, hostSaveState: "idle", portSaveState: "idle" })));
         setLookup({ state: data.found ? "found" : "missing" });
       })
       .catch((error: unknown) => {
@@ -648,6 +650,52 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     setLookup({ state: "idle" });
     setNetboxInterfaces([]);
   };
+  const saveNetboxValue = async (row: NetboxInterfaceRow, field: "host" | "port") => {
+    const value = row[field].trim();
+    const savedValue = field === "host" ? row.savedHost : row.savedPort;
+    if (value === savedValue) return;
+    const statusField = field === "host" ? "hostSaveState" : "portSaveState";
+    const messageField = field === "host" ? "hostSaveMessage" : "portSaveMessage";
+    const rowMatches = (item: NetboxInterfaceRow) => item.id === row.id;
+    setNetboxInterfaces((rows) => rows.map((item) => rowMatches(item) ? { ...item, [statusField]: "saving" } : item));
+    let duplicateMessage = "Дубликат";
+    try {
+      const response = await apiFetch("/api/daps/netbox/interface", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteSlug: searchedSiteNumber, sourceDeviceId: row.deviceId, sourceInterfaceId: row.interfaceId, hostName: field === "host" ? value : row.host.trim(), portName: field === "port" ? value : row.port.trim() })
+      });
+      const data = await response.json() as { saved?: boolean; deviceId?: number; interfaceId?: number; host?: string; port?: string; code?: string; duplicateDeviceId?: number; duplicateInterfaceId?: number; error?: string };
+      if (!response.ok || !data.saved) {
+        if (data.code === "DUPLICATE_LINK") {
+          const duplicate = netboxInterfaces.find((item) => item.deviceId === data.duplicateDeviceId && item.interfaceId === data.duplicateInterfaceId);
+          if (duplicate?.bypassHost && duplicate.bypassPort) duplicateMessage = `Дубликат порта на ${duplicate.bypassHost}, ${duplicate.bypassPort}`;
+          throw new Error("DUPLICATE_LINK");
+        }
+        throw new Error(data.error ?? "Не удалось сохранить изменение в NetBox.");
+      }
+      setNetboxInterfaces((rows) => rows.map((item) => rowMatches(item) ? {
+        ...item,
+        id: `${data.deviceId ?? item.deviceId}-${data.interfaceId ?? item.interfaceId}-${item.id.split("-").at(-1) ?? "0"}`,
+        deviceId: data.deviceId ?? item.deviceId,
+        interfaceId: data.interfaceId ?? item.interfaceId,
+        host: data.host ?? item.host,
+        port: data.port ?? item.port,
+        savedHost: data.host ?? item.host,
+        savedPort: data.port ?? item.port,
+        hostSaveMessage: undefined,
+        portSaveMessage: undefined,
+        hostSaveState: "saved",
+        portSaveState: "saved"
+      } : item));
+    } catch (error) {
+      const isDuplicate = error instanceof Error && error.message === "DUPLICATE_LINK";
+      setNetboxInterfaces((rows) => rows.map((item) => rowMatches(item) ? { ...item, [statusField]: isDuplicate ? "duplicate" : "error", [messageField]: isDuplicate ? duplicateMessage : undefined } : item));
+      if (isDuplicate) setLookup((current) => current.state === "found" ? current : { state: "found" });
+      else setLookup({ state: "error", message: error instanceof Error ? error.message : "Не удалось сохранить изменение в NetBox." });
+    }
+  };
+  const saveStateLabel = (state: NetboxSaveState, message?: string) => state === "saving" ? "Сохранение в NetBox…" : state === "saved" ? "Сохранено" : state === "duplicate" ? message ?? "Дубликат" : state === "error" ? "Не сохранено — измените поле и повторите" : state === "dirty" ? "Изменение не сохранено" : "";
   return <section className="section-view daps-report-page">
     <div className="eyebrow"><span className="eyebrow-line" /> DAPS · NETBOX</div>
     <div className="section-hero daps-report-hero"><span className="section-hero-icon"><Network size={22} /></span><div><h1>Netbox</h1><p>Порты ОС и байпаса по площадке.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
@@ -662,12 +710,12 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       {lookup.state === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{lookup.message}</span>}
     </form>
     {searchedSiteNumber !== null && <section className="panel daps-daily-table-panel">
-      <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}</p></div></div>
+      <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}. Изменения сохраняются в NetBox после выхода из поля.</p></div></div>
       <div className="daps-daily-table-wrap"><table className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Хост ОС</th><th>Порт ОС</th><th>Хост Байпаса</th><th>Порт Байпаса</th></tr></thead><tbody>
         {netboxInterfaces.map((item, index) => <tr key={item.id}>
           <td>{index + 1}</td>
-          <td><span className="netbox-cell-main">{item.host || "—"}</span></td>
-          <td><span className="netbox-cell-main">{item.port}</span><span className="netbox-cell-meta">{item.role}</span></td>
+          <td><input className="netbox-edit-input netbox-edit-host" type="text" aria-label={`Хост ОС, строка ${index + 1}`} value={item.host} disabled={item.hostSaveState === "saving" || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, host: event.target.value, hostSaveState: event.target.value === row.savedHost ? "idle" : "dirty", hostSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "host")} /><span className={`netbox-save-note ${item.hostSaveState === "error" || item.hostSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.hostSaveState, item.hostSaveMessage)}</span></td>
+          <td><input className="netbox-edit-input netbox-edit-port" type="text" aria-label={`Порт ОС, строка ${index + 1}`} value={item.port} disabled={item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, port: event.target.value, portSaveState: event.target.value === row.savedPort ? "idle" : "dirty", portSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "port")} /><span className={`netbox-save-note ${item.portSaveState === "error" || item.portSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.portSaveState, item.portSaveMessage)}</span></td>
           <td><span className="netbox-cell-main">{item.bypassHost || "—"}</span></td>
           <td><span className="netbox-cell-main">{item.bypassPort || "—"}</span></td>
         </tr>)}
