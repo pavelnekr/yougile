@@ -17,6 +17,7 @@ const dailyKpiSaveSchema = z.object({
 const netboxExportSchema = z.object({
   siteSlug: z.string().trim().min(1).max(100),
   rows: z.array(z.object({
+    tspuId: z.string().max(100),
     host: z.string().max(200),
     port: z.string().max(200),
     linkUpdatedAt: z.string().max(100),
@@ -269,10 +270,16 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
         { header: "Порт устройства", key: "behindPort", width: 24 },
         { header: "Линк", key: "linkCapacity", width: 24 }
       ];
-      worksheet.addRows(parsed.data.rows.map((row, index) => ({
-        number: index + 1,
-        ...row,
-        linkUpdatedAt: Number.isFinite(new Date(row.linkUpdatedAt).getTime()) ? new Date(row.linkUpdatedAt) : row.linkUpdatedAt
+      worksheet.addRows(parsed.data.rows.map((row) => ({
+        number: row.tspuId,
+        host: row.host,
+        port: row.port,
+        linkUpdatedAt: Number.isFinite(new Date(row.linkUpdatedAt).getTime()) ? new Date(row.linkUpdatedAt) : row.linkUpdatedAt,
+        bypassHost: row.bypassHost,
+        bypassPort: row.bypassPort,
+        behindDevice: row.behindDevice,
+        behindPort: row.behindPort,
+        linkCapacity: row.linkCapacity
       })));
       worksheet.getRow(1).font = { bold: true };
       worksheet.getColumn("linkUpdatedAt").numFmt = "dd.mm.yyyy hh:mm";
@@ -388,11 +395,16 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     type NetboxPeer = { id: number; url?: string; name?: string | null; display?: string; device?: { id?: number; name?: string | null } | null };
     type NetboxDevice = (typeof siteDevices)[number];
     type LinkedPorts = { link_peers?: NetboxPeer[] | null; link_peer?: NetboxPeer | null; cable_peer?: NetboxPeer | null; connected_endpoints?: NetboxPeer[] | null };
-    type OdfPort = LinkedPorts & { id: number; name: string; device?: { id?: number } | null; rear_ports?: { rear_port: number }[]; front_ports?: { front_port: number }[] };
+    type OdfPort = LinkedPorts & { id: number; name: string; device?: { id?: number } | null; custom_fields?: Record<string, unknown> | null; rear_ports?: { rear_port: number }[]; front_ports?: { front_port: number }[] };
     const deviceById = new Map(siteDevices.map((device) => [device.id, device]));
     const bypassRoleNames = new Set(settings.bypassRoles);
     const isBypassRole = (role?: string) => role !== undefined && bypassRoleNames.has(role);
     const roleName = (device: NetboxDevice | undefined) => device?.role?.name ?? device?.device_role?.name ?? "";
+    const tspuId = (customFields: Record<string, unknown> | null | undefined) => {
+      const entry = Object.entries(customFields ?? {}).find(([key]) => key.toLocaleLowerCase("en").replace(/[^a-z0-9]/g, "") === "tspuid");
+      const value = entry?.[1];
+      return typeof value === "string" || typeof value === "number" ? String(value) : "";
+    };
     const peerList = (item: LinkedPorts) => {
       if (Object.prototype.hasOwnProperty.call(item, "link_peers")) return item.link_peers ?? [];
       if (item.link_peer) return [item.link_peer];
@@ -497,8 +509,14 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
           const bypasses = [...matches.values()];
           return bypasses.map((bypass, index) => {
             let behind: { deviceId: number; interfaceId: number; device: string; port: string } | null = null;
+            let linkTspuId = "";
             if (bypass.portKind) {
               const bypassPortEntry = networkPortsByNode.get(nodeKey(bypass.portKind, bypass.interfaceId));
+              if (bypass.portKind === "front") linkTspuId = tspuId(bypassPortEntry?.port.custom_fields);
+              else {
+                const frontPortIds = bypassPortEntry?.port.front_ports?.map((item) => item.front_port) ?? [];
+                linkTspuId = frontPortIds.map((frontPortId) => tspuId(networkPortsByNode.get(nodeKey("front", frontPortId))?.port.custom_fields)).find(Boolean) ?? "";
+              }
               const pairedIds = bypassPortEntry
                 ? bypass.portKind === "front"
                   ? (bypassPortEntry.port.rear_ports ?? []).map((item) => item.rear_port)
@@ -525,6 +543,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
             linkUpdatedAt: item.cable?.last_updated ?? null,
             bypassHost: bypass.host,
             bypassPort: bypass.port,
+            tspuId: linkTspuId,
             behindDevice: behind?.device ?? "",
             behindPort: behind?.port ?? "",
             behindInterfaceId: behind?.interfaceId ?? null,

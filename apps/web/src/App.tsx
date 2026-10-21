@@ -616,7 +616,7 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
 
 function NetboxPage({ onBack }: { onBack: () => void }) {
   type NetboxSaveState = "idle" | "dirty" | "saving" | "saved" | "error" | "duplicate";
-  type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; linkUpdatedAt: string | null; behindDevice: string; behindPort: string; linkCapacity: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string; hostChanged: boolean; portChanged: boolean };
+  type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; tspuId: string; linkUpdatedAt: string | null; behindDevice: string; behindPort: string; linkCapacity: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string; hostChanged: boolean; portChanged: boolean };
   const [siteNumber, setSiteNumber] = useState("");
   const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ state: "idle" | "loading" | "found" | "missing" | "error"; message?: string }>({ state: "idle" });
@@ -637,7 +637,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       .then(async (response) => {
         const data = await response.json() as {
           found?: boolean;
-          interfaces?: { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; bypassHost: string; bypassPort: string; linkUpdatedAt: string | null; behindDevice: string; behindPort: string; linkCapacity: string }[];
+          interfaces?: { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; bypassHost: string; bypassPort: string; tspuId: string; linkUpdatedAt: string | null; behindDevice: string; behindPort: string; linkCapacity: string }[];
           error?: string;
         };
         if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
@@ -716,15 +716,20 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     setNetboxExporting(true);
     setNetboxExportError("");
     try {
+      const exportedTspuIds = new Set<string>();
       const response = await apiFetch("/api/daps/netbox/site.xlsx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           siteSlug: searchedSiteNumber,
-          rows: netboxInterfaces.map(({ host, port, bypassHost, bypassPort, linkUpdatedAt, behindDevice, behindPort, linkCapacity }) => ({
-            host, port, linkUpdatedAt: linkUpdatedAt ?? "", bypassHost, bypassPort,
-            ...(showNetboxExtraFields ? { behindDevice, behindPort, linkCapacity } : {})
-          }))
+          rows: netboxInterfaces.map(({ tspuId, host, port, bypassHost, bypassPort, linkUpdatedAt, behindDevice, behindPort, linkCapacity }) => {
+            const displayTspuId = tspuId && exportedTspuIds.has(tspuId) ? "" : tspuId;
+            if (tspuId) exportedTspuIds.add(tspuId);
+            return {
+              tspuId: displayTspuId, host, port, linkUpdatedAt: linkUpdatedAt ?? "", bypassHost, bypassPort,
+              ...(showNetboxExtraFields ? { behindDevice, behindPort, linkCapacity } : {})
+            };
+          })
         })
       });
       if (!response.ok) {
@@ -745,6 +750,27 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     } finally {
       setNetboxExporting(false);
     }
+  };
+  const downloadNetboxTxt = () => {
+    if (!searchedSiteNumber || netboxInterfaces.length === 0) return;
+    const lines: string[] = [];
+    let previousLinkKey: string | null = null;
+    for (const row of netboxInterfaces) {
+      const portPair = row.bypassPort.replace(/\/[12]$/, "");
+      const linkKey = row.tspuId ? `tspu:${row.tspuId}` : `bypass:${row.bypassHost}:${portPair}`;
+      if (previousLinkKey !== null && linkKey !== previousLinkKey) lines.push("");
+      lines.push(`${row.host} ${row.port} --> ${row.bypassHost} ${row.bypassPort}`);
+      previousLinkKey = linkKey;
+    }
+    const file = new Blob([`\uFEFF${lines.join("\r\n")}`], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `netbox-links-${searchedSiteNumber.replace(/[^a-zA-Z0-9_-]/g, "_")}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   const importNetboxXlsx = async (file: File) => {
     if (!searchedSiteNumber || netboxImporting) return;
@@ -809,6 +835,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       if (netboxImportFileRef.current) netboxImportFileRef.current.value = "";
     }
   };
+  const displayedTspuIds = new Set<string>();
   return <section className="section-view daps-report-page">
     <div className="eyebrow"><span className="eyebrow-line" /> DAPS · NETBOX</div>
     <div className="section-hero daps-report-hero"><span className="section-hero-icon"><Network size={22} /></span><div><h1>Netbox</h1><p>Порты ОС и байпаса по площадке.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
@@ -828,7 +855,10 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
           <button type="button" className="outline-button" disabled={netboxImporting || lookup.state !== "found"} onClick={() => netboxImportFileRef.current?.click()}><FileSpreadsheet size={15} />{netboxImporting ? "Загрузка…" : "Загрузить XLSX"}</button>
           <button type="button" className="outline-button" aria-expanded={showNetboxExtraFields} aria-controls="netbox-links-table" onClick={() => setShowNetboxExtraFields((shown) => !shown)}>{showNetboxExtraFields ? "Скрыть доп. поля" : "Показать доп. поля"}</button>
           </div>
-          <button type="button" className="outline-button netbox-export-button" disabled={netboxExporting || netboxImporting} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>
+          <div className="netbox-download-actions">
+            <button type="button" className="outline-button" disabled={netboxExporting || netboxImporting} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>
+            <button type="button" className="outline-button" disabled={netboxExporting || netboxImporting} onClick={downloadNetboxTxt}><ScrollText size={15} />Скачать TXT</button>
+          </div>
         </div>
       </>}
       {netboxExportError && <span className="netbox-lookup netbox-lookup-error" role="alert">{netboxExportError}</span>}
@@ -838,8 +868,11 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     {searchedSiteNumber !== null && <section className="panel daps-daily-table-panel">
       <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}. Изменения сохраняются в NetBox после выхода из поля.</p></div></div>
       <div className="daps-daily-table-wrap"><table id="netbox-links-table" className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Дата изменения линка</th><th>Хост ОС</th><th>Порт ОС</th><th>Хост Байпаса</th><th>Порт Байпаса</th>{showNetboxExtraFields && <><th>Устройство за байпасом</th><th>Порт устройства</th><th>Линк</th></>}</tr></thead><tbody>
-        {netboxInterfaces.map((item, index) => <tr key={item.id}>
-          <td>{index + 1}</td>
+        {netboxInterfaces.map((item, index) => {
+          const displayTspuId = item.tspuId && displayedTspuIds.has(item.tspuId) ? "" : item.tspuId || "—";
+          if (item.tspuId) displayedTspuIds.add(item.tspuId);
+          return <tr key={item.id}>
+          <td>{displayTspuId}</td>
           <td className="netbox-link-updated-cell">{item.linkUpdatedAt && Number.isFinite(new Date(item.linkUpdatedAt).getTime()) ? new Date(item.linkUpdatedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
           <td className={item.hostChanged ? "netbox-import-changed-cell" : undefined}><input className="netbox-edit-input netbox-edit-host" type="text" aria-label={`Хост ОС, строка ${index + 1}`} value={item.host} disabled={netboxImporting || item.hostSaveState === "saving" || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, host: event.target.value, hostSaveState: event.target.value === row.savedHost ? "idle" : "dirty", hostSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "host")} /><span className={`netbox-save-note ${item.hostSaveState === "error" || item.hostSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.hostSaveState, item.hostSaveMessage)}</span></td>
           <td className={item.portChanged ? "netbox-import-changed-cell" : undefined}><input className="netbox-edit-input netbox-edit-port" type="text" aria-label={`Порт ОС, строка ${index + 1}`} value={item.port} disabled={netboxImporting || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, port: event.target.value, portSaveState: event.target.value === row.savedPort ? "idle" : "dirty", portSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "port")} /><span className={`netbox-save-note ${item.portSaveState === "error" || item.portSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.portSaveState, item.portSaveMessage)}</span></td>
@@ -850,7 +883,8 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
             <td><span className="netbox-cell-main">{item.behindPort || "—"}</span></td>
             <td><span className="netbox-cell-main">{item.linkCapacity || "—"}</span></td>
           </>}
-        </tr>)}
+        </tr>;
+        })}
         {lookup.state === "found" && netboxInterfaces.length === 0 && <tr><td className="netbox-empty-row" colSpan={showNetboxExtraFields ? 9 : 6}>Не найдены порты ОС, связанные с байпасом.</td></tr>}
       </tbody></table></div>
     </section>}

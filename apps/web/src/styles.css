@@ -144,6 +144,7 @@ button { color: inherit; }
 .netbox-file-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
 .netbox-file-actions button { min-height: 34px; align-items: center; gap: 7px; white-space: nowrap; }
 .netbox-upload-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.netbox-download-actions { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .netbox-file-input { display: none !important; }
 .netbox-export-button { margin-left: 0; }
 .netbox-lookup { padding-bottom: 10px; font-size: 10px; }
