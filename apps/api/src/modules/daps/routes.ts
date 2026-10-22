@@ -488,6 +488,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     }
 
     const progressiveInterfaces: unknown[] = [];
+    const matchedBypassFrontPorts = new Set<string>();
     let completedOsDevices = 0;
     const interfaceGroups = await Promise.all(osDevices.map(async (device) => {
       try {
@@ -503,7 +504,10 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
           for (const peer of peerList(item)) {
             const peerDevice = peer.device?.id ? deviceById.get(peer.device.id) : undefined;
             const peerKind = endpointKind(peer);
-            if (isBypassRole(roleName(peerDevice))) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "", deviceId: peerDevice!.id, interfaceId: peer.id, portKind: peerKind === "front" || peerKind === "rear" ? peerKind : null });
+            if (isBypassRole(roleName(peerDevice))) {
+              matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "", deviceId: peerDevice!.id, interfaceId: peer.id, portKind: peerKind === "front" || peerKind === "rear" ? peerKind : null });
+              if (peerKind === "front") matchedBypassFrontPorts.add(`${peerDevice!.id}:${peer.id}`);
+            }
             else if (roleName(peerDevice) === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
               queue.push({ kind: endpointKind(peer) as "front" | "rear", id: peer.id });
             }
@@ -519,7 +523,10 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
             for (const peer of peerList(entry.port)) {
               const peerDevice = peer.device?.id ? deviceById.get(peer.device.id) : undefined;
               const peerKind = endpointKind(peer);
-              if (isBypassRole(roleName(peerDevice))) matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "", deviceId: peerDevice!.id, interfaceId: peer.id, portKind: peerKind === "front" || peerKind === "rear" ? peerKind : null });
+              if (isBypassRole(roleName(peerDevice))) {
+                matches.set(`${peerDevice!.id}:${peer.id}`, { host: peerDevice!.name, port: peer.name ?? peer.display ?? "", deviceId: peerDevice!.id, interfaceId: peer.id, portKind: peerKind === "front" || peerKind === "rear" ? peerKind : null });
+                if (peerKind === "front") matchedBypassFrontPorts.add(`${peerDevice!.id}:${peer.id}`);
+              }
               else if (roleName(peerDevice) === "ODF оператора" && (endpointKind(peer) === "front" || endpointKind(peer) === "rear")) {
                 const peerKey = nodeKey(endpointKind(peer) as "front" | "rear", peer.id);
                 if (!visited.has(peerKey)) queue.push({ kind: endpointKind(peer) as "front" | "rear", id: peer.id });
@@ -540,6 +547,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
               else {
                 const frontPortIds = bypassPortEntry?.port.front_ports?.map((item) => item.front_port) ?? [];
                 linkTspuId = frontPortIds.map((frontPortId) => tspuId(networkPortsByNode.get(nodeKey("front", frontPortId))?.port.custom_fields)).find(Boolean) ?? "";
+                for (const frontPortId of frontPortIds) matchedBypassFrontPorts.add(`${bypass.deviceId}:${frontPortId}`);
               }
               const pairedIds = bypassPortEntry
                 ? bypass.portKind === "front"
@@ -585,7 +593,32 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     })).catch(() => null);
     if (!interfaceGroups) return reply.code(502).send({ error: "Не удалось загрузить интерфейсы устройств площадки из NetBox." });
 
-    const interfaces = interfaceGroups.flat();
+    const interfaces: (typeof interfaceGroups[number][number] & { needsOsCable?: boolean })[] = interfaceGroups.flat();
+    for (const [key, entry] of networkPortsByNode) {
+      if (entry.kind !== "front") continue;
+      const bypassDevice = deviceById.get(entry.port.device?.id ?? -1);
+      const id = `${bypassDevice?.id ?? -1}:${entry.port.id}`;
+      const linkedTspuId = tspuId(entry.port.custom_fields);
+      if (!bypassDevice || !isBypassRole(roleName(bypassDevice)) || !linkedTspuId || peerList(entry.port).length > 0 || matchedBypassFrontPorts.has(id)) continue;
+      interfaces.push({
+        id: `missing-os-${key.replace(":", "-")}`,
+        deviceId: bypassDevice.id,
+        interfaceId: entry.port.id,
+        role: roleName(bypassDevice),
+        port: "Требуется заполнить",
+        host: "Требуется заполнить",
+        cableId: undefined,
+        linkUpdatedAt: null,
+        bypassHost: bypassDevice.name,
+        bypassPort: entry.port.name,
+        tspuId: linkedTspuId,
+        behindDevice: "",
+        behindPort: "",
+        behindInterfaceId: null,
+        linkCapacity: "",
+        needsOsCable: true
+      });
+    }
     const behindInterfaceIds = [...new Set(interfaces.flatMap((item) => item.behindInterfaceId ? [item.behindInterfaceId] : []))];
     for (let index = 0; index < behindInterfaceIds.length; index += 20) {
       await Promise.all(behindInterfaceIds.slice(index, index + 20).map(async (interfaceId) => {
