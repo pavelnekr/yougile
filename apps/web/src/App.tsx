@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   TrendingUp,
   Network,
   UsersRound
@@ -528,7 +529,7 @@ function App() {
           ) : activeSection === "Netbox" ? (
             <NetboxPage onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Генератор Площадок" ? (
-            <DapsSiteGeneratorPage onBack={() => chooseSection("DAPS")} />
+            <DapsSiteGeneratorPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Согласование/Оповещение" ? (
             <CoordinationLandingPage onNavigate={chooseSection} />
           ) : activeSection === "Согласование АВР" ? (
@@ -625,11 +626,100 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
   );
 }
 
-function DapsSiteGeneratorPage({ onBack }: { onBack: () => void }) {
+function DapsSiteGeneratorPage({ onBack, canEdit }: { onBack: () => void; canEdit: boolean }) {
+  type SitePreview = { site: { id: number; name: string; slug: string }; counts: { cables: number; devices: number; racks: number } };
+  const [siteNumber, setSiteNumber] = useState("");
+  const [lookupState, setLookupState] = useState<"idle" | "loading" | "found" | "missing" | "error">("idle");
+  const [lookupError, setLookupError] = useState("");
+  const [preview, setPreview] = useState<SitePreview | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmValue, setConfirmValue] = useState("");
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState("");
+  const [clearNotice, setClearNotice] = useState("");
+
+  useEffect(() => {
+    const slug = siteNumber.trim();
+    setPreview(null);
+    setLookupError("");
+    setClearError("");
+    setClearNotice("");
+    if (!slug) { setLookupState("idle"); return; }
+    const controller = new AbortController();
+    setLookupState("loading");
+    const timer = window.setTimeout(() => {
+      apiFetch(`/api/daps/netbox/site/clear-preview?slug=${encodeURIComponent(slug)}`, { signal: controller.signal })
+        .then(async (response) => {
+          const data = await response.json() as { found?: boolean; site?: SitePreview["site"]; counts?: SitePreview["counts"]; error?: string };
+          if (!response.ok) throw new Error(data.error ?? "Не удалось найти площадку в NetBox.");
+          if (!data.found || !data.site || !data.counts) { setLookupState("missing"); return; }
+          setPreview({ site: data.site, counts: data.counts });
+          setLookupState("found");
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted) {
+            setLookupError(error instanceof Error ? error.message : "Не удалось найти площадку в NetBox.");
+            setLookupState("error");
+          }
+        });
+    }, 450);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [siteNumber]);
+
+  const clearSite = async () => {
+    if (!preview || confirmValue.trim() !== preview.site.slug || clearing) return;
+    setClearing(true);
+    setClearError("");
+    try {
+      const response = await apiFetch("/api/daps/netbox/site/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteSlug: preview.site.slug, confirmation: confirmValue.trim(), expected: preview.counts })
+      });
+      const data = await response.json() as { success?: boolean; deleted?: SitePreview["counts"]; error?: string };
+      if (!response.ok || !data.success) {
+        const partial = data.deleted ? ` Уже удалено: кабелей ${data.deleted.cables}, устройств ${data.deleted.devices}, стоек ${data.deleted.racks}.` : "";
+        throw new Error(`${data.error ?? "Не удалось очистить площадку."}${partial}`);
+      }
+      const deleted = data.deleted ?? { cables: 0, devices: 0, racks: 0 };
+      setClearNotice(`Очистка завершена: кабелей ${deleted.cables}, устройств ${deleted.devices}, стоек ${deleted.racks}.`);
+      setPreview({ ...preview, counts: { cables: 0, devices: 0, racks: 0 } });
+      setConfirmOpen(false);
+      setConfirmValue("");
+    } catch (error) {
+      setClearError(error instanceof Error ? error.message : "Не удалось очистить площадку.");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return <section className="section-view daps-report-page">
     <div className="eyebrow"><span className="eyebrow-line" /> DAPS</div>
-    <div className="section-hero daps-report-hero"><span className="section-hero-icon"><MapPin size={22} /></span><div><h1>Генератор Площадок</h1><p>Рабочее место для подготовки новых площадок.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
-    <div className="panel section-panel"><div className="panel-heading"><div><h2>Генератор Площадок</h2><p>Функционал карточки будет добавлен отдельно.</p></div></div></div>
+    <div className="section-hero daps-report-hero"><span className="section-hero-icon"><MapPin size={22} /></span><div><h1>Генератор Площадок</h1><p>Поиск и очистка данных площадки в NetBox.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
+    <form className="panel daps-daily-controls netbox-clear-controls" onSubmit={(event) => event.preventDefault()}>
+      <label className="field-label" htmlFor="daps-clear-site-number"><span>Номер площадки</span>
+        <input id="daps-clear-site-number" type="text" inputMode="text" value={siteNumber} onChange={(event) => setSiteNumber(event.target.value)} placeholder="Введите номер площадки" autoComplete="off" />
+      </label>
+      {canEdit && preview && lookupState === "found" && <button type="button" className="netbox-clear-button" onClick={() => { setConfirmValue(""); setClearError(""); setConfirmOpen(true); }}><Trash2 size={15} />Очистить площадку</button>}
+      {lookupState === "loading" && <span className="netbox-lookup netbox-lookup-loading" role="status">Ищем площадку в NetBox…</span>}
+      {lookupState === "missing" && <span className="netbox-lookup netbox-lookup-missing" role="status">Площадка не найдена</span>}
+      {lookupState === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{lookupError}</span>}
+      {preview && lookupState === "found" && <div className="netbox-clear-summary" role="status"><strong>{preview.site.name}</strong><span>Перед очисткой будут удалены кабели: {preview.counts.cables}, устройства: {preview.counts.devices}, стойки: {preview.counts.racks}.</span></div>}
+      {clearNotice && <div className="netbox-clear-feedback" role="status">{clearNotice}</div>}
+      {clearError && <div className="netbox-clear-feedback netbox-clear-feedback-error" role="alert">{clearError}</div>}
+    </form>
+    {confirmOpen && preview && <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="netbox-clear-title">
+      <div className="modal-dialog netbox-clear-dialog">
+        <div className="modal-heading"><span className="modal-icon netbox-clear-modal-icon"><Trash2 size={17} /></span><div><h2 id="netbox-clear-title">Очистить площадку?</h2><p>{preview.site.name} · {preview.site.slug}</p></div></div>
+        <div className="modal-body">
+          <p className="netbox-clear-warning">Будут удалены все кабели, устройства и стойки этой площадки в NetBox. Это действие нельзя отменить.</p>
+          <ul className="netbox-clear-counts"><li>Кабели: <strong>{preview.counts.cables}</strong></li><li>Устройства: <strong>{preview.counts.devices}</strong></li><li>Стойки: <strong>{preview.counts.racks}</strong></li></ul>
+          <label className="modal-field"><span>Для подтверждения введите номер площадки: {preview.site.slug}</span><input value={confirmValue} onChange={(event) => setConfirmValue(event.target.value)} autoComplete="off" autoFocus /></label>
+          {clearError && <p className="modal-error" role="alert">{clearError}</p>}
+        </div>
+        <div className="modal-actions"><button type="button" className="text-button" onClick={() => { setConfirmOpen(false); setConfirmValue(""); }} disabled={clearing}>Отмена</button><button type="button" className="netbox-clear-button" onClick={() => void clearSite()} disabled={clearing || confirmValue.trim() !== preview.site.slug}><Trash2 size={15} />{clearing ? "Очищаем…" : "Удалить объекты площадки"}</button></div>
+      </div>
+    </div>}
   </section>;
 }
 

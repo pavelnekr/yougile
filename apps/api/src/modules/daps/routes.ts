@@ -37,9 +37,122 @@ function parseDate(value: unknown): Date | null {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
+type NetboxCollectionResponse<T> = { results?: T[]; next?: string | null };
+
+async function fetchNetboxCollection<T>(initialUrl: URL, headers: Record<string, string>): Promise<T[]> {
+  const results: T[] = [];
+  let nextUrl: URL | null = initialUrl;
+  while (nextUrl) {
+    const response = await fetch(nextUrl, { headers, signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error("Не удалось прочитать объекты площадки из NetBox.");
+    const page = await response.json() as NetboxCollectionResponse<T>;
+    results.push(...(page.results ?? []));
+    if (!page.next) nextUrl = null;
+    else {
+      const candidate = new URL(page.next, initialUrl);
+      if (candidate.origin !== initialUrl.origin) throw new Error("NetBox вернул ссылку на другую площадку API.");
+      nextUrl = candidate;
+    }
+  }
+  return results;
+}
+
+type NetboxSiteSummary = { id: number; name: string; slug: string };
+type NetboxSiteInventory = { devices: { id: number; name?: string }[]; racks: { id: number; name?: string }[]; cables: { id: number; label?: string }[] };
+
+async function findNetboxSite(apiBase: URL, slug: string, headers: Record<string, string>): Promise<NetboxSiteSummary | undefined> {
+  const url = new URL("sites/", apiBase);
+  url.searchParams.set("slug", slug);
+  return (await fetchNetboxCollection<NetboxSiteSummary>(url, headers)).find((site) => site.slug === slug);
+}
+
+async function getNetboxSiteInventory(apiBase: URL, siteId: number, headers: Record<string, string>): Promise<NetboxSiteInventory> {
+  const collection = (path: string) => {
+    const url = new URL(`${path}/`, apiBase);
+    url.searchParams.set("site_id", String(siteId));
+    url.searchParams.set("limit", "1000");
+    return url;
+  };
+  const [devices, racks, cables] = await Promise.all([
+    fetchNetboxCollection<NetboxSiteInventory["devices"][number]>(collection("devices"), headers),
+    fetchNetboxCollection<NetboxSiteInventory["racks"][number]>(collection("racks"), headers),
+    fetchNetboxCollection<NetboxSiteInventory["cables"][number]>(collection("cables"), headers)
+  ]);
+  return { devices, racks, cables };
+}
+
 export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const readAccess = requireWorkspaceAccess("DAPS");
   const writeAccess = requireWorkspaceAccess("DAPS", true);
+
+  app.get<{ Querystring: { slug?: string } }>("/api/daps/netbox/site/clear-preview", { preHandler: readAccess }, async (request, reply) => {
+    const slug = z.string().trim().min(1).max(100).safeParse(request.query.slug);
+    if (!slug.success) return reply.code(400).send({ error: "Введите номер площадки." });
+    const settings = await getNetboxApiSettings(prisma);
+    if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
+    const apiBase = new URL("/api/dcim/", settings.url);
+    const headers = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
+    try {
+      const site = await findNetboxSite(apiBase, slug.data, headers);
+      if (!site) return { found: false };
+      const inventory = await getNetboxSiteInventory(apiBase, site.id, headers);
+      return { found: true, site, counts: { cables: inventory.cables.length, devices: inventory.devices.length, racks: inventory.racks.length } };
+    } catch (error) {
+      request.log.warn({ err: error, siteSlug: slug.data }, "Could not preview NetBox site cleanup");
+      return reply.code(502).send({ error: error instanceof Error ? error.message : "Не удалось проверить объекты площадки в NetBox." });
+    }
+  });
+
+  app.post<{ Body: unknown }>("/api/daps/netbox/site/clear", { preHandler: writeAccess }, async (request, reply) => {
+    const input = z.object({
+      siteSlug: z.string().trim().min(1).max(100),
+      confirmation: z.string().trim().min(1).max(100),
+      expected: z.object({ cables: z.number().int().nonnegative(), devices: z.number().int().nonnegative(), racks: z.number().int().nonnegative() })
+    }).safeParse(request.body);
+    if (!input.success) return reply.code(400).send({ error: "Проверьте данные подтверждения очистки площадки." });
+    if (input.data.confirmation !== input.data.siteSlug) return reply.code(400).send({ error: "Для подтверждения введите точный номер площадки." });
+    const settings = await getNetboxApiSettings(prisma);
+    if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
+    const apiBase = new URL("/api/dcim/", settings.url);
+    const headers = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
+    try {
+      const site = await findNetboxSite(apiBase, input.data.siteSlug, headers);
+      if (!site) return reply.code(404).send({ error: "Площадка не найдена в NetBox." });
+      const inventory = await getNetboxSiteInventory(apiBase, site.id, headers);
+      const actual = { cables: inventory.cables.length, devices: inventory.devices.length, racks: inventory.racks.length };
+      if (actual.cables !== input.data.expected.cables || actual.devices !== input.data.expected.devices || actual.racks !== input.data.expected.racks) {
+        return reply.code(409).send({ error: "Состав площадки изменился после проверки. Выполните поиск заново и проверьте новые количества.", counts: actual });
+      }
+      const deleted = { cables: 0, devices: 0, racks: 0 };
+      const deleteResources = async <T extends { id: number }>(path: string, resources: T[]) => {
+        const failedIds: number[] = [];
+        for (let offset = 0; offset < resources.length; offset += 8) {
+          const results = await Promise.all(resources.slice(offset, offset + 8).map(async ({ id }) => {
+            try {
+              return await fetch(new URL(`${path}/${id}/`, apiBase), { method: "DELETE", headers, signal: AbortSignal.timeout(15_000) });
+            } catch {
+              return null;
+            }
+          }));
+          results.forEach((response, index) => {
+            if (response?.ok) deleted[path === "cables" ? "cables" : path === "devices" ? "devices" : "racks"] += 1;
+            else failedIds.push(resources[offset + index].id);
+          });
+        }
+        return failedIds;
+      };
+      const failedCables = await deleteResources("cables", inventory.cables);
+      if (failedCables.length) return reply.code(502).send({ error: "Не удалось удалить часть кабелей. Устройства и стойки не удалялись.", deleted, failedIds: failedCables });
+      const failedDevices = await deleteResources("devices", inventory.devices);
+      if (failedDevices.length) return reply.code(502).send({ error: "Не удалось удалить часть устройств. Стойки не удалялись.", deleted, failedIds: failedDevices });
+      const failedRacks = await deleteResources("racks", inventory.racks);
+      if (failedRacks.length) return reply.code(502).send({ error: "Не удалось удалить часть стоек площадки.", deleted, failedIds: failedRacks });
+      return { success: true, site, deleted };
+    } catch (error) {
+      request.log.warn({ err: error, siteSlug: input.data.siteSlug }, "Could not clear NetBox site");
+      return reply.code(502).send({ error: error instanceof Error ? error.message : "Не удалось очистить площадку в NetBox." });
+    }
+  });
 
   app.put<{ Body: { siteSlug?: string; sourceDeviceId?: number; sourceInterfaceId?: number; hostName?: string; portName?: string } }>("/api/daps/netbox/interface", { preHandler: writeAccess }, async (request, reply) => {
     const input = z.object({
