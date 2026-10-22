@@ -149,11 +149,15 @@ button { color: inherit; }
 .netbox-export-button { margin-left: 0; }
 .netbox-lookup { padding-bottom: 10px; font-size: 10px; }
 .netbox-lookup-loading { color: #7c8799; }
+.netbox-progress { flex: 1 0 100%; display: grid; gap: 6px; padding: 0 0 10px; color: #657187; font-size: 10px; }
+.netbox-progress-copy { display: flex; justify-content: space-between; gap: 12px; }
+.netbox-progress-track { height: 5px; overflow: hidden; border-radius: 999px; background: #e9edf5; }
+.netbox-progress-track span { display: block; width: 100%; height: 100%; border-radius: inherit; background: #7489df; transform-origin: left center; transition: transform 350ms ease; }
 .netbox-lookup-found { color: #368263; font-weight: 650; }
 .netbox-lookup-missing, .netbox-lookup-error { color: #ad5f4a; }
 .netbox-cell-main, .netbox-cell-meta { display: block; }
 .netbox-cell-meta { margin-top: 3px; color: #8791a1; font-size: 9px; }
-.netbox-edit-input { width: 100%; min-height: 32px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; color: #354056; background: transparent; font: inherit; font-size: 11px; }
+.netbox-edit-input { display: block; box-sizing: border-box; width: 100%; height: 32px; margin-top: 6px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px; color: #354056; background: transparent; font: inherit; font-size: 11px; line-height: 18px; }
 .netbox-edit-input:hover { border-color: #e2e7ef; background: #fff; }
 .netbox-edit-input:focus { outline: none; border-color: #7489df; background: #fff; box-shadow: 0 0 0 3px #7489df20; }
 .netbox-edit-input:disabled { opacity: .7; }
@@ -162,7 +166,8 @@ button { color: inherit; }
 .netbox-link-updated-cell { min-width: 155px; color: #737e92; font-size: 10px; white-space: nowrap; }
 .netbox-import-changed-cell { background: #f1f8f3 !important; box-shadow: inset 2px 0 #a9cfb4; }
 .netbox-import-changed-cell .netbox-edit-input { background: transparent; }
-.netbox-save-note { display: block; min-height: 12px; margin: 2px 0 0 8px; color: #368263; font-size: 9px; }
+.netbox-save-note { display: block; min-height: 12px; margin: 0 0 0 8px; color: #368263; font-size: 9px; }
+.netbox-save-note:empty { display: none; }
 .netbox-save-error { color: #ad5f4a; }
 .netbox-empty-row { padding: 18px !important; color: #8791a1; text-align: center; }
 .daps-daily-controls input, .daps-manual-row input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
@@ -176,7 +181,7 @@ button { color: inherit; }
 .daps-daily-table-wrap { overflow-x: auto; }
 .daps-daily-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
 .netbox-table { width: 100%; min-width: 0; table-layout: auto; }
-.daps-daily-table.netbox-table th, .daps-daily-table.netbox-table td { padding-right: 6px; padding-left: 6px; }
+.daps-daily-table.netbox-table th, .daps-daily-table.netbox-table td { padding: 5px 6px; }
 .daps-daily-table th, .daps-daily-table td { padding: 9px 8px; border-bottom: 1px solid #edf0f4; vertical-align: middle; }
 .daps-daily-table th { color: #000; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .daps-daily-table td { color: #445066; }

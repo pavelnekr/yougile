@@ -29,6 +29,8 @@ const netboxExportSchema = z.object({
   })).min(1).max(20_000)
 });
 
+const netboxLookupProgress = new Map<string, { slug: string; phase: string; percent: number; interfaces: unknown[]; done: boolean; error?: string; updatedAt: number }>();
+
 function parseDate(value: unknown): Date | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -339,9 +341,25 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     }
   });
 
-  app.get<{ Querystring: { slug?: string } }>("/api/daps/netbox/site", { preHandler: readAccess }, async (request, reply) => {
+  app.get<{ Querystring: { slug?: string; progressId?: string } }>("/api/daps/netbox/site/progress", { preHandler: readAccess }, async (request, reply) => {
+    const progress = netboxLookupProgress.get(request.query.progressId ?? "");
+    if (!progress || Date.now() - progress.updatedAt > 10 * 60_000) return reply.code(404).send({ error: "Прогресс поиска не найден." });
+    return progress;
+  });
+
+  app.get<{ Querystring: { slug?: string; progressId?: string } }>("/api/daps/netbox/site", { preHandler: readAccess }, async (request, reply) => {
     const slug = z.string().trim().min(1).max(100).safeParse(request.query.slug);
     if (!slug.success) return reply.code(400).send({ error: "Введите номер площадки." });
+    const progressId = z.string().regex(/^[a-zA-Z0-9_-]{8,80}$/).safeParse(request.query.progressId);
+    for (const [key, value] of netboxLookupProgress) if (Date.now() - value.updatedAt > 10 * 60_000) netboxLookupProgress.delete(key);
+    const progress = progressId.success ? { slug: slug.data, phase: "Ищем площадку…", percent: 3, interfaces: [] as unknown[], done: false, updatedAt: Date.now() } : null;
+    if (progress && progressId.success) netboxLookupProgress.set(progressId.data, progress);
+    const updateProgress = (phase: string, percent: number, interfaces?: unknown[], done = false, error?: string) => {
+      if (!progress) return;
+      progress.phase = phase; progress.percent = percent; progress.updatedAt = Date.now(); progress.done = done;
+      if (interfaces) progress.interfaces = interfaces;
+      if (error) progress.error = error;
+    };
     const settings = await getNetboxApiSettings(prisma);
     if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
 
@@ -371,7 +389,8 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
       return reply.code(502).send({ error: "NetBox вернул некорректный ответ." });
     }
     const site = data.results?.find((item) => item.slug === slug.data);
-    if (!site) return { found: false, site: null, interfaces: [] };
+    if (!site) { updateProgress("Площадка не найдена", 100, [], true); return { found: false, site: null, interfaces: [] }; }
+    updateProgress("Загружаем устройства площадки…", 12);
 
     const apiBase = new URL("/api/dcim/", settings.url);
     let siteDevices: { id: number; name: string; role?: { name?: string } | null; device_role?: { name?: string } | null }[];
@@ -414,6 +433,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     const odfDevices = siteDevices.filter((device) => roleName(device) === "ODF оператора");
     const bypassDevices = siteDevices.filter((device) => isBypassRole(roleName(device)));
     const osDevices = siteDevices.filter((device) => roleName(device) === "Устройство LAN" || roleName(device) === "Устройство WAN");
+    updateProgress(`Обрабатываем топологию: ${osDevices.length} устройств ОС`, 25);
     const authHeaders = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
     const networkPortsByNode = new Map<string, { port: OdfPort; kind: "front" | "rear" }>();
     const odfLinks = new Map<string, Set<string>>();
@@ -465,6 +485,8 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
       request.log.warn({ siteSlug: slug.data, bypassDeviceCount: bypassDevices.length }, "NetBox bypass front/rear port lookup incomplete");
     }
 
+    const progressiveInterfaces: unknown[] = [];
+    let completedOsDevices = 0;
     const interfaceGroups = await Promise.all(osDevices.map(async (device) => {
       try {
         const interfacesUrl = new URL("interfaces/", apiBase);
@@ -473,7 +495,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
         const interfacesResponse = await fetch(interfacesUrl, { headers: authHeaders, signal: AbortSignal.timeout(10_000) });
         if (!interfacesResponse.ok) throw new Error("NetBox interface request failed");
         const interfacesData = await interfacesResponse.json() as { results?: ({ id: number; name: string; cable?: { id?: number; last_updated?: string | null } | null } & LinkedPorts)[] };
-        return (interfacesData.results ?? []).flatMap((item) => {
+        const group = (interfacesData.results ?? []).flatMap((item) => {
           const matches = new Map<string, { host: string; port: string; deviceId: number; interfaceId: number; portKind: "front" | "rear" | null }>();
           const queue: { kind: "front" | "rear"; id: number }[] = [];
           for (const peer of peerList(item)) {
@@ -551,6 +573,10 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
           };
           });
         });
+        progressiveInterfaces.push(...group);
+        completedOsDevices += 1;
+            updateProgress(`Найдено ссылок: ${progressiveInterfaces.length} · устройства ОС ${completedOsDevices} из ${osDevices.length}`, 30 + Math.round(55 * completedOsDevices / Math.max(osDevices.length, 1)), [...progressiveInterfaces]);
+        return group;
       } catch {
         throw new Error("Не удалось загрузить интерфейсы устройств площадки из NetBox.");
       }
@@ -592,15 +618,17 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     if (interfaces.length === 0) {
       request.log.warn({ siteSlug: slug.data, siteDeviceCount: siteDevices.length, osDeviceCount: osDevices.length, odfDeviceCount: odfDevices.length }, "NetBox site found but no OS-to-bypass links matched");
     }
+    interfaces.sort((a, b) =>
+      a.bypassHost.localeCompare(b.bypassHost, "ru", { numeric: true, sensitivity: "base" }) ||
+      a.bypassPort.localeCompare(b.bypassPort, "ru", { numeric: true, sensitivity: "base" }) ||
+      a.host.localeCompare(b.host, "ru", { numeric: true, sensitivity: "base" }) ||
+      a.port.localeCompare(b.port, "ru", { numeric: true, sensitivity: "base" })
+    );
+    updateProgress(`Готово: ${interfaces.length} ссылок`, 100, interfaces, true);
     return {
       found: true,
       site: { id: site.id, name: site.name, slug: site.slug },
-      interfaces: interfaces.sort((a, b) =>
-        a.bypassHost.localeCompare(b.bypassHost, "ru", { numeric: true, sensitivity: "base" }) ||
-        a.bypassPort.localeCompare(b.bypassPort, "ru", { numeric: true, sensitivity: "base" }) ||
-        a.host.localeCompare(b.host, "ru", { numeric: true, sensitivity: "base" }) ||
-        a.port.localeCompare(b.port, "ru", { numeric: true, sensitivity: "base" })
-      )
+      interfaces
     };
   });
 

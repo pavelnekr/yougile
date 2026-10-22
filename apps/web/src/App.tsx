@@ -620,6 +620,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
   const [siteNumber, setSiteNumber] = useState("");
   const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
   const [lookup, setLookup] = useState<{ state: "idle" | "loading" | "found" | "missing" | "error"; message?: string }>({ state: "idle" });
+  const [netboxProgress, setNetboxProgress] = useState<{ phase: string; percent: number } | null>(null);
   const [netboxInterfaces, setNetboxInterfaces] = useState<NetboxInterfaceRow[]>([]);
   const [netboxExporting, setNetboxExporting] = useState(false);
   const [netboxExportError, setNetboxExportError] = useState("");
@@ -631,9 +632,21 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     if (searchedSiteNumber === null) return;
     const controller = new AbortController();
+    const progressId = `nb_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     setLookup({ state: "loading" });
+    setNetboxProgress({ phase: "Подключаемся к NetBox…", percent: 2 });
     setNetboxInterfaces([]);
-    apiFetch(`/api/daps/netbox/site?slug=${encodeURIComponent(searchedSiteNumber)}`, { signal: controller.signal })
+    const pollProgress = async () => {
+      try {
+        const progressResponse = await apiFetch(`/api/daps/netbox/site/progress?progressId=${encodeURIComponent(progressId)}`, { signal: controller.signal });
+        if (!progressResponse.ok) return;
+        const progress = await progressResponse.json() as { phase: string; percent: number; interfaces?: NetboxInterfaceRow[] };
+        setNetboxProgress({ phase: progress.phase, percent: progress.percent });
+        if (progress.interfaces) setNetboxInterfaces(progress.interfaces.map((item) => ({ ...item, savedHost: item.host, savedPort: item.port, hostSaveState: "idle", portSaveState: "idle", hostChanged: false, portChanged: false })));
+      } catch { /* The main lookup request reports errors. */ }
+    };
+    const progressTimer = window.setInterval(() => void pollProgress(), 700);
+    apiFetch(`/api/daps/netbox/site?slug=${encodeURIComponent(searchedSiteNumber)}&progressId=${encodeURIComponent(progressId)}`, { signal: controller.signal })
       .then(async (response) => {
         const data = await response.json() as {
           found?: boolean;
@@ -643,12 +656,14 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
         if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
         setNetboxInterfaces((data.interfaces ?? []).map((item) => ({ ...item, savedHost: item.host, savedPort: item.port, hostSaveState: "idle", portSaveState: "idle", hostChanged: false, portChanged: false })));
         setLookup({ state: data.found ? "found" : "missing" });
+        setNetboxProgress({ phase: data.found ? `Готово: ${(data.interfaces ?? []).length} ссылок` : "Площадка не найдена", percent: 100 });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) setLookup({ state: "error", message: error instanceof Error ? error.message : "Не удалось проверить площадку в NetBox." });
-      });
+      }).finally(() => window.clearInterval(progressTimer));
     return () => {
       controller.abort();
+      window.clearInterval(progressTimer);
     };
   }, [searchedSiteNumber]);
   const handleSiteNumberChange = (value: string) => {
@@ -848,6 +863,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       {lookup.state === "found" && <span className="netbox-lookup netbox-lookup-found" role="status">Площадка найдена</span>}
       {lookup.state === "missing" && <span className="netbox-lookup netbox-lookup-missing" role="status">Площадка не найдена</span>}
       {lookup.state === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{lookup.message}</span>}
+      {lookup.state === "loading" && netboxProgress && <div className="netbox-progress" role="status" aria-live="polite"><div className="netbox-progress-copy"><span>{netboxProgress.phase}</span><span>{netboxProgress.percent}%</span></div><div className="netbox-progress-track"><span style={{ transform: `scaleX(${netboxProgress.percent / 100})` }} /></div></div>}
       {searchedSiteNumber !== null && netboxInterfaces.length > 0 && <>
         <input ref={netboxImportFileRef} className="netbox-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importNetboxXlsx(file); }} />
         <div className="netbox-file-actions">
@@ -856,8 +872,8 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
           <button type="button" className="outline-button" aria-expanded={showNetboxExtraFields} aria-controls="netbox-links-table" onClick={() => setShowNetboxExtraFields((shown) => !shown)}>{showNetboxExtraFields ? "Скрыть доп. поля" : "Показать доп. поля"}</button>
           </div>
           <div className="netbox-download-actions">
-            <button type="button" className="outline-button" disabled={netboxExporting || netboxImporting} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>
-            <button type="button" className="outline-button" disabled={netboxExporting || netboxImporting} onClick={downloadNetboxTxt}><ScrollText size={15} />Скачать TXT</button>
+            <button type="button" className="outline-button" disabled={netboxExporting || netboxImporting || lookup.state !== "found"} onClick={() => void exportNetboxXlsx()}><FileSpreadsheet size={15} />{netboxExporting ? "Формируем XLSX…" : "Скачать XLSX"}</button>
+            <button type="button" className="outline-button" disabled={netboxExporting || netboxImporting || lookup.state !== "found"} onClick={downloadNetboxTxt}><ScrollText size={15} />Скачать TXT</button>
           </div>
         </div>
       </>}
