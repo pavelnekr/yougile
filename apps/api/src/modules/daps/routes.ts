@@ -352,7 +352,9 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     if (!slug.success) return reply.code(400).send({ error: "Введите номер площадки." });
     const progressId = z.string().regex(/^[a-zA-Z0-9_-]{8,80}$/).safeParse(request.query.progressId);
     for (const [key, value] of netboxLookupProgress) if (Date.now() - value.updatedAt > 10 * 60_000) netboxLookupProgress.delete(key);
-    const progress = progressId.success ? { slug: slug.data, phase: "Ищем площадку…", percent: 3, interfaces: [] as unknown[], done: false, updatedAt: Date.now() } : null;
+    const progress: { slug: string; phase: string; percent: number; interfaces: unknown[]; done: boolean; error?: string; updatedAt: number } | null = progressId.success
+      ? { slug: slug.data, phase: "Ищем площадку…", percent: 3, interfaces: [], done: false, updatedAt: Date.now() }
+      : null;
     if (progress && progressId.success) netboxLookupProgress.set(progressId.data, progress);
     const updateProgress = (phase: string, percent: number, interfaces?: unknown[], done = false, error?: string) => {
       if (!progress) return;
