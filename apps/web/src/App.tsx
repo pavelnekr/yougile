@@ -615,7 +615,7 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
 }
 
 function NetboxPage({ onBack }: { onBack: () => void }) {
-  type NetboxSaveState = "idle" | "dirty" | "saving" | "saved" | "error" | "duplicate";
+  type NetboxSaveState = "idle" | "dirty" | "saving" | "saved" | "error" | "duplicate" | "cleanup-warning";
   type NetboxInterfaceRow = { id: string; deviceId: number; interfaceId: number; role: string; port: string; host: string; savedPort: string; savedHost: string; bypassHost: string; bypassPort: string; tspuId: string; linkUpdatedAt: string | null; behindDevice: string; behindPort: string; linkCapacity: string; hostSaveState: NetboxSaveState; portSaveState: NetboxSaveState; hostSaveMessage?: string; portSaveMessage?: string; hostChanged: boolean; portChanged: boolean; needsOsCable?: boolean };
   const [siteNumber, setSiteNumber] = useState("");
   const [searchedSiteNumber, setSearchedSiteNumber] = useState<string | null>(null);
@@ -690,7 +690,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ siteSlug: searchedSiteNumber, sourceDeviceId: row.deviceId, sourceInterfaceId: row.interfaceId, hostName: field === "host" ? value : row.host.trim(), portName: field === "port" ? value : row.port.trim() })
       });
-      const data = await response.json() as { saved?: boolean; deviceId?: number; interfaceId?: number; host?: string; port?: string; linkUpdatedAt?: string; code?: string; duplicateDeviceId?: number; duplicateInterfaceId?: number; error?: string };
+      const data = await response.json() as { saved?: boolean; deviceId?: number; interfaceId?: number; host?: string; port?: string; linkUpdatedAt?: string; cleanupWarning?: string; code?: string; duplicateDeviceId?: number; duplicateInterfaceId?: number; error?: string };
       if (!response.ok || !data.saved) {
         if (data.code === "DUPLICATE_LINK") {
           const duplicate = netboxInterfaces.find((item) => item.deviceId === data.duplicateDeviceId && item.interfaceId === data.duplicateInterfaceId);
@@ -711,10 +711,10 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
         linkUpdatedAt: data.linkUpdatedAt ?? item.linkUpdatedAt,
         hostChanged: (data.host ?? item.host) !== item.savedHost,
         portChanged: (data.port ?? item.port) !== item.savedPort,
-        hostSaveMessage: undefined,
-        portSaveMessage: undefined,
-        hostSaveState: "saved",
-        portSaveState: "saved"
+        hostSaveMessage: field === "host" ? data.cleanupWarning : undefined,
+        portSaveMessage: field === "port" ? data.cleanupWarning : undefined,
+        hostSaveState: field === "host" && data.cleanupWarning ? "cleanup-warning" : "saved",
+        portSaveState: field === "port" && data.cleanupWarning ? "cleanup-warning" : "saved"
       } : item));
       return true;
     } catch (error) {
@@ -725,7 +725,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       return false;
     }
   };
-  const saveStateLabel = (state: NetboxSaveState, message?: string) => state === "saving" ? "Сохранение в NetBox…" : state === "saved" ? "Сохранено" : state === "duplicate" ? message ?? "Дубликат" : state === "error" ? "Не сохранено — измените поле и повторите" : state === "dirty" ? "Изменение не сохранено" : "";
+  const saveStateLabel = (state: NetboxSaveState, message?: string) => state === "saving" ? "Сохранение в NetBox…" : state === "saved" ? "Сохранено" : state === "cleanup-warning" ? message ?? "Данные сохранены, но старые записи не удалось удалить" : state === "duplicate" ? message ?? "Дубликат" : state === "error" ? "Не сохранено — измените поле и повторите" : state === "dirty" ? "Изменение не сохранено" : "";
   const exportNetboxXlsx = async () => {
     if (!searchedSiteNumber || netboxInterfaces.length === 0 || netboxExporting) return;
     setNetboxExporting(true);
@@ -891,8 +891,8 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
           return <tr key={item.id}>
           <td>{displayTspuId}</td>
           <td className="netbox-link-updated-cell">{item.linkUpdatedAt && Number.isFinite(new Date(item.linkUpdatedAt).getTime()) ? new Date(item.linkUpdatedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-          <td className={item.hostChanged ? "netbox-import-changed-cell" : undefined}>{item.needsOsCable ? <span className="netbox-missing-os">Требуется создать кабель в NetBox</span> : <><input className="netbox-edit-input netbox-edit-host" type="text" aria-label={`Хост ОС, строка ${index + 1}`} value={item.host} disabled={netboxImporting || item.hostSaveState === "saving" || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, host: event.target.value, hostSaveState: event.target.value === row.savedHost ? "idle" : "dirty", hostSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "host")} /><span className={`netbox-save-note ${item.hostSaveState === "error" || item.hostSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.hostSaveState, item.hostSaveMessage)}</span></>}</td>
-          <td className={item.portChanged ? "netbox-import-changed-cell" : undefined}>{item.needsOsCable ? <span className="netbox-missing-os">Требуется создать кабель в NetBox</span> : <><input className="netbox-edit-input netbox-edit-port" type="text" aria-label={`Порт ОС, строка ${index + 1}`} value={item.port} disabled={netboxImporting || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, port: event.target.value, portSaveState: event.target.value === row.savedPort ? "idle" : "dirty", portSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "port")} /><span className={`netbox-save-note ${item.portSaveState === "error" || item.portSaveState === "duplicate" ? "netbox-save-error" : ""}`} role="status">{saveStateLabel(item.portSaveState, item.portSaveMessage)}</span></>}</td>
+          <td className={item.hostChanged ? "netbox-import-changed-cell" : undefined}>{item.needsOsCable ? <span className="netbox-missing-os">Требуется создать кабель в NetBox</span> : <><input className="netbox-edit-input netbox-edit-host" type="text" aria-label={`Хост ОС, строка ${index + 1}`} value={item.host} disabled={netboxImporting || item.hostSaveState === "saving" || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, host: event.target.value, hostSaveState: event.target.value === row.savedHost ? "idle" : "dirty", hostSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "host")} /><span className={`netbox-save-note ${item.hostSaveState === "error" || item.hostSaveState === "duplicate" ? "netbox-save-error" : item.hostSaveState === "cleanup-warning" ? "netbox-save-warning" : ""}`} role="status">{saveStateLabel(item.hostSaveState, item.hostSaveMessage)}</span></>}</td>
+          <td className={item.portChanged ? "netbox-import-changed-cell" : undefined}>{item.needsOsCable ? <span className="netbox-missing-os">Требуется создать кабель в NetBox</span> : <><input className="netbox-edit-input netbox-edit-port" type="text" aria-label={`Порт ОС, строка ${index + 1}`} value={item.port} disabled={netboxImporting || item.portSaveState === "saving"} onChange={(event) => setNetboxInterfaces((rows) => rows.map((row) => row.id === item.id ? { ...row, port: event.target.value, portSaveState: event.target.value === row.savedPort ? "idle" : "dirty", portSaveMessage: undefined } : row))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={() => void saveNetboxValue(item, "port")} /><span className={`netbox-save-note ${item.portSaveState === "error" || item.portSaveState === "duplicate" ? "netbox-save-error" : item.portSaveState === "cleanup-warning" ? "netbox-save-warning" : ""}`} role="status">{saveStateLabel(item.portSaveState, item.portSaveMessage)}</span></>}</td>
           <td><span className="netbox-cell-main">{item.bypassHost || "—"}</span></td>
           <td><span className="netbox-cell-main">{item.bypassPort || "—"}</span></td>
           {showNetboxExtraFields && <>

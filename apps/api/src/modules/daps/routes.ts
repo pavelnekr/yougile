@@ -86,6 +86,14 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
       if (sourceInterface.device?.id !== sourceDevice.id) return reply.code(403).send({ error: "Указанный порт не принадлежит исходному хосту ОС." });
       if (!sourceInterface.cable?.id) return reply.code(409).send({ error: "У исходного порта нет кабельного соединения. Перенос линка отменён." });
 
+      const sourceInterfacesUrl = new URL("interfaces/", apiBase);
+      sourceInterfacesUrl.searchParams.set("device_id", String(sourceDevice.id));
+      sourceInterfacesUrl.searchParams.set("limit", "1000");
+      const sourceInterfacesResponse = await requestJson(sourceInterfacesUrl);
+      if (!sourceInterfacesResponse.ok) return reply.code(502).send({ error: "Не удалось проверить порты исходного Хоста ОС." });
+      const sourceInterfacesData = await sourceInterfacesResponse.json() as { count?: number; results?: { id: number }[] };
+      const sourceInterfaceCount = sourceInterfacesData.count ?? sourceInterfacesData.results?.length ?? 0;
+
       const devicesUrl = new URL("devices/", apiBase);
       devicesUrl.searchParams.set("site_id", String(site.id));
       devicesUrl.searchParams.set("name", input.data.hostName);
@@ -245,7 +253,28 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
       } catch {
         // NetBox may return an empty response after a successful cable update.
       }
-      return { saved: true, deviceId: targetDevice.id, interfaceId: targetInterface.id, host: input.data.hostName, port: input.data.portName, linkUpdatedAt };
+      let cleanupWarning: string | undefined;
+      const deleteNetboxResource = async (url: URL) => {
+        try {
+          return await requestJson(url, { method: "DELETE" });
+        } catch {
+          return null;
+        }
+      };
+      const sourceHostWillBeRemoved = sourceDevice.id !== targetDevice.id && sourceInterfaceCount === 1;
+      if (sourceHostWillBeRemoved) {
+        const deleteDeviceResponse = await deleteNetboxResource(new URL(`devices/${sourceDevice.id}/`, apiBase));
+        if (!deleteDeviceResponse?.ok) {
+          const deletePortResponse = await deleteNetboxResource(new URL(`interfaces/${sourceInterface.id}/`, apiBase));
+          cleanupWarning = deletePortResponse?.ok
+            ? "Кабель перенесён, но NetBox не удалил старый Хост ОС. Его пустой порт удалён."
+            : "Кабель перенесён, но NetBox не удалил старый Хост ОС и его порт.";
+        }
+      } else {
+        const deletePortResponse = await deleteNetboxResource(new URL(`interfaces/${sourceInterface.id}/`, apiBase));
+        if (!deletePortResponse?.ok) cleanupWarning = "Кабель перенесён, но NetBox не удалил старый Порт ОС.";
+      }
+      return { saved: true, deviceId: targetDevice.id, interfaceId: targetInterface.id, host: input.data.hostName, port: input.data.portName, linkUpdatedAt, ...(cleanupWarning ? { cleanupWarning } : {}) };
     } catch {
       return reply.code(502).send({ error: "Не удалось связаться с NetBox для сохранения изменения." });
     }

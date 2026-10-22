@@ -169,6 +169,7 @@ button { color: inherit; }
 .netbox-save-note { display: block; min-height: 12px; margin: 0 0 0 8px; color: #368263; font-size: 9px; }
 .netbox-save-note:empty { display: none; }
 .netbox-save-error { color: #ad5f4a; }
+.netbox-save-warning { color: #a56d28; }
 .netbox-missing-os { display: inline-block; max-width: 170px; color: #a56d28; font-size: 10px; font-weight: 600; line-height: 1.35; white-space: normal; }
 .netbox-empty-row { padding: 18px !important; color: #8791a1; text-align: center; }
 .daps-daily-controls input, .daps-manual-row input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
