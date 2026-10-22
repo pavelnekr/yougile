@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MapPin,
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
@@ -125,6 +126,7 @@ const workspaceBySection: Partial<Record<Section, string>> = {
   "DAPS": "DAPS",
   "Ежедневный отчет по KPI": "DAPS",
   "Netbox": "DAPS",
+  "Генератор Площадок": "DAPS",
   "Площадки": "WORK_MANAGEMENT",
   "Площадки АВР": "WORK_MANAGEMENT",
   "Массовое назначение инженеров": "WORK_MANAGEMENT",
@@ -403,7 +405,8 @@ function App() {
     "Согласование АВР": "Согласование/Оповещение",
     "Настройки согласования": "Согласование/Оповещение",
     "Ежедневный отчет по KPI": "DAPS",
-    "Netbox": "DAPS"
+    "Netbox": "DAPS",
+    "Генератор Площадок": "DAPS"
   };
   const activeNavSection = parentSectionOf[activeSection] ?? activeSection;
 
@@ -524,6 +527,8 @@ function App() {
             <DapsDailyKpiPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Netbox" ? (
             <NetboxPage onBack={() => chooseSection("DAPS")} />
+          ) : activeSection === "Генератор Площадок" ? (
+            <DapsSiteGeneratorPage onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Согласование/Оповещение" ? (
             <CoordinationLandingPage onNavigate={chooseSection} />
           ) : activeSection === "Согласование АВР" ? (
@@ -608,10 +613,24 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
           <p>Просмотр портов ОС и байпаса по номеру площадки.</p>
           <span className="action-link">Открыть Netbox <ArrowRight size={15} /></span>
         </button>
+        <button className="action-card" onClick={() => onNavigate("Генератор Площадок")}>
+          <div className="action-card-top"><span className="action-icon green"><MapPin size={19} /></span></div>
+          <h3>Генератор Площадок</h3>
+          <p>Рабочее место для подготовки новых площадок.</p>
+          <span className="action-link">Открыть генератор <ArrowRight size={15} /></span>
+        </button>
       </section>
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
     </section>
   );
+}
+
+function DapsSiteGeneratorPage({ onBack }: { onBack: () => void }) {
+  return <section className="section-view daps-report-page">
+    <div className="eyebrow"><span className="eyebrow-line" /> DAPS</div>
+    <div className="section-hero daps-report-hero"><span className="section-hero-icon"><MapPin size={22} /></span><div><h1>Генератор Площадок</h1><p>Рабочее место для подготовки новых площадок.</p></div><button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button></div>
+    <div className="panel section-panel"><div className="panel-heading"><div><h2>Генератор Площадок</h2><p>Функционал карточки будет добавлен отдельно.</p></div></div></div>
+  </section>;
 }
 
 function NetboxPage({ onBack }: { onBack: () => void }) {
@@ -1607,7 +1626,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Netbox" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Netbox" | "Генератор Площадок" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

@@ -15,6 +15,7 @@ export type Section =
   | "DAPS"
   | "Ежедневный отчет по KPI"
   | "Netbox"
+  | "Генератор Площадок"
   | "Площадки"
   | "Площадки АВР"
   | "Массовое назначение инженеров"
@@ -38,6 +39,7 @@ export const sectionSlugs: Record<Section, string> = {
   "DAPS": "daps",
   "Ежедневный отчет по KPI": "daps/daily-kpi",
   "Netbox": "daps/netbox",
+  "Генератор Площадок": "daps/site-generator",
   "Площадки": "sites",
   "Площадки АВР": "sites/avr",
   "Массовое назначение инженеров": "assign",
