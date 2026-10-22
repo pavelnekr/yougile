@@ -149,9 +149,9 @@ button { color: inherit; }
 .netbox-export-button { margin-left: 0; }
 .netbox-lookup { padding-bottom: 10px; font-size: 10px; }
 .netbox-lookup-loading { color: #7c8799; }
-.netbox-progress { flex: 1 0 100%; display: grid; gap: 6px; padding: 0 0 10px; color: #657187; font-size: 10px; }
+.netbox-progress { display: grid; gap: 8px; margin: 0 0 12px; padding: 0; color: #657187; font-size: 11px; }
 .netbox-progress-copy { display: flex; justify-content: space-between; gap: 12px; }
-.netbox-progress-track { height: 5px; overflow: hidden; border-radius: 999px; background: #e9edf5; }
+.netbox-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: #e9edf5; }
 .netbox-progress-track span { display: block; width: 100%; height: 100%; border-radius: inherit; background: #7489df; transform-origin: left center; transition: transform 350ms ease; }
 .netbox-lookup-found { color: #368263; font-weight: 650; }
 .netbox-lookup-missing, .netbox-lookup-error { color: #ad5f4a; }

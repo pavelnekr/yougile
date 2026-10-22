@@ -863,7 +863,6 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
       {lookup.state === "found" && <span className="netbox-lookup netbox-lookup-found" role="status">Площадка найдена</span>}
       {lookup.state === "missing" && <span className="netbox-lookup netbox-lookup-missing" role="status">Площадка не найдена</span>}
       {lookup.state === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{lookup.message}</span>}
-      {lookup.state === "loading" && netboxProgress && <div className="netbox-progress" role="status" aria-live="polite"><div className="netbox-progress-copy"><span>{netboxProgress.phase}</span><span>{netboxProgress.percent}%</span></div><div className="netbox-progress-track"><span style={{ transform: `scaleX(${netboxProgress.percent / 100})` }} /></div></div>}
       {searchedSiteNumber !== null && netboxInterfaces.length > 0 && <>
         <input ref={netboxImportFileRef} className="netbox-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importNetboxXlsx(file); }} />
         <div className="netbox-file-actions">
@@ -883,6 +882,7 @@ function NetboxPage({ onBack }: { onBack: () => void }) {
     </form>
     {searchedSiteNumber !== null && <section className="panel daps-daily-table-panel">
       <div className="panel-heading"><div><h2>Порты и хосты</h2><p>Площадка {searchedSiteNumber}. Изменения сохраняются в NetBox после выхода из поля.</p></div></div>
+      {lookup.state === "loading" && netboxProgress && <div className="netbox-progress" role="status" aria-live="polite"><div className="netbox-progress-copy"><span>{netboxProgress.phase}</span><span>{netboxProgress.percent}%</span></div><div className="netbox-progress-track"><span style={{ transform: `scaleX(${netboxProgress.percent / 100})` }} /></div></div>}
       <div className="daps-daily-table-wrap"><table id="netbox-links-table" className="daps-daily-table netbox-table"><thead><tr><th>№</th><th>Дата изменения линка</th><th>Хост ОС</th><th>Порт ОС</th><th>Хост Байпаса</th><th>Порт Байпаса</th>{showNetboxExtraFields && <><th>Устройство за байпасом</th><th>Порт устройства</th><th>Линк</th></>}</tr></thead><tbody>
         {netboxInterfaces.map((item, index) => {
           const displayTspuId = item.tspuId && displayedTspuIds.has(item.tspuId) ? "" : item.tspuId || "—";
