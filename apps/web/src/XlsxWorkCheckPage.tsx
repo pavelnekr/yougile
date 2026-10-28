@@ -377,7 +377,7 @@ export default function XlsxWorkCheckPage() {
                 <tbody>
                   {items.map((item) => (
                     <tr key={`${item.fileName ?? ""}-${item.rowNumber}-${item.siteId ?? "unknown"}`}>
-                      <td>{item.siteId ?? "—"}{item.fileName && <small className="work-check-source-file">{item.fileName} · строка {item.rowNumber}</small>}</td>
+                      <td><span>{item.siteId ?? "—"}</span>{item.fileName && <small className="work-check-source-file">{item.fileName} · строка {item.rowNumber}</small>}</td>
                       <td className={item.comment ? "" : "work-check-empty-comment"}>{item.comment ?? item.message}</td>
                       <td className={item.commentedAt ? "work-check-comment-time" : "work-check-empty-comment"}>
                         {item.commentedAt ? formatDate(item.commentedAt) : "—"}
