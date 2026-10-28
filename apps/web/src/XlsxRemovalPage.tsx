@@ -38,6 +38,7 @@ type RemovalPreview = {
   count: number;
   willRemove: number;
   items: {
+    fileName?: string;
     rowNumber: number;
     siteId: string;
     address: string | null;
@@ -74,6 +75,9 @@ function formatDate(value: string) {
 export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void }) {
   const [source, setSource] = useState<Source>("upload");
   const [batches, setBatches] = useState<ImportBatch[]>([]);
+  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
+  const [multiSelections, setMultiSelections] = useState<{ importId: string; rowNumbers: number[] }[] | null>(null);
+  const [invalidMultiRows, setInvalidMultiRows] = useState<{ fileName: string; row: ImportRow }[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(true);
   const [batchError, setBatchError] = useState("");
   const [planImport, setPlanImport] = useState<PlanImport | null>(null);
@@ -187,6 +191,8 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     setOperationId("");
     setError("");
     setBulkWarning(null);
+    setMultiSelections(null);
+    setInvalidMultiRows([]);
   };
 
   const readyRowsOf = (workbook: PlanImport) =>
@@ -243,36 +249,6 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     }
   };
 
-  const selectBatch = async (batch: ImportBatch) => {
-    setBusy(true);
-    setError("");
-    resetSelection();
-    try {
-      const response = await apiFetch(`/api/imports/${encodeURIComponent(batch.id)}`);
-      const data = await response.json() as {
-        id?: string;
-        fileName?: string;
-        sheetName?: string | null;
-        rowCount?: number;
-        rows?: ImportRow[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить выбранный XLSX.");
-      if (!data.id || !data.fileName || !data.rows) throw new Error("Сервер вернул неполные данные XLSX.");
-      setWorkbook({
-        id: data.id,
-        fileName: data.fileName,
-        sheetName: data.sheetName ?? null,
-        rowCount: data.rowCount ?? data.rows.length,
-        rows: data.rows
-      });
-    } catch (reason) {
-      setError(errorMessage(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const toggleRow = (row: ImportRow) => {
     if (row.status !== "READY" || !row.siteId || !row.engineerName) return;
     setSelectedRows((current) => current.includes(row.rowNumber)
@@ -282,6 +258,17 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
   };
 
   const requestPreview = async () => {
+    if (multiSelections) {
+      setBusy(true); setError(""); setPreview(null);
+      try {
+        const response = await apiFetch("/api/imports/removal-preview-multiple", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ batches: multiSelections }) });
+        const data = await response.json() as RemovalPreview & { error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Не удалось проверить назначения.");
+        setPreview({ ...data, importId: "multiple", fileName: `${multiSelections.length} XLSX-файла` });
+      } catch (reason) { setError(errorMessage(reason)); }
+      finally { setBusy(false); }
+      return;
+    }
     if (!planImport || selectedReadyRows.length === 0) return;
     setBusy(true);
     setError("");
@@ -303,6 +290,18 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
   };
 
   const confirmRemoval = async () => {
+    if (multiSelections && preview) {
+      setBusy(true); setError("");
+      try {
+        const response = await apiFetch("/api/imports/remove-multiple", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ batches: multiSelections }) });
+        const data = await response.json() as { operationId?: string; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Не удалось запустить снятие инженеров.");
+        if (!data.operationId) throw new Error("Сервер не вернул номер операции.");
+        setOperationId(data.operationId);
+      } catch (reason) { setError(errorMessage(reason)); }
+      finally { setBusy(false); }
+      return;
+    }
     if (!planImport || !preview || preview.willRemove === 0) return;
     setBusy(true);
     setError("");
@@ -321,6 +320,27 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
     } finally {
       setBusy(false);
     }
+  };
+
+  const prepareSelectedBatches = async () => {
+    const selected = batches.filter((batch) => selectedBatchIds.includes(batch.id));
+    if (!selected.length) return;
+    setBusy(true); setError("");
+    try {
+      const next: { importId: string; rowNumbers: number[] }[] = [];
+      const invalid: { fileName: string; row: ImportRow }[] = [];
+      for (const batch of selected) {
+        const response = await apiFetch(`/api/imports/${encodeURIComponent(batch.id)}`);
+        const data = await response.json() as { id?: string; rows?: ImportRow[]; error?: string };
+        if (!response.ok || !data.id || !data.rows) throw new Error(data.error ?? `Не удалось загрузить «${batch.fileName}».`);
+        const rowNumbers = data.rows.filter((row) => row.status === "READY" && row.siteId && row.engineerName).map((row) => row.rowNumber);
+        invalid.push(...data.rows.filter((row) => row.status !== "READY" || !row.siteId || !row.engineerName).map((row) => ({ fileName: batch.fileName, row })));
+        if (rowNumbers.length) next.push({ importId: data.id, rowNumbers });
+      }
+      if (!next.length) throw new Error("В выбранных XLSX нет строк с найденными площадками и инженерами.");
+      setMultiSelections(next); setInvalidMultiRows(invalid); setPlanImport(null); setSelectedRows([]); setPreview(null); setOperation(null); setOperationId("");
+    } catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusy(false); }
   };
 
   const retryTimeouts = async () => {
@@ -348,7 +368,7 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
 
       {error && <div className="assignment-error"><AlertCircle size={15} />{error}</div>}
 
-      {!planImport && !operationId ? (
+      {!planImport && !multiSelections && !operationId ? (
         <>
           <div className="removal-source-switch" role="tablist" aria-label="Источник XLSX">
             <button className={source === "upload" ? "removal-source-active" : ""} role="tab" aria-selected={source === "upload"} onClick={() => { setSource("upload"); resetSelection(); }}>
@@ -377,23 +397,38 @@ export default function XlsxRemovalPage({ onComplete }: { onComplete: () => void
           ) : (
             <section className="panel removal-history-panel">
               <div className="panel-heading">
-                <div><h2>Файлы из аудита</h2><p>Выберите один из последних сохранённых XLSX-файлов.</p></div>
+                <div><h2>Файлы из аудита</h2><p>Отметьте несколько XLSX. Они будут сверены по очереди.</p></div>
                 <button className="text-button" disabled={loadingBatches} onClick={() => void loadBatches()}><RefreshCw size={13} /> Обновить</button>
               </div>
               {batchError ? <div className="import-audit-message import-audit-message-error"><AlertCircle size={15} />{batchError}</div>
                 : loadingBatches ? <div className="import-audit-message">Загружаем историю XLSX…</div>
                   : batches.length === 0 ? <div className="import-audit-empty"><FileSpreadsheet size={22} /><strong>Загрузок пока нет</strong><span>Сначала загрузите файл XLSX в аудите или здесь.</span></div>
-                    : <div className="removal-history-list">
+                    : <>
+                    <div className="removal-history-list">
                       {batches.map((batch) => (
-                        <button className="removal-history-item" key={batch.id} disabled={busy} onClick={() => void selectBatch(batch)}>
+                        <label className="removal-history-item" key={batch.id}>
+                          <input type="checkbox" disabled={busy} checked={selectedBatchIds.includes(batch.id)} onChange={() => setSelectedBatchIds((current) => current.includes(batch.id) ? current.filter((id) => id !== batch.id) : [...current, batch.id])} />
                           <span className="xlsx-file-icon"><FileSpreadsheet size={17} /></span>
                           <span className="removal-history-file"><strong title={batch.fileName}>{batch.fileName}</strong><small>{countRu(batch.rowCount, rowForms)} · {formatDate(batch.createdAt)} · {batch.uploadedBy}</small></span>
                           <span className={`import-audit-status import-audit-status-${batch.status.toLowerCase()}`}>{batch.status === "COMPLETE" ? "Завершена" : batch.status === "ASSIGNING" ? "В обработке" : "Загружена"}</span>
-                        </button>
+                        </label>
                       ))}
-                    </div>}
+                    </div>
+                    <div className="import-preview-action"><button className="btn-primary" disabled={busy || selectedBatchIds.length === 0} onClick={() => void prepareSelectedBatches()}><ShieldCheck size={16} />{busy ? "Проверяем файлы по очереди…" : `Подготовить снятие (${selectedBatchIds.length} XLSX)`}</button></div>
+                    </>}
             </section>
           )}
+        </>
+      ) : multiSelections ? (
+        <>
+          <div className="panel import-summary-panel"><div className="import-file-heading"><span className="xlsx-file-icon"><FileSpreadsheet size={19} /></span><div><strong>{multiSelections.length} XLSX-файла из аудита</strong><small>{multiSelections.reduce((sum, batch) => sum + batch.rowNumbers.length, 0)} строк выбрано для проверки</small></div><button className="text-button" disabled={busy || operationPending} onClick={resetSelection}>Выбрать другие XLSX</button></div><p className="removal-scope-note">Площадки будут проверены в YouGile. Дубли одной площадки между файлами не допускаются.</p></div>
+          {invalidMultiRows.length > 0 && <div className="panel import-summary-panel"><div className="assignment-panel-heading"><div><h2>Строки, исключённые из снятия</h2><p>Не прошли сопоставление при загрузке и не попадут в операцию.</p></div><span className="import-count-error"><AlertCircle size={14} /> {invalidMultiRows.length}</span></div><div className="multi-xlsx-invalid-list">{invalidMultiRows.map(({ fileName, row }) => <div key={`${fileName}-${row.rowNumber}`}><strong>{row.siteId ?? "Номер площадки не указан"}</strong><span>{fileName} · строка {row.rowNumber}</span><small>{row.engineerName ?? "Инженер не указан"} · {row.status}</small></div>)}</div></div>}
+          <div className="import-preview-action"><button className="btn-primary" disabled={busy || operationPending} onClick={() => void requestPreview()}><ShieldCheck size={16} />{busy ? "Проверяем назначения…" : "Проверить снятие по выбранным XLSX"}</button></div>
+          {preview && <div className="panel xlsx-assignment-preview removal-preview" ref={previewStepRef}>
+            <div className="assignment-panel-heading"><div><h2>Предпросмотр снятия</h2><p>К снятию отмечено назначений: {preview.willRemove} из {preview.count} строк во всех выбранных XLSX.</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
+            <div className="xlsx-preview-list">{preview.items.map((item) => <div className={`xlsx-preview-row removal-preview-row ${item.willRemove ? "" : "removal-preview-row-skip"}`} key={`${item.fileName}-${item.rowNumber}-${item.siteId}`}><span className="site-number">{item.siteId}</span><span className="xlsx-preview-address" title={item.address ?? ""}>{item.address ?? "Адрес не указан"}<small>{item.fileName} · строка {item.rowNumber}</small></span><span className="xlsx-preview-engineer">{item.engineerName}<small>{item.willRemove ? "Будет снят" : "Не назначен — без изменений"}</small></span><span className="xlsx-preview-current"><span>Сейчас: {item.assignedEngineerNames.join(", ") || "нет ответственных"}</span><small>Останутся: {item.remainingEngineerNames.join(", ") || "нет ответственных"}</small></span></div>)}</div>
+            <button className="btn-primary assignment-confirm-button" disabled={busy || operationPending || preview.willRemove === 0} onClick={() => void confirmRemoval()}><CheckCircle2 size={16} />{busy ? "Запускаем…" : "Подтвердить снятие выбранных инженеров"}</button>
+          </div>}
         </>
       ) : planImport ? (
         <>

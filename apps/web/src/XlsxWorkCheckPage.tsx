@@ -15,6 +15,7 @@ type ImportBatch = {
   status: "PREVIEW" | "ASSIGNING" | "COMPLETE";
 };
 type WorkCheckItem = {
+  fileName?: string;
   rowNumber: number;
   siteId: string | null;
   comment: string | null;
@@ -55,6 +56,7 @@ function formatRemaining(ms: number): string {
 export default function XlsxWorkCheckPage() {
   const [source, setSource] = useState<"upload" | "history">("upload");
   const [batches, setBatches] = useState<ImportBatch[]>([]);
+  const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
   const [loadingBatches, setLoadingBatches] = useState(true);
   const [batchError, setBatchError] = useState("");
   const [checkedFile, setCheckedFile] = useState<CheckedFile | null>(null);
@@ -167,22 +169,13 @@ export default function XlsxWorkCheckPage() {
     return () => controller.abort();
   }, []);
 
-  const checkFile = async (file: CheckedFile, rowNumbers: number[]) => {
-    setCheckedFile(file);
-    setItems([]);
-    setError("");
-    setProgress(null);
-    if (rowNumbers.length === 0) {
-      setError("В выбранном XLSX нет строк для проверки.");
-      return;
-    }
-
+  const runCheckFile = async (file: CheckedFile, rowNumbers: number[]): Promise<WorkCheckItem[]> => {
+    if (rowNumbers.length === 0) return [];
     // Синхронный POST не отдаёт промежуточные состояния (он идёт ~2 секунды на
     // площадку), поэтому живой прогресс опрашиваем отдельным лёгким запросом,
     // пока основной крутится в фоне.
     const checkId = `wc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
     let finished = false;
-    setBusy(true);
     const pollProgress = async () => {
       while (!finished) {
         try {
@@ -209,14 +202,24 @@ export default function XlsxWorkCheckPage() {
       const data = await response.json() as { items?: WorkCheckItem[]; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось получить последние комментарии.");
       if (!data.items) throw new Error("Сервер не вернул результаты проверки.");
-      setItems(data.items);
+      return data.items;
     } catch (reason) {
-      setError(errorMessage(reason));
+      throw new Error(errorMessage(reason));
     } finally {
       finished = true;
-      setBusy(false);
       setProgress(null);
     }
+  };
+
+  const checkFile = async (file: CheckedFile, rowNumbers: number[]) => {
+    setCheckedFile(file);
+    setItems([]);
+    setError("");
+    setProgress(null);
+    setBusy(true);
+    try { setItems(await runCheckFile(file, rowNumbers)); }
+    catch (reason) { setError(errorMessage(reason)); }
+    finally { setBusy(false); }
   };
 
   const reset = () => {
@@ -254,25 +257,24 @@ export default function XlsxWorkCheckPage() {
     }
   };
 
-  const selectBatch = async (batch: ImportBatch) => {
+  const selectBatches = async () => {
+    const selected = batches.filter((batch) => selectedBatchIds.includes(batch.id));
+    if (!selected.length) return;
     setBusy(true);
     setError("");
     reset();
     try {
-      const response = await apiFetch(`/api/imports/${encodeURIComponent(batch.id)}`);
-      const data = await response.json() as {
-        id?: string;
-        fileName?: string;
-        rowCount?: number;
-        rows?: { rowNumber: number }[];
-        error?: string;
-      };
-      if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить выбранный XLSX.");
-      if (!data.id || !data.fileName || !data.rows) throw new Error("Сервер вернул неполные данные XLSX.");
-      await checkFile(
-        { id: data.id, fileName: data.fileName, rowCount: data.rowCount ?? data.rows.length },
-        data.rows.map((row) => row.rowNumber)
-      );
+      const allItems: WorkCheckItem[] = [];
+      for (const batch of selected) {
+        const response = await apiFetch(`/api/imports/${encodeURIComponent(batch.id)}`);
+        const data = await response.json() as { id?: string; fileName?: string; rowCount?: number; rows?: { rowNumber: number }[]; error?: string };
+        if (!response.ok) throw new Error(data.error ?? `Не удалось загрузить XLSX «${batch.fileName}».`);
+        if (!data.id || !data.fileName || !data.rows) throw new Error(`Сервер вернул неполные данные XLSX «${batch.fileName}».`);
+        const part = await runCheckFile({ id: data.id, fileName: data.fileName, rowCount: data.rowCount ?? data.rows.length }, data.rows.map((row) => row.rowNumber));
+        allItems.push(...part.map((item) => ({ ...item, fileName: batch.fileName })));
+      }
+      setCheckedFile({ id: selected[0]!.id, fileName: `${selected.length} XLSX-файла`, rowCount: allItems.length });
+      setItems(allItems);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -328,21 +330,25 @@ export default function XlsxWorkCheckPage() {
           ) : (
             <section className="panel removal-history-panel">
               <div className="panel-heading">
-                <div><h2>Файлы из аудита</h2><p>Выберите XLSX, по которому нужно проверить комментарии.</p></div>
+                <div><h2>Файлы из аудита</h2><p>Отметьте XLSX. Они проверятся по очереди, результаты появятся одним списком.</p></div>
                 <button className="text-button" disabled={loadingBatches} onClick={() => void loadBatches()}><RefreshCw size={13} /> Обновить</button>
               </div>
               {batchError ? <div className="import-audit-message import-audit-message-error"><AlertCircle size={15} />{batchError}</div>
                 : loadingBatches ? <div className="import-audit-message">Загружаем историю XLSX…</div>
                   : batches.length === 0 ? <div className="import-audit-empty"><FileSpreadsheet size={22} /><strong>Загрузок пока нет</strong><span>Сначала загрузите XLSX в аудите или здесь.</span></div>
-                    : <div className="removal-history-list">
+                    : <>
+                    <div className="removal-history-list">
                       {batches.map((batch) => (
-                        <button className="removal-history-item" key={batch.id} disabled={busy} onClick={() => void selectBatch(batch)}>
+                        <label className="removal-history-item" key={batch.id}>
+                          <input type="checkbox" disabled={busy} checked={selectedBatchIds.includes(batch.id)} onChange={() => setSelectedBatchIds((current) => current.includes(batch.id) ? current.filter((id) => id !== batch.id) : [...current, batch.id])} />
                           <span className="xlsx-file-icon"><FileSpreadsheet size={17} /></span>
                           <span className="removal-history-file"><strong title={batch.fileName}>{batch.fileName}</strong><small>{countRu(batch.rowCount, rowForms)} · {formatDate(batch.createdAt)} · {batch.uploadedBy}</small></span>
                           <span className={`import-audit-status import-audit-status-${batch.status.toLowerCase()}`}>{batch.status === "COMPLETE" ? "Завершена" : batch.status === "ASSIGNING" ? "В обработке" : "Загружена"}</span>
-                        </button>
+                        </label>
                       ))}
-                    </div>}
+                    </div>
+                    <div className="import-preview-action"><button className="btn-primary" disabled={busy || selectedBatchIds.length === 0} onClick={() => void selectBatches()}><RefreshCw size={15} />{busy ? "Проверяем файлы по очереди…" : `Проверить выбранные XLSX (${selectedBatchIds.length})`}</button></div>
+                    </>}
             </section>
           )}
         </>
@@ -367,11 +373,11 @@ export default function XlsxWorkCheckPage() {
           ) : items.length > 0 ? (
             <div className="work-check-table-wrap">
               <table className="work-check-table">
-                <thead><tr><th>Номер площадки</th><th>Последний комментарий</th><th>Написано</th></tr></thead>
+                <thead><tr><th>Файл / площадка</th><th>Последний комментарий</th><th>Написано</th></tr></thead>
                 <tbody>
                   {items.map((item) => (
-                    <tr key={`${item.rowNumber}-${item.siteId ?? "unknown"}`}>
-                      <td>{item.siteId ?? "—"}</td>
+                    <tr key={`${item.fileName ?? ""}-${item.rowNumber}-${item.siteId ?? "unknown"}`}>
+                      <td>{item.siteId ?? "—"}{item.fileName && <small className="work-check-source-file">{item.fileName} · строка {item.rowNumber}</small>}</td>
                       <td className={item.comment ? "" : "work-check-empty-comment"}>{item.comment ?? item.message}</td>
                       <td className={item.commentedAt ? "work-check-comment-time" : "work-check-empty-comment"}>
                         {item.commentedAt ? formatDate(item.commentedAt) : "—"}

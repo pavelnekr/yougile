@@ -70,6 +70,9 @@ const workCheckSchema = z.object({
   // пока синхронный POST /work-check обрабатывает площадки в фоне.
   checkId: z.string().trim().min(1).max(64).optional()
 });
+const multiImportRemovalSchema = z.object({
+  batches: z.array(z.object({ importId: z.string().min(1), rowNumbers: z.array(z.number().int().positive()).min(1) })).min(1)
+});
 
 // Настройка окна «Проверки работ»: сколько часов назад смотреть сообщения чата.
 const workCheckSettingsSchema = z.object({
@@ -972,6 +975,75 @@ export async function registerImportRoutes(
       if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
       app.log.error({ err: error, importId: request.params.id }, "Could not prepare XLSX engineer removal preview");
       return reply.code(502).send({ error: "Не удалось проверить назначения по выбранному XLSX." });
+    }
+  });
+
+  app.post("/api/imports/removal-preview-multiple", { preHandler: readAccess }, async (request, reply) => {
+    const parsed = multiImportRemovalSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Выберите строки XLSX для снятия инженеров." });
+    try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
+      const batches = [];
+      const sites = new Set<string>();
+      for (const selection of parsed.data.batches) {
+        const result = await prepareImportRemoval(yougile, prisma, selection.importId, selection.rowNumbers);
+        for (const item of result.items) {
+          if (sites.has(item.siteId)) throw new AssignmentValidationError(`Площадка ${item.siteId} выбрана более одного раза в нескольких XLSX.`);
+          sites.add(item.siteId);
+          batches.push({ ...item, fileName: result.fileName });
+        }
+      }
+      if (batches.length > maxSitesPerOperation) return reply.code(400).send({ error: tooManySitesError("площадок") });
+      return { count: batches.length, willRemove: batches.filter((item) => item.willRemove).length, items: batches };
+    } catch (error) {
+      if (error instanceof UserYougileCredentialError) return reply.code(error.statusCode).send({ error: error.message });
+      if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
+      app.log.error({ err: error }, "Could not prepare multi-XLSX removal preview");
+      return reply.code(502).send({ error: "Не удалось проверить назначения по выбранным XLSX." });
+    }
+  });
+
+  app.post("/api/imports/remove-multiple", { preHandler: writeAccess }, async (request, reply) => {
+    const parsed = multiImportRemovalSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "Выберите проверенные строки XLSX для снятия инженеров." });
+    try {
+      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
+      const preparedItems = [];
+      const sites = new Set<string>();
+      const sourceFiles: string[] = [];
+      for (const selection of parsed.data.batches) {
+        const prepared = await prepareImportRemoval(yougile, prisma, selection.importId, selection.rowNumbers);
+        sourceFiles.push(prepared.fileName);
+        for (const item of prepared.items) {
+          if (sites.has(item.siteId)) throw new AssignmentValidationError(`Площадка ${item.siteId} выбрана более одного раза в нескольких XLSX.`);
+          sites.add(item.siteId);
+          preparedItems.push(item);
+        }
+      }
+      if (preparedItems.length > maxSitesPerOperation) return reply.code(400).send({ error: tooManySitesError("площадок") });
+      const operation = await prisma.operation.create({
+        data: {
+          type: OperationType.REMOVE, status: OperationStatus.QUEUED,
+          createdById: request.sessionUser?.id ?? null,
+          total: preparedItems.length,
+          metadata: { fileName: sourceFiles.join(", "), sourceFiles },
+          items: { create: preparedItems.map((item, index) => ({
+            importRowId: item.importRowId, siteId: item.siteId, sortOrder: index, requestedUserId: item.userId,
+            beforeData: { taskId: item.taskId, title: item.title, assignedUserIds: item.assignedUserIds, engineerName: item.engineerName, importRowNumber: item.rowNumber }
+          })) }
+        }
+      });
+      try { await operationQueue.add("remove-engineers", { operationId: operation.id }, { jobId: operation.id }); }
+      catch (error) {
+        await prisma.operation.update({ where: { id: operation.id }, data: { status: OperationStatus.FAILED, message: "Не удалось добавить операцию в очередь.", finishedAt: new Date() } });
+        throw error;
+      }
+      return reply.code(202).send({ operationId: operation.id });
+    } catch (error) {
+      if (error instanceof UserYougileCredentialError) return reply.code(error.statusCode).send({ error: error.message });
+      if (error instanceof AssignmentValidationError) return reply.code(400).send({ error: error.message });
+      app.log.error({ err: error }, "Could not enqueue multi-XLSX removal");
+      return reply.code(502).send({ error: "Не удалось запустить снятие инженеров." });
     }
   });
 
