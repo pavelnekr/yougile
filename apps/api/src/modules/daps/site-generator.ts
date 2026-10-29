@@ -183,9 +183,13 @@ function deviceTypeTokens(specName: string): string[] {
   return [specName.replace(/^(байпас оптический|балансировщик|пак|сервер|коммутатор|криптошлюз)\s+/iu, "").trim()];
 }
 
-function roleNamesForDevice(specName: string, isOdf: boolean): string[] {
+function stripDeviceInstanceNumber(name: string): string {
+  return name.trim().replace(/\s*\(\s*\d+\s*\)\s*$/u, "").trim();
+}
+
+function roleNamesForDevice(deviceName: string, isOdf: boolean): string[] {
   if (isOdf) return ["ODF оператора"];
-  const name = normalize(specName);
+  const name = normalize(stripDeviceInstanceNumber(deviceName));
   if (name.startsWith("байпас оптический")) return ["Комбинированный байпас", "Пассивный байпас", "Байпас"];
   if (name.startsWith("балансировщик")) return ["Балансировщик"];
   if (name.startsWith("пак ")) return ["Фильтр"];
@@ -276,7 +280,7 @@ export function buildSiteGeneratorPlan(
       }
       deviceTypesToCreate.set(modelKey, { model: typeToken, height: requestedHeight, ...(genericManufacturer ? { manufacturerId: genericManufacturer.id } : {}) });
     }
-    const role = matchRole(roleNamesForDevice(isOdf ? "ODF" : item!.specName, isOdf), deviceRoles);
+    const role = matchRole(roleNamesForDevice(chassis.name, isOdf), deviceRoles);
     if (!role) {
       errors.push(`Не найдена роль NetBox для устройства «${chassis.name}».`);
       continue;
