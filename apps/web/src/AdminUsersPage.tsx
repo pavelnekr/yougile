@@ -74,7 +74,8 @@ const workspaces = [
   { value: "WORK_MANAGEMENT", label: "Управление работами" },
   { value: "COORDINATION", label: "Согласование/Оповещение" },
   { value: "WORK_PLANNING", label: "Планирование работ" },
-  { value: "DAPS", label: "DAPS" }
+  { value: "DAPS", label: "DAPS" },
+  { value: "LTP", label: "1ЛТП" }
 ] as const;
 
 const operationTypeLabels: Record<string, string> = {

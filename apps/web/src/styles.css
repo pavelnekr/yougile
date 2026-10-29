@@ -137,6 +137,32 @@ button { color: inherit; }
 .brand-copy strong { font: 800 19px "Avenir Next", "Trebuchet MS", sans-serif; letter-spacing: 1.1px; }
 .brand-copy small { margin-top: 5px; color: #8a94a7; font-size: 8px; font-weight: 700; letter-spacing: 1.4px; }
 .daps-card-grid { grid-template-columns: repeat(auto-fit, minmax(230px, 320px)); }
+.ltp-empty-card { min-height: 150px; cursor: default; }
+.ltp-blocks-page .section-hero .text-button { margin-left: auto; }
+.ltp-blocks-form { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)) auto; align-items: end; gap: 12px; padding: 16px; }
+.ltp-blocks-form .field-label { display: grid; gap: 6px; color: #737e92; font-size: 10px; }
+.ltp-blocks-form > .field-label > input { width: 100%; height: 38px; padding: 0 10px; border: 1px solid #e2e7ef; border-radius: 7px; color: #354056; background: #fff; font: inherit; font-size: 10px; }
+.ltp-file-picker { display: flex; box-sizing: border-box; height: 38px; align-items: center; justify-content: center; gap: 8px; padding: 3px 10px; border: 1px solid #e2e7ef; border-radius: 7px; background: #fff; }
+.ltp-file-picker > input[type="file"] { display: none; }
+.ltp-file-picker > .outline-button { min-height: 28px; height: 28px; align-items: center; justify-content: center; }
+.ltp-file-name { max-width: 55%; overflow: hidden; color: #8791a1; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.ltp-blocks-form .btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; white-space: nowrap; }
+.ltp-blocks-hint { grid-column: 1 / -1; color: #929aaa; font-size: 10px; }
+.ltp-blocks-results-heading { align-items: center; margin-top: 24px; }
+.ltp-blocks-results-heading .outline-button { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; white-space: nowrap; }
+.ltp-blocks-summary { margin-bottom: 14px; padding: 14px; }
+.ltp-blocks-summary-list { display: grid; }
+.ltp-blocks-summary-row { display: grid; grid-template-columns: 1fr minmax(80px, auto) auto; align-items: center; gap: 12px; padding: 8px 10px; border-bottom: 1px solid #edf0f4; color: #46536a; font-size: 11px; }
+.ltp-blocks-summary-row:last-child { border-bottom: 0; }
+.ltp-blocks-summary-row.is-white { background: #f3faf6; }
+.ltp-blocks-summary-row.is-high { background: #fff5f2; }
+.ltp-blocks-summary-row .text-button { justify-self: end; }
+.ltp-blocks-table-wrap { max-height: 620px; overflow: auto; border: 1px solid #edf0f4; border-radius: 7px; background: #fff; }
+.ltp-blocks-table-wrap table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 10px; }
+.ltp-blocks-table-wrap th, .ltp-blocks-table-wrap td { padding: 8px 10px; border-bottom: 1px solid #edf0f4; text-align: left; }
+.ltp-blocks-table-wrap th { position: sticky; top: 0; z-index: 1; color: #657187; background: #f4f6f9; font-weight: 650; }
+.ltp-blocks-table-wrap td { color: #46536a; }
+.ltp-blocks-table-wrap .table-empty { padding: 20px; color: #8791a1; text-align: center; }
 .daps-report-hero .text-button { margin-left: auto; }
 .daps-daily-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 12px; margin-top: 18px; padding: 13px 15px; }
 .daps-daily-controls > label, .daps-manual-row label { display: grid; min-width: 135px; flex: 1 1 145px; gap: 5px; color: #737e92; font-size: 9px; }
@@ -185,6 +211,21 @@ button { color: inherit; }
 .netbox-clear-warning { margin: 0; color: #a34f42; font-size: 10px; line-height: 1.55; }
 .netbox-clear-counts { display: grid; gap: 4px; margin: 0; padding: 9px 11px; border-radius: 6px; color: #657187; background: #f7f8fb; font-size: 9px; list-style: none; }
 .netbox-clear-counts strong { color: #354056; }
+.site-generator-upload-panel { margin-top: 14px; padding: 16px; }
+.site-generator-upload-panel > .panel-heading { margin-bottom: 13px; }
+.site-generator-upload-form { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; align-items: end; gap: 12px 16px; }
+.site-generator-upload-form > .field-label { display: grid; gap: 5px; color: #737e92; font-size: 9px; }
+.site-generator-upload-form input { box-sizing: border-box; width: 100%; min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
+.site-generator-upload-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.site-generator-upload-actions .outline-button { min-height: 34px; align-items: center; white-space: nowrap; }
+.site-generator-upload-actions .outline-button:disabled { color: #9aa2b0; background: #f8f9fb; cursor: not-allowed; opacity: .8; }
+.site-generator-file-list { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 18px; color: #69758a; font-size: 10px; }
+.site-generator-preview-button { grid-column: 1 / -1; justify-self: start; min-height: 34px; }
+.site-generator-plan { grid-column: 1 / -1; display: grid; gap: 7px; padding: 12px 14px; border: 1px solid #dcebe5; border-radius: 7px; color: #647388; background: #f6fbf8; font-size: 10px; line-height: 1.5; }
+.site-generator-plan > strong { color: #315f4d; font-size: 11px; }
+.site-generator-plan .netbox-clear-button { justify-self: start; margin-top: 4px; }
+.site-generator-plan-warning { color: #9a6d33; }
+.site-generator-upload-note { grid-column: 1 / -1; margin: -4px 0 0; color: #929aaa; font-size: 9px; }
 .netbox-empty-row { padding: 18px !important; color: #8791a1; text-align: center; }
 .daps-daily-controls input, .daps-manual-row input { min-height: 34px; padding: 7px 9px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
 .daps-daily-controls > .outline-button, .daps-daily-controls > .btn-primary, .daps-daily-save { min-height: 34px; align-self: end; }
@@ -588,6 +629,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .action-card { min-height: 149px; }
   .bottom-grid, .section-columns { grid-template-columns: 1fr; }
   .daps-daily-controls { align-items: stretch; flex-direction: column; }
+  .site-generator-upload-form { grid-template-columns: 1fr; }
+  .ltp-blocks-form { grid-template-columns: 1fr; }
+  .ltp-blocks-results-heading { align-items: flex-start; }
+  .ltp-blocks-summary-row { grid-template-columns: 1fr auto; }
+  .ltp-blocks-summary-row .text-button { grid-column: 1 / -1; justify-self: start; }
   .daps-daily-source { margin-left: 0; }
   .daps-daily-table-panel .panel-heading, .daps-daily-chart-panel .panel-heading { align-items: flex-start; flex-direction: column; }
   .daps-manual-grid { grid-template-columns: 1fr; }
@@ -1356,6 +1402,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .completed-operation-dialog-body { display: grid; min-height: 0; max-height: 65vh; gap: 12px; overflow: auto; }
 .completed-operation-summary { margin: 0; color: #68768c; font-size: 10px; line-height: 1.5; }
 .completed-work-check-table-wrap { max-height: 55vh; }
+.work-check-source-file { display: block; margin-top: 3px; color: #929bab; font-size: 8px; white-space: normal; }
+.multi-xlsx-invalid-list { display: grid; gap: 6px; max-height: 260px; overflow: auto; }
+.multi-xlsx-invalid-list > div { display: grid; grid-template-columns: minmax(100px, .7fr) minmax(160px, 1.4fr) minmax(130px, 1fr); gap: 10px; padding: 8px 10px; border: 1px solid #f1e4de; border-radius: 6px; color: #667186; background: #fffaf8; font-size: 9px; }
+.multi-xlsx-invalid-list strong { color: #a85c49; }
+.multi-xlsx-invalid-list small { color: #929bab; }
 
 /* ============================================================================
    Конфигурация портала

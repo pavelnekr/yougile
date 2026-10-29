@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import ExcelJS from "exceljs";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
 import { getDapsDatabase, getDapsSchemas, quoteDapsSchema } from "./database.js";
 import { getNetboxApiSettings } from "./netbox.js";
+import { buildSiteGeneratorPlan, parseSiteGeneratorFiles, type SiteGeneratorPlan } from "./site-generator.js";
 
 const kpiFields = ["KPI-01", "KPI-02", "KPI-03", "KPI-04", "KPI-05", "KPI-06", "KPI-07"] as const;
 const dailyKpiSaveSchema = z.object({
@@ -30,6 +32,9 @@ const netboxExportSchema = z.object({
 });
 
 const netboxLookupProgress = new Map<string, { slug: string; phase: string; percent: number; interfaces: unknown[]; done: boolean; error?: string; updatedAt: number }>();
+const siteGeneratorPreviews = new Map<string, { ownerId: string; siteSlug: string; siteId: number; plan: SiteGeneratorPlan; expiresAt: number }>();
+const siteGeneratorActiveSites = new Set<number>();
+const siteGeneratorActiveTypeModels = new Set<string>();
 
 function parseDate(value: unknown): Date | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -84,6 +89,269 @@ async function getNetboxSiteInventory(apiBase: URL, siteId: number, headers: Rec
 export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const readAccess = requireWorkspaceAccess("DAPS");
   const writeAccess = requireWorkspaceAccess("DAPS", true);
+
+  const netboxSiteDeviceCount = async (apiBase: URL, siteId: number, headers: Record<string, string>) => {
+    const devicesUrl = new URL("devices/", apiBase);
+    devicesUrl.searchParams.set("site_id", String(siteId));
+    devicesUrl.searchParams.set("limit", "1");
+    const response = await fetch(devicesUrl, { headers, signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error("Не удалось проверить устройства площадки в NetBox.");
+    const data = await response.json() as { count?: number; results?: unknown[] };
+    return data.count ?? data.results?.length ?? 0;
+  };
+
+  app.get<{ Querystring: { slug?: string } }>("/api/daps/netbox/site/generator/check", { preHandler: readAccess }, async (request, reply) => {
+    const slug = z.string().trim().min(1).max(100).safeParse(request.query.slug);
+    if (!slug.success) return reply.code(400).send({ error: "Введите номер площадки." });
+    const settings = await getNetboxApiSettings(prisma);
+    if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
+    const apiBase = new URL("/api/dcim/", settings.url);
+    const headers = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
+    try {
+      const site = await findNetboxSite(apiBase, slug.data, headers);
+      if (!site) return { found: false };
+      const deviceCount = await netboxSiteDeviceCount(apiBase, site.id, headers);
+      return { found: true, site, deviceCount, empty: deviceCount === 0 };
+    } catch (error) {
+      request.log.warn({ err: error, siteSlug: slug.data }, "Could not check NetBox site for site generation");
+      return reply.code(502).send({ error: error instanceof Error ? error.message : "Не удалось проверить площадку в NetBox." });
+    }
+  });
+
+  app.post<{ Querystring: { slug?: string } }>("/api/daps/netbox/site/generator/preview", { preHandler: writeAccess }, async (request, reply) => {
+    const slug = z.string().trim().min(1).max(100).safeParse(request.query.slug);
+    if (!slug.success) return reply.code(400).send({ error: "Введите номер площадки." });
+    if (!request.isMultipart()) return reply.code(406).send({ error: "Загрузите два файла XLSX: спецификацию и фасады." });
+    const uploaded = new Map<string, Buffer>();
+    const filenames = new Map<string, string>();
+    try {
+      for await (const part of request.parts({ limits: { files: 2, fields: 0, parts: 2, fileSize: config.UPLOAD_MAX_BYTES } })) {
+        if (part.type !== "file") continue;
+        const filename = part.filename.split(/[\\/]/).pop() ?? "";
+        if (!filename.toLocaleLowerCase("en").endsWith(".xlsx")) {
+          await part.toBuffer();
+          return reply.code(400).send({ error: `Файл «${filename || part.fieldname}» должен иметь формат .xlsx.` });
+        }
+        if (part.fieldname !== "specification" && part.fieldname !== "facades") {
+          await part.toBuffer();
+          return reply.code(400).send({ error: "Передайте файлы в полях specification и facades." });
+        }
+        if (uploaded.has(part.fieldname)) {
+          await part.toBuffer();
+          return reply.code(400).send({ error: "Файл спецификации или фасадов передан несколько раз." });
+        }
+        const buffer = await part.toBuffer();
+        if (part.file.truncated || buffer.length > config.UPLOAD_MAX_BYTES) return reply.code(413).send({ error: `Файл превышает лимит ${Math.round(config.UPLOAD_MAX_BYTES / 1024 / 1024)} МБ.` });
+        uploaded.set(part.fieldname, buffer);
+        filenames.set(part.fieldname, filename);
+      }
+      const specification = uploaded.get("specification");
+      const facades = uploaded.get("facades");
+      if (!specification || !facades) return reply.code(400).send({ error: "Загрузите и спецификацию, и файл фасадов." });
+
+      const settings = await getNetboxApiSettings(prisma);
+      if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
+      const apiBase = new URL("/api/dcim/", settings.url);
+      const headers = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
+      const site = await findNetboxSite(apiBase, slug.data, headers);
+      if (!site) return reply.code(404).send({ error: "Площадка не найдена в NetBox." });
+      const deviceCount = await netboxSiteDeviceCount(apiBase, site.id, headers);
+      if (deviceCount > 0) return reply.code(409).send({ error: `На площадке уже есть устройства (${deviceCount}). Для генерации нужна пустая площадка.` });
+
+      const parsed = await parseSiteGeneratorFiles(specification, facades);
+      const [deviceTypes, deviceRoles, manufacturers, locations, existingRacks] = await Promise.all([
+        fetchNetboxCollection<{ id: number; model: string; slug?: string; u_height?: number | null }>(new URL("device-types/?limit=1000", apiBase), headers),
+        fetchNetboxCollection<{ id: number; name: string; slug?: string }>(new URL("device-roles/?limit=1000", apiBase), headers),
+        fetchNetboxCollection<{ id: number; name: string; slug?: string }>(new URL("manufacturers/?limit=1000", apiBase), headers),
+        fetchNetboxCollection<{ id: number; name: string; site?: { id?: number } | null }>(new URL(`locations/?site_id=${site.id}&limit=1000`, apiBase), headers),
+        fetchNetboxCollection<{ id: number; name: string; site?: { id?: number } | null }>(new URL(`racks/?site_id=${site.id}&limit=1000`, apiBase), headers)
+      ]);
+      const genericManufacturer = manufacturers.find((manufacturer) => manufacturer.name.trim().toLocaleLowerCase("ru") === "generic");
+      let plan: SiteGeneratorPlan;
+      try {
+        plan = buildSiteGeneratorPlan(parsed, deviceTypes, deviceRoles, genericManufacturer, locations, existingRacks, site.id);
+      } catch (error) {
+        return reply.code(422).send({ error: error instanceof Error ? error.message : "Не удалось сопоставить спецификацию с фасадами и справочником NetBox." });
+      }
+      for (const [key, value] of siteGeneratorPreviews) if (value.expiresAt < Date.now()) siteGeneratorPreviews.delete(key);
+      const previewId = randomUUID();
+      siteGeneratorPreviews.set(previewId, {
+        ownerId: String(request.sessionUser?.id ?? ""), siteSlug: site.slug, siteId: site.id, plan, expiresAt: Date.now() + 15 * 60_000
+      });
+      return {
+        previewId,
+        site,
+        files: { specification: filenames.get("specification"), facades: filenames.get("facades") },
+        counts: { devices: plan.devices.length, racks: plan.racks.length, placements: plan.devices.length, deviceTypesToCreate: plan.deviceTypesToCreate.length, manufacturerToCreate: plan.manufacturerToCreate, ignoredSpecificationItems: plan.ignoredItems.length, chassisOnlyDevices: plan.chassisOnlyDevices.length },
+        deviceTypesToCreate: plan.deviceTypesToCreate.map(({ model, height }) => ({ model, height })),
+        ignoredItems: plan.ignoredItems,
+        chassisOnlyDevices: plan.chassisOnlyDevices,
+        roomsWithoutLocation: plan.roomsWithoutLocation
+      };
+    } catch (error) {
+      request.log.warn({ err: error, siteSlug: slug.data }, "Could not preview NetBox site generation");
+      const message = error instanceof Error ? error.message : "Не удалось прочитать файлы для генерации площадки.";
+      const tooLarge = /file too large|requestfiletoolarge/i.test(message);
+      return reply.code(tooLarge ? 413 : 400).send({ error: tooLarge ? `Файл превышает лимит ${Math.round(config.UPLOAD_MAX_BYTES / 1024 / 1024)} МБ.` : message });
+    }
+  });
+
+  app.post<{ Body: unknown }>("/api/daps/netbox/site/generator/create", { preHandler: writeAccess }, async (request, reply) => {
+    const input = z.object({ previewId: z.string().uuid() }).safeParse(request.body);
+    if (!input.success) return reply.code(400).send({ error: "Не найден проверенный план создания площадки." });
+    const preview = siteGeneratorPreviews.get(input.data.previewId);
+    if (!preview || preview.expiresAt < Date.now() || preview.ownerId !== String(request.sessionUser?.id ?? "")) {
+      siteGeneratorPreviews.delete(input.data.previewId);
+      return reply.code(410).send({ error: "План создания истёк или недоступен. Проверьте файлы повторно." });
+    }
+    const settings = await getNetboxApiSettings(prisma);
+    if (!settings.tokenConfigured) return reply.code(503).send({ error: "Для NetBox не настроен API-токен. Обратитесь к администратору." });
+    const apiBase = new URL("/api/dcim/", settings.url);
+    const headers = { Authorization: `${settings.tokenType} ${settings.token}`, Accept: "application/json" };
+    const writeHeaders = { ...headers, "Content-Type": "application/json" };
+    const createdRackIds: number[] = [];
+    const createdDeviceIds: number[] = [];
+    const createdDeviceTypeIds: number[] = [];
+    let createdManufacturer = false;
+    const typeModelKeys = preview.plan.deviceTypesToCreate.map(({ model }) => model.trim().toLocaleLowerCase("ru"));
+    if (siteGeneratorActiveSites.has(preview.siteId)) return reply.code(409).send({ error: "Для этой площадки уже выполняется генерация." });
+    if (typeModelKeys.some((key) => siteGeneratorActiveTypeModels.has(key))) return reply.code(409).send({ error: "Один из типов устройств уже создаётся в другой операции. Повторите попытку." });
+    siteGeneratorActiveSites.add(preview.siteId);
+    typeModelKeys.forEach((key) => siteGeneratorActiveTypeModels.add(key));
+    try {
+      const site = await findNetboxSite(apiBase, preview.siteSlug, headers);
+      if (!site || site.id !== preview.siteId) return reply.code(404).send({ error: "Площадка изменилась или больше не найдена в NetBox." });
+      const deviceCount = await netboxSiteDeviceCount(apiBase, site.id, headers);
+      if (deviceCount > 0) return reply.code(409).send({ error: `На площадке появились устройства (${deviceCount}). Создание отменено.` });
+      const currentRacks = await fetchNetboxCollection<{ id: number; name: string; site?: { id?: number } | null }>(new URL(`racks/?site_id=${site.id}&limit=1000`, apiBase), headers);
+      const existingRackNames = new Set(currentRacks.map((rack) => rack.name.trim().toLocaleLowerCase("ru")));
+      const duplicateRack = preview.plan.racks.find((rack) => existingRackNames.has(rack.name.trim().toLocaleLowerCase("ru")));
+      if (duplicateRack) return reply.code(409).send({ error: `Стойка «${duplicateRack.name}» появилась после проверки. Выполните проверку файлов заново.` });
+
+      const deviceTypeIdsByModel = new Map(preview.plan.devices.filter((device) => device.deviceTypeId !== undefined).map((device) => [device.deviceTypeModel.trim().toLocaleLowerCase("ru"), device.deviceTypeId!]));
+      const currentTypes = await fetchNetboxCollection<{ id: number; model: string; slug?: string; manufacturer?: { id?: number } }>(new URL("device-types/?limit=1000", apiBase), headers);
+      const usedSlugs = new Set(currentTypes.map((type) => type.slug?.trim().toLocaleLowerCase("en")).filter((slug): slug is string => Boolean(slug)));
+      let genericManufacturerId: number | undefined;
+      if (preview.plan.deviceTypesToCreate.length) {
+        const manufacturers = await fetchNetboxCollection<{ id: number; name: string; slug?: string }>(new URL("manufacturers/?limit=1000", apiBase), headers);
+        let generic = manufacturers.find((manufacturer) => manufacturer.name.trim().toLocaleLowerCase("ru") === "generic");
+        if (!generic) {
+          const usedManufacturerSlugs = new Set(manufacturers.map((manufacturer) => manufacturer.slug?.trim().toLocaleLowerCase("en")).filter((value): value is string => Boolean(value)));
+          let manufacturerSlug = "generic";
+          let suffix = 2;
+          while (usedManufacturerSlugs.has(manufacturerSlug)) manufacturerSlug = `generic-${suffix++}`;
+          const response = await fetch(new URL("manufacturers/", apiBase), {
+            method: "POST", headers: writeHeaders,
+            body: JSON.stringify({ name: "Generic", slug: manufacturerSlug }),
+            signal: AbortSignal.timeout(20_000)
+          });
+          if (response.ok) {
+            generic = await response.json() as { id: number; name: string; slug?: string };
+            createdManufacturer = true;
+          }
+          else {
+            generic = (await fetchNetboxCollection<{ id: number; name: string; slug?: string }>(new URL("manufacturers/?limit=1000", apiBase), headers))
+              .find((manufacturer) => manufacturer.name.trim().toLocaleLowerCase("ru") === "generic");
+            if (!generic) throw new Error(`NetBox не создал производителя Generic (HTTP ${response.status}). Проверьте права токена.`);
+          }
+        }
+        genericManufacturerId = generic.id;
+      }
+      for (const type of preview.plan.deviceTypesToCreate) {
+        const currentMatch = currentTypes.find((item) => item.model.trim().toLocaleLowerCase("ru") === type.model.trim().toLocaleLowerCase("ru") && item.manufacturer?.id === type.manufacturerId);
+        if (currentMatch) {
+          deviceTypeIdsByModel.set(type.model.trim().toLocaleLowerCase("ru"), currentMatch.id);
+          continue;
+        }
+        const slugBase = type.model.normalize("NFKD").toLocaleLowerCase("en").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "device-type";
+        let slug = slugBase.slice(0, 80);
+        let suffix = 2;
+        while (usedSlugs.has(slug.toLocaleLowerCase("en"))) {
+          const ending = `-${suffix++}`;
+          slug = `${slugBase.slice(0, 80 - ending.length)}${ending}`;
+        }
+        usedSlugs.add(slug.toLocaleLowerCase("en"));
+        const response = await fetch(new URL("device-types/", apiBase), {
+          method: "POST", headers: writeHeaders,
+          body: JSON.stringify({ manufacturer: genericManufacturerId ?? type.manufacturerId, model: type.model, slug, u_height: type.height, is_full_depth: false }),
+          signal: AbortSignal.timeout(20_000)
+        });
+        if (!response.ok) throw new Error(`NetBox не создал тип устройства «${type.model}» (HTTP ${response.status}). Проверьте права токена и производителя Generic.`);
+        const createdType = await response.json() as { id: number };
+        createdDeviceTypeIds.push(createdType.id);
+        deviceTypeIdsByModel.set(type.model.trim().toLocaleLowerCase("ru"), createdType.id);
+      }
+
+      const rackIdsByName = new Map<string, number>();
+      for (const rack of preview.plan.racks) {
+        const response = await fetch(new URL("racks/", apiBase), {
+          method: "POST", headers: writeHeaders,
+          body: JSON.stringify({
+            name: rack.name, site: site.id, status: "active", width: 19, u_height: rack.height, starting_unit: 1,
+            form_factor: "4-post-cabinet", desc_units: false,
+            ...(rack.facilityId ? { facility_id: rack.facilityId } : {}),
+            ...(rack.locationId ? { location: rack.locationId } : {}),
+            ...(rack.room ? { description: `Помещение: ${rack.room}` } : {})
+          }), signal: AbortSignal.timeout(20_000)
+        });
+        if (!response.ok) throw new Error(`NetBox не создал стойку «${rack.name}» (HTTP ${response.status}).`);
+        const created = await response.json() as { id: number };
+        createdRackIds.push(created.id);
+        rackIdsByName.set(rack.name.trim().toLocaleLowerCase("ru"), created.id);
+      }
+      for (const device of preview.plan.devices) {
+        const rackId = rackIdsByName.get(device.rackName.trim().toLocaleLowerCase("ru"));
+        if (!rackId) throw new Error(`Не найдена созданная стойка «${device.rackName}» для устройства «${device.name}».`);
+        const deviceTypeId = device.deviceTypeId ?? deviceTypeIdsByModel.get(device.deviceTypeModel.trim().toLocaleLowerCase("ru"));
+        if (!deviceTypeId) throw new Error(`Не найден тип NetBox «${device.deviceTypeModel}» для устройства «${device.name}».`);
+        const response = await fetch(new URL("devices/", apiBase), {
+          method: "POST", headers: writeHeaders,
+          body: JSON.stringify({
+            name: device.name, device_type: deviceTypeId, role: device.deviceRoleId, site: site.id,
+            status: "active", rack: rackId, position: device.position, face: "front",
+            description: "Создано генератором площадок по спецификации и файлу фасадов."
+          }), signal: AbortSignal.timeout(20_000)
+        });
+        if (!response.ok) throw new Error(`NetBox не создал устройство «${device.name}» (HTTP ${response.status}).`);
+        const created = await response.json() as { id: number };
+        createdDeviceIds.push(created.id);
+      }
+      siteGeneratorPreviews.delete(input.data.previewId);
+      return {
+        success: true, site,
+        created: { devices: createdDeviceIds.length, racks: createdRackIds.length, deviceTypes: createdDeviceTypeIds.length, manufacturer: createdManufacturer },
+        ignoredItems: preview.plan.ignoredItems,
+        chassisOnlyDevices: preview.plan.chassisOnlyDevices,
+        roomsWithoutLocation: preview.plan.roomsWithoutLocation
+      };
+    } catch (error) {
+      const rollbackFailures: string[] = [];
+      for (const id of createdDeviceIds.reverse()) {
+        try {
+          const response = await fetch(new URL(`devices/${id}/`, apiBase), { method: "DELETE", headers, signal: AbortSignal.timeout(15_000) });
+          if (!response.ok) rollbackFailures.push(`device:${id}`);
+        } catch { rollbackFailures.push(`device:${id}`); }
+      }
+      for (const id of createdRackIds.reverse()) {
+        try {
+          const response = await fetch(new URL(`racks/${id}/`, apiBase), { method: "DELETE", headers, signal: AbortSignal.timeout(15_000) });
+          if (!response.ok) rollbackFailures.push(`rack:${id}`);
+        } catch { rollbackFailures.push(`rack:${id}`); }
+      }
+      for (const id of createdDeviceTypeIds.reverse()) {
+        try {
+          const response = await fetch(new URL(`device-types/${id}/`, apiBase), { method: "DELETE", headers, signal: AbortSignal.timeout(15_000) });
+          if (!response.ok) rollbackFailures.push(`device-type:${id}`);
+        } catch { rollbackFailures.push(`device-type:${id}`); }
+      }
+      request.log.error({ err: error, siteSlug: preview.siteSlug, rollbackFailures }, "NetBox site generation failed; rollback attempted");
+      const rollbackMessage = `${rollbackFailures.length ? ` Не удалось удалить после сбоя объекты: ${rollbackFailures.join(", ")}.` : " Частично созданные типы, устройства и стойки удалены."}${createdManufacturer ? " Производитель Generic оставлен в NetBox и доступен для повторной генерации." : ""}`;
+      return reply.code(502).send({ error: `${error instanceof Error ? error.message : "Генерация площадки завершилась ошибкой."}${rollbackMessage}`, rollbackFailures });
+    } finally {
+      siteGeneratorActiveSites.delete(preview.siteId);
+      typeModelKeys.forEach((key) => siteGeneratorActiveTypeModels.delete(key));
+    }
+  });
 
   app.get<{ Querystring: { slug?: string } }>("/api/daps/netbox/site/clear-preview", { preHandler: readAccess }, async (request, reply) => {
     const slug = z.string().trim().min(1).max(100).safeParse(request.query.slug);

@@ -51,6 +51,7 @@ import HistoryPage from "./HistoryPage.js";
 import AdminUsersPage from "./AdminUsersPage.js";
 import LogsPage from "./LogsPage.js";
 import PortalConfigPage from "./PortalConfigPage.js";
+import LtpBlocksLogPage from "./LtpBlocksLogPage.js";
 import { syncSectionUrl, useSectionUrl, type Section } from "./router.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
@@ -114,6 +115,7 @@ type AvrSitesList = {
 const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: boolean }[] = [
   { label: "Управление работами в YouGile", icon: LayoutDashboard },
   { label: "DAPS", icon: Sparkles },
+  { label: "1ЛТП", icon: LayoutDashboard },
   { label: "Согласование/Оповещение", icon: BellRing },
   { label: "Планирование Работ", icon: CalendarDays },
   { label: "Учётные записи", icon: UsersRound, adminOnly: true },
@@ -125,6 +127,8 @@ const navigation: { label: Section; icon: typeof LayoutDashboard; adminOnly?: bo
 const workspaceBySection: Partial<Record<Section, string>> = {
   "Управление работами в YouGile": "WORK_MANAGEMENT",
   "DAPS": "DAPS",
+  "1ЛТП": "LTP",
+  "Журнал блокировок 1ЛТП": "LTP",
   "Ежедневный отчет по KPI": "DAPS",
   "Netbox": "DAPS",
   "Генератор Площадок": "DAPS",
@@ -403,6 +407,7 @@ function App() {
   // на странице раздела открывает его по собственному адресу. Подсветка меню
   // и пункт навигации остаются у родительского раздела.
   const parentSectionOf: Partial<Record<Section, Section>> = {
+    "Журнал блокировок 1ЛТП": "1ЛТП",
     "Согласование АВР": "Согласование/Оповещение",
     "Настройки согласования": "Согласование/Оповещение",
     "Ежедневный отчет по KPI": "DAPS",
@@ -524,6 +529,10 @@ function App() {
             />
           ) : activeSection === "DAPS" ? (
             <DapsLandingPage onNavigate={chooseSection} />
+          ) : activeSection === "1ЛТП" ? (
+            <LtpLandingPage onOpenLog={() => chooseSection("Журнал блокировок 1ЛТП")} />
+          ) : activeSection === "Журнал блокировок 1ЛТП" ? (
+            <LtpBlocksLogPage onBack={() => chooseSection("1ЛТП")} canEdit={sessionUser.role !== "VIEWER"} />
           ) : activeSection === "Ежедневный отчет по KPI" ? (
             <DapsDailyKpiPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Netbox" ? (
@@ -590,6 +599,28 @@ function App() {
   );
 }
 
+function LtpLandingPage({ onOpenLog }: { onOpenLog: () => void }) {
+  return (
+    <section className="section-view">
+      <div className="eyebrow"><span className="eyebrow-line" /> 1ЛТП</div>
+      <div className="section-hero">
+        <span className="section-hero-icon"><LayoutDashboard size={22} /></span>
+        <div><h1>1ЛТП</h1><p>Рабочее пространство.</p></div>
+      </div>
+      <section className="actions-grid daps-card-grid" aria-label="Карточки 1ЛТП">
+        <button type="button" className="action-card" onClick={onOpenLog}>
+          <div className="action-card-top"><span className="action-icon green"><FileSpreadsheet size={19} /></span></div>
+          <h3>Журнал блокировок 1ЛТП</h3>
+          <p>Поиск ресурса, обработка CSV и аналитика блокировок.</p>
+          <span className="action-link">Открыть журнал <ArrowRight size={15} /></span>
+        </button>
+        {[2, 3, 4].map((card) => <article className="action-card ltp-empty-card" key={card} aria-label={`Пустая карточка ${card}`} />)}
+      </section>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
+    </section>
+  );
+}
+
 function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => void }) {
   return (
     <section className="section-view">
@@ -628,6 +659,17 @@ function DapsLandingPage({ onNavigate }: { onNavigate: (section: Section) => voi
 
 function DapsSiteGeneratorPage({ onBack, canEdit }: { onBack: () => void; canEdit: boolean }) {
   type SitePreview = { site: { id: number; name: string; slug: string }; counts: { cables: number; devices: number; racks: number } };
+  type GeneratorSiteCheck = { site: { id: number; name: string; slug: string }; deviceCount: number; empty: boolean };
+  type GeneratorPlanPreview = {
+    previewId: string;
+    site: { id: number; name: string; slug: string };
+    files: { specification?: string; facades?: string };
+    counts: { devices: number; racks: number; placements: number; deviceTypesToCreate: number; manufacturerToCreate: boolean; ignoredSpecificationItems: number; chassisOnlyDevices: number };
+    deviceTypesToCreate: { model: string; height: number }[];
+    ignoredItems: { name: string; quantity: number }[];
+    chassisOnlyDevices: string[];
+    roomsWithoutLocation: string[];
+  };
   const [siteNumber, setSiteNumber] = useState("");
   const [lookupState, setLookupState] = useState<"idle" | "loading" | "found" | "missing" | "error">("idle");
   const [lookupError, setLookupError] = useState("");
@@ -637,6 +679,18 @@ function DapsSiteGeneratorPage({ onBack, canEdit }: { onBack: () => void; canEdi
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState("");
   const [clearNotice, setClearNotice] = useState("");
+  const [uploadSiteNumber, setUploadSiteNumber] = useState("");
+  const [generatorSiteState, setGeneratorSiteState] = useState<"idle" | "loading" | "found" | "missing" | "occupied" | "error">("idle");
+  const [generatorSiteCheck, setGeneratorSiteCheck] = useState<GeneratorSiteCheck | null>(null);
+  const [generatorError, setGeneratorError] = useState("");
+  const [specificationFile, setSpecificationFile] = useState<File | null>(null);
+  const [facadesFile, setFacadesFile] = useState<File | null>(null);
+  const [generatorPlan, setGeneratorPlan] = useState<GeneratorPlanPreview | null>(null);
+  const [generatorConfirmOpen, setGeneratorConfirmOpen] = useState(false);
+  const [generatorBusy, setGeneratorBusy] = useState<"preview" | "create" | null>(null);
+  const [generatorResult, setGeneratorResult] = useState("");
+  const specificationInputRef = useRef<HTMLInputElement>(null);
+  const facadesInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const slug = siteNumber.trim();
@@ -665,6 +719,83 @@ function DapsSiteGeneratorPage({ onBack, canEdit }: { onBack: () => void; canEdi
     }, 450);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [siteNumber]);
+
+  useEffect(() => {
+    const slug = uploadSiteNumber.trim();
+    setGeneratorSiteCheck(null);
+    setGeneratorError("");
+    setGeneratorPlan(null);
+    setGeneratorResult("");
+    setGeneratorConfirmOpen(false);
+    if (!slug) { setGeneratorSiteState("idle"); return; }
+    const controller = new AbortController();
+    setGeneratorSiteState("loading");
+    const timer = window.setTimeout(() => {
+      apiFetch(`/api/daps/netbox/site/generator/check?slug=${encodeURIComponent(slug)}`, { signal: controller.signal })
+        .then(async (response) => {
+          const data = await response.json() as { found?: boolean; site?: GeneratorSiteCheck["site"]; deviceCount?: number; empty?: boolean; error?: string };
+          if (!response.ok) throw new Error(data.error ?? "Не удалось проверить площадку в NetBox.");
+          if (!data.found || !data.site) { setGeneratorSiteState("missing"); return; }
+          const check = { site: data.site, deviceCount: data.deviceCount ?? 0, empty: Boolean(data.empty) };
+          setGeneratorSiteCheck(check);
+          setGeneratorSiteState(check.empty ? "found" : "occupied");
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted) {
+            setGeneratorError(error instanceof Error ? error.message : "Не удалось проверить площадку в NetBox.");
+            setGeneratorSiteState("error");
+          }
+        });
+    }, 450);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [uploadSiteNumber]);
+
+  const previewSiteGeneration = async () => {
+    if (!generatorSiteCheck?.empty || !specificationFile || !facadesFile || generatorBusy) return;
+    setGeneratorBusy("preview");
+    setGeneratorError("");
+    setGeneratorPlan(null);
+    setGeneratorResult("");
+    try {
+      const form = new FormData();
+      form.append("specification", specificationFile);
+      form.append("facades", facadesFile);
+      const response = await apiFetch(`/api/daps/netbox/site/generator/preview?slug=${encodeURIComponent(generatorSiteCheck.site.slug)}`, { method: "POST", body: form });
+      const data = await response.json() as GeneratorPlanPreview & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось проверить файлы генерации.");
+      setGeneratorPlan(data);
+    } catch (error) {
+      setGeneratorError(error instanceof Error ? error.message : "Не удалось проверить файлы генерации.");
+    } finally {
+      setGeneratorBusy(null);
+    }
+  };
+
+  const createSiteFromPlan = async () => {
+    if (!generatorPlan || generatorBusy) return;
+    setGeneratorBusy("create");
+    setGeneratorError("");
+    try {
+      const response = await apiFetch("/api/daps/netbox/site/generator/create", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ previewId: generatorPlan.previewId })
+      });
+      const data = await response.json() as { success?: boolean; created?: { devices: number; racks: number; deviceTypes: number; manufacturer: boolean }; error?: string };
+      if (!response.ok || !data.success) throw new Error(data.error ?? "Не удалось создать площадку в NetBox.");
+      setGeneratorResult(`${data.created?.manufacturer ? "Создан производитель Generic. " : ""}Создано устройств: ${data.created?.devices ?? 0}, стоек: ${data.created?.racks ?? 0}, типов устройств: ${data.created?.deviceTypes ?? 0}.`);
+      setGeneratorSiteCheck((current) => current ? { ...current, deviceCount: data.created?.devices ?? current.deviceCount, empty: false } : current);
+      setGeneratorSiteState("occupied");
+      setGeneratorConfirmOpen(false);
+      setGeneratorPlan(null);
+      setSpecificationFile(null);
+      setFacadesFile(null);
+      if (specificationInputRef.current) specificationInputRef.current.value = "";
+      if (facadesInputRef.current) facadesInputRef.current.value = "";
+    } catch (error) {
+      setGeneratorError(error instanceof Error ? error.message : "Не удалось создать площадку в NetBox.");
+    } finally {
+      setGeneratorBusy(null);
+    }
+  };
 
   const clearSite = async () => {
     if (!preview || confirmValue.trim() !== preview.site.slug || clearing) return;
@@ -708,6 +839,55 @@ function DapsSiteGeneratorPage({ onBack, canEdit }: { onBack: () => void; canEdi
       {clearNotice && <div className="netbox-clear-feedback" role="status">{clearNotice}</div>}
       {clearError && <div className="netbox-clear-feedback netbox-clear-feedback-error" role="alert">{clearError}</div>}
     </form>
+    <div className="panel site-generator-upload-panel">
+      <div className="panel-heading"><div><h2>Создание площадки по файлам</h2><p>Загрузите спецификацию и фасады, чтобы подготовить устройства и стойки.</p></div></div>
+      <form className="site-generator-upload-form" onSubmit={(event) => event.preventDefault()}>
+        <label className="field-label" htmlFor="daps-upload-site-number"><span>Номер площадки</span>
+          <input id="daps-upload-site-number" type="text" inputMode="text" value={uploadSiteNumber} disabled={!canEdit || generatorBusy !== null} onChange={(event) => { setUploadSiteNumber(event.target.value); setSpecificationFile(null); setFacadesFile(null); setGeneratorPlan(null); setGeneratorResult(""); }} placeholder="Введите номер площадки" autoComplete="off" />
+        </label>
+        <div className="site-generator-upload-actions" aria-describedby="site-generator-upload-note">
+          <input ref={specificationInputRef} className="netbox-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { setSpecificationFile(event.target.files?.[0] ?? null); setGeneratorPlan(null); setGeneratorError(""); setGeneratorResult(""); }} />
+          <input ref={facadesInputRef} className="netbox-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { setFacadesFile(event.target.files?.[0] ?? null); setGeneratorPlan(null); setGeneratorError(""); setGeneratorResult(""); }} />
+          <button type="button" className="outline-button" disabled={!canEdit || generatorSiteState !== "found" || generatorBusy !== null} onClick={() => specificationInputRef.current?.click()}>Загрузка Спецификации</button>
+          <button type="button" className="outline-button" disabled={!canEdit || generatorSiteState !== "found" || generatorBusy !== null} onClick={() => facadesInputRef.current?.click()}>Загрузка Фасадов</button>
+          <button type="button" className="outline-button" disabled title="Функциональность будет добавлена позже">Загрузка Линков</button>
+        </div>
+        {generatorSiteState === "loading" && <span className="netbox-lookup netbox-lookup-loading" role="status">Проверяем площадку в NetBox…</span>}
+        {generatorSiteState === "missing" && <span className="netbox-lookup netbox-lookup-missing" role="status">Площадка не найдена в NetBox</span>}
+        {generatorSiteState === "occupied" && <span className="netbox-lookup netbox-lookup-error" role="alert">На площадке уже есть устройства ({generatorSiteCheck?.deviceCount ?? 0}). Для генерации нужна пустая площадка.</span>}
+        {generatorSiteState === "error" && <span className="netbox-lookup netbox-lookup-error" role="alert">{generatorError}</span>}
+        {generatorSiteState === "found" && generatorSiteCheck && <span className="netbox-lookup netbox-lookup-found" role="status">Площадка {generatorSiteCheck.site.name} найдена, устройств нет.</span>}
+        {(specificationFile || facadesFile) && <div className="site-generator-file-list" role="status"><span>Спецификация: {specificationFile?.name ?? "не выбрана"}</span><span>Фасады: {facadesFile?.name ?? "не выбраны"}</span></div>}
+        {generatorSiteState === "found" && specificationFile && facadesFile && <button type="button" className="btn-primary site-generator-preview-button" disabled={generatorBusy !== null} onClick={() => void previewSiteGeneration()}>{generatorBusy === "preview" ? "Проверяем файлы…" : "Проверить файлы"}</button>}
+        {generatorPlan && <div className="site-generator-plan" role="status">
+          <strong>План готов для площадки {generatorPlan.site.name}</strong>
+          <span>Будут созданы и размещены: {generatorPlan.counts.devices} устройств и {generatorPlan.counts.racks} стоек.</span>
+          {generatorPlan.counts.manufacturerToCreate && <span>В NetBox пока нет производителя Generic — он будет создан.</span>}
+          {generatorPlan.counts.deviceTypesToCreate > 0 && <span>Также будут созданы типы устройств под производителем Generic: {generatorPlan.deviceTypesToCreate.map((type) => `${type.model} (${type.height}U)`).join(", ")}.</span>}
+          {generatorPlan.counts.ignoredSpecificationItems > 0 && <span>Строки спецификации без параметров питания пропущены: {generatorPlan.ignoredItems.map((item) => `${item.name} (${item.quantity})`).join(", ")}.</span>}
+          {generatorPlan.counts.chassisOnlyDevices > 0 && <span>Дополнительно будут созданы ODF из листа Chassis: {generatorPlan.counts.chassisOnlyDevices}.</span>}
+          {generatorPlan.roomsWithoutLocation.length > 0 && <span className="site-generator-plan-warning">В NetBox не найдены помещения: {generatorPlan.roomsWithoutLocation.join(", ")}. Стойки будут созданы без привязки к помещению.</span>}
+          <button type="button" className="netbox-clear-button" disabled={generatorBusy !== null} onClick={() => setGeneratorConfirmOpen(true)}>Создать объекты в NetBox</button>
+        </div>}
+        {generatorBusy === "create" && <span className="netbox-lookup netbox-lookup-loading" role="status">Создаём типы, стойки и устройства в NetBox…</span>}
+        {generatorError && generatorSiteState !== "error" && <div className="netbox-clear-feedback netbox-clear-feedback-error" role="alert">{generatorError}</div>}
+        {generatorResult && <div className="netbox-clear-feedback" role="status">{generatorResult}</div>}
+        <p id="site-generator-upload-note" className="site-generator-upload-note">Проверка блокирует создание, если площадка уже содержит устройства. «Загрузка Линков» пока недоступна.</p>
+      </form>
+    </div>
+    {generatorConfirmOpen && generatorPlan && <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="site-generator-confirm-title">
+      <div className="modal-dialog netbox-clear-dialog">
+        <div className="modal-heading"><span className="modal-icon"><MapPin size={17} /></span><div><h2 id="site-generator-confirm-title">Создать объекты площадки?</h2><p>{generatorPlan.site.name} · {generatorPlan.site.slug}</p></div></div>
+        <div className="modal-body">
+          <p>В NetBox будут созданы {generatorPlan.counts.devices} устройств и {generatorPlan.counts.racks} стоек. Устройства будут размещены по листу Chassis.</p>
+          {generatorPlan.counts.manufacturerToCreate && <p>Также будет создан производитель Generic, так как его пока нет в NetBox.</p>}
+          {generatorPlan.counts.deviceTypesToCreate > 0 && <p>Новые типы под производителем Generic: {generatorPlan.deviceTypesToCreate.map((type) => `${type.model} (${type.height}U)`).join(", ")}.</p>}
+          <p className="netbox-clear-warning">Перед созданием площадка будет проверена повторно. Если на ней появятся устройства, операция отменится.</p>
+          {generatorError && <p className="modal-error" role="alert">{generatorError}</p>}
+        </div>
+        <div className="modal-actions"><button type="button" className="text-button" onClick={() => setGeneratorConfirmOpen(false)} disabled={generatorBusy === "create"}>Отмена</button><button type="button" className="netbox-clear-button" onClick={() => void createSiteFromPlan()} disabled={generatorBusy === "create"}>{generatorBusy === "create" ? "Создаём…" : "Подтвердить создание"}</button></div>
+      </div>
+    </div>}
     {confirmOpen && preview && <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="netbox-clear-title">
       <div className="modal-dialog netbox-clear-dialog">
         <div className="modal-heading"><span className="modal-icon netbox-clear-modal-icon"><Trash2 size={17} /></span><div><h2 id="netbox-clear-title">Очистить площадку?</h2><p>{preview.site.name} · {preview.site.slug}</p></div></div>
@@ -1716,7 +1896,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "Netbox" | "Генератор Площадок" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "1ЛТП" | "Журнал блокировок 1ЛТП" | "Netbox" | "Генератор Площадок" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

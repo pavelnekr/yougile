@@ -13,6 +13,8 @@ import { useCallback, useEffect, useState } from "react";
 export type Section =
   | "Управление работами в YouGile"
   | "DAPS"
+  | "1ЛТП"
+  | "Журнал блокировок 1ЛТП"
   | "Ежедневный отчет по KPI"
   | "Netbox"
   | "Генератор Площадок"
@@ -37,6 +39,8 @@ export type Section =
 export const sectionSlugs: Record<Section, string> = {
   "Управление работами в YouGile": "",
   "DAPS": "daps",
+  "1ЛТП": "1ltp",
+  "Журнал блокировок 1ЛТП": "1ltp/blocks-log",
   "Ежедневный отчет по KPI": "daps/daily-kpi",
   "Netbox": "daps/netbox",
   "Генератор Площадок": "daps/site-generator",

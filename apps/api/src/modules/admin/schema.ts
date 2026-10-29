@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Роли в UI и API совпадают со значением enum PortalRole.
 const portalRoleSchema = z.enum(["ADMIN", "OPERATOR", "VIEWER"]);
-const portalWorkspaceSchema = z.enum(["WORK_MANAGEMENT", "COORDINATION", "WORK_PLANNING", "DAPS"]);
+const portalWorkspaceSchema = z.enum(["WORK_MANAGEMENT", "COORDINATION", "WORK_PLANNING", "DAPS", "LTP"]);
 
 export const adminUsersQuerySchema = z.object({
   // Период статистики в днях. "all" — вся история операций.
