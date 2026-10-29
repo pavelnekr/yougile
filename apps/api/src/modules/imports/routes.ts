@@ -12,7 +12,7 @@ import { operationQueue } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { normalizeEngineerName } from "../../lib/engineer-name.js";
 import { describeError } from "../../lib/error-details.js";
-import { finishActiveWorkCheck, registerActiveWorkCheck, updateActiveWorkCheck } from "../../lib/active-work-checks.js";
+import { finishActiveWorkCheck, isActiveWorkCheckStopRequested, registerActiveWorkCheck, requestStopActiveWorkCheck, updateActiveWorkCheck } from "../../lib/active-work-checks.js";
 import { beginWorkCheck, endWorkCheck } from "../../lib/yougile-activity.js";
 import { annotateLog, recordLog } from "../logs/service.js";
 import { previewRateLimit, rateLimitPerUser, workCheckRateLimit } from "../auth/rate-limit.js";
@@ -167,6 +167,9 @@ export async function registerImportRoutes(
   prisma: PrismaClient
 ) {
   const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
+  app.post<{ Params: { checkId: string } }>("/api/imports/work-check/:checkId/stop", { preHandler: readAccess }, async (request, reply) => {
+    return requestStopActiveWorkCheck(request.params.checkId) ? { ok: true } : reply.code(404).send({ error: "Проверка уже завершена." });
+  });
   const writeAccess = requireWorkspaceAccess("WORK_MANAGEMENT", true);
   const adminOnly = requireRole(PortalRole.ADMIN);
   await app.register(multipart, {
@@ -481,10 +484,11 @@ export async function registerImportRoutes(
         if (progressEntry) progressEntry.processed += 1;
         updateActiveWorkCheck(activeCheckId, { completed: progressEntry?.processed ?? uniqueTaskIds.indexOf(taskId) + 1 });
         // Пауза 4 секунды перед чтением чата следующей площадки.
-        await delayBetweenYougileActions();
+        if (!isActiveWorkCheckStopRequested(activeCheckId)) await delayBetweenYougileActions();
       }
       const progressEntry = parsed.data.checkId ? workCheckProgress.get(parsed.data.checkId) : undefined;
       if (progressEntry) progressEntry.finishedAt = Date.now();
+      const stopped = isActiveWorkCheckStopRequested(activeCheckId);
 
       // Сводка по запуску: сколько площадок вернули комментарий, у скольких его
       // нет и какие ошибки встретились. По ней видно, систематическая ли это
@@ -531,22 +535,23 @@ export async function registerImportRoutes(
           siteId: row.siteId,
           comment: result?.text ?? null,
           commentedAt: result?.timestamp != null ? new Date(result.timestamp).toISOString() : null,
-          message: result?.error ?? (result?.text
+          message: stopped && !result ? "Проверка остановлена до обработки этой площадки." : result?.error ?? (result?.text
             ? "Последний комментарий найден."
             : row.yougileTaskId ? "Комментариев за выбранный период проверки нет." : "Площадка не найдена в YouGile.")
         };
       });
       const finishedAt = new Date();
       const workCheckFailures = batch.rows.filter((row) => row.yougileTaskId && latestByTaskId.get(row.yougileTaskId)?.error).length;
+      const completedRows = batch.rows.filter((row) => !row.yougileTaskId || latestByTaskId.has(row.yougileTaskId)).length;
       const operation = await prisma.operation.create({
         data: {
           type: OperationType.WORK_CHECK,
-          status: workCheckFailures > 0 ? OperationStatus.PARTIAL : OperationStatus.SUCCEEDED,
+          status: stopped ? OperationStatus.CANCELLED : workCheckFailures > 0 ? OperationStatus.PARTIAL : OperationStatus.SUCCEEDED,
           createdById: request.sessionUser?.id ?? null,
           total: batch.rows.length,
-          completed: batch.rows.length - workCheckFailures,
+          completed: stopped ? completedRows : batch.rows.length - workCheckFailures,
           failed: workCheckFailures,
-          message: `Проверка работ «${batch.fileName}»: комментариев найдено ${foundComments}, без комментариев ${noComments}, ошибок ${errors}.`,
+          message: stopped ? `Проверка работ остановлена пользователем: обработано площадок ${latestByTaskId.size} из ${uniqueTaskIds.length}.` : `Проверка работ «${batch.fileName}»: комментариев найдено ${foundComments}, без комментариев ${noComments}, ошибок ${errors}.`,
           startedAt: operationStartedAt,
           finishedAt,
           metadata: { importBatchId: batch.id, fileName: batch.fileName },
@@ -575,6 +580,7 @@ export async function registerImportRoutes(
         operationId: operation.id,
         importId: batch.id,
         fileName: batch.fileName,
+        stopped,
         items: resultItems
       };
     } catch (error) {

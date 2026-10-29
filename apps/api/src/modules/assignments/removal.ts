@@ -118,13 +118,16 @@ export async function processRemovalOperation(
   }
   if (operation.status === OperationStatus.SUCCEEDED || operation.status === OperationStatus.PARTIAL) return;
 
-  await prisma.operation.update({
-    where: { id: operationId },
+  const started = await prisma.operation.updateMany({
+    where: { id: operationId, status: OperationStatus.QUEUED },
     data: { status: OperationStatus.RUNNING, startedAt: new Date() }
   });
+  if (!started.count) return;
 
   const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
   for (const item of operation.items) {
+    const currentOperation = await prisma.operation.findUnique({ where: { id: operationId }, select: { status: true } });
+    if (currentOperation?.status === OperationStatus.CANCELLED) break;
     if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
 
       const taskIdValue = item.beforeData && typeof item.beforeData === "object" &&
@@ -240,8 +243,8 @@ export async function processRemovalOperation(
       ? OperationStatus.FAILED
       : OperationStatus.PARTIAL;
 
-  await prisma.operation.update({
-    where: { id: operationId },
+  await prisma.operation.updateMany({
+    where: { id: operationId, status: OperationStatus.RUNNING },
     data: {
       status,
       completed,

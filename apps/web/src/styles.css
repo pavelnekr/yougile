@@ -455,6 +455,10 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .field-hint { margin: -7px 0 0; color: #998c70; font-size: 8px; }
 .assignment-result-info { padding: 11px; border-radius: 7px; color: #68768c; background: #f4f6fa; font-size: 9px; line-height: 1.5; }
 .assignment-operation { display: grid; gap: 11px; margin-top: 15px; }
+.operation-heading-actions { display: flex; align-items: center; gap: 10px; }
+.stop-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 0 13px; border: 1px solid #b92e35; border-radius: 7px; color: #fff; background: #c9363e; font: inherit; font-size: 10px; font-weight: 750; letter-spacing: .06em; cursor: pointer; }
+.stop-button:hover:not(:disabled) { background: #a9252d; }
+.stop-button:disabled { opacity: .65; cursor: wait; }
 .assignment-operation-done { border-color: #dcece3; }
 .operation-progress { height: 6px; overflow: hidden; border-radius: 5px; background: #edf0f5; }
 .operation-progress span { display: block; width: 100%; height: 100%; border-radius: inherit; background: #5986dc; transform-origin: left center; transition: transform var(--dur-progress) var(--ease-out); }

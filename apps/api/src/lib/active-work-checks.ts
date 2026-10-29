@@ -5,6 +5,7 @@ export type ActiveWorkCheck = {
   total: number;
   completed: number;
   startedAt: number;
+  stopRequested?: boolean;
 };
 
 const activeWorkChecks = new Map<string, ActiveWorkCheck>();
@@ -23,6 +24,17 @@ export function updateActiveWorkCheck(
 
 export function finishActiveWorkCheck(checkId: string): void {
   activeWorkChecks.delete(checkId);
+}
+
+export function requestStopActiveWorkCheck(checkId: string): boolean {
+  const check = activeWorkChecks.get(checkId);
+  if (!check) return false;
+  check.stopRequested = true;
+  return true;
+}
+
+export function isActiveWorkCheckStopRequested(checkId: string): boolean {
+  return activeWorkChecks.get(checkId)?.stopRequested === true;
 }
 
 export function getActiveWorkChecks(): ActiveWorkCheck[] {

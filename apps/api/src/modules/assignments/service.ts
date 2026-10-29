@@ -189,10 +189,11 @@ export async function processAssignmentOperation(
       "commentTemplate" in metadata && typeof metadata.commentTemplate === "string" &&
       metadata.commentTemplate.trim());
 
-  await prisma.operation.update({
-    where: { id: operationId },
+  const started = await prisma.operation.updateMany({
+    where: { id: operationId, status: OperationStatus.QUEUED },
     data: { status: OperationStatus.RUNNING, startedAt: new Date() }
   });
+  if (!started.count) return;
 
   const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
   const avrColumns = await loadAvrColumns(prisma);
@@ -202,6 +203,8 @@ export async function processAssignmentOperation(
   }
   const allowedColumnIds = [getPlanColumn().id, ...avrColumns.map((column) => column.id)];
   for (const item of operation.items) {
+    const currentOperation = await prisma.operation.findUnique({ where: { id: operationId }, select: { status: true } });
+    if (currentOperation?.status === OperationStatus.CANCELLED) break;
     if (item.status === OperationItemStatus.SUCCEEDED || item.status === OperationItemStatus.SKIPPED) continue;
 
       const taskIdValue = item.beforeData && typeof item.beforeData === "object" && "taskId" in item.beforeData
@@ -368,8 +371,8 @@ export async function processAssignmentOperation(
       ? OperationStatus.FAILED
       : OperationStatus.PARTIAL;
 
-  await prisma.operation.update({
-    where: { id: operationId },
+  await prisma.operation.updateMany({
+    where: { id: operationId, status: OperationStatus.RUNNING },
     data: {
       status,
       completed,

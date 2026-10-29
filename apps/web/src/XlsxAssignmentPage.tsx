@@ -6,7 +6,8 @@ import {
   FileSpreadsheet,
   Search,
   ShieldCheck,
-  Upload
+  Upload,
+  OctagonX
 } from "lucide-react";
 import BulkWarningDialog, { largeSelectionThreshold } from "./BulkWarningDialog";
 import OperationSites from "./OperationSites";
@@ -14,7 +15,7 @@ import ErrorDiagnostics from "./ErrorDiagnostics";
 import { operationDiagnosticsPayload, type ErrorDetail } from "./diagnostics";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
-import { findActiveOperation } from "./activeOperations";
+import { findActiveOperation, stopOperation } from "./activeOperations";
 import { countRu, rowForms, siteForms } from "./plural";
 import { renderCommentMarkup } from "./commentMarkup";
 import { PORTAL_VERSION } from "./version";
@@ -100,6 +101,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   const [templatesError, setTemplatesError] = useState("");
   const [operation, setOperation] = useState<Operation | null>(null);
   const [operationId, setOperationId] = useState("");
+  const [stopping, setStopping] = useState(false);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -547,10 +549,10 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
       ) : null}
 
       {operationId && (
-        <div className={`panel assignment-operation ${operation && ["SUCCEEDED", "PARTIAL", "FAILED"].includes(operation.status) ? "assignment-operation-done" : ""}`} ref={operationStepRef}>
+        <div className={`panel assignment-operation ${operation && ["SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"].includes(operation.status) ? "assignment-operation-done" : ""}`} ref={operationStepRef}>
           <div className="assignment-panel-heading">
-            <div><h2>{operation?.status === "SUCCEEDED" ? "Назначения и комментарии по XLSX завершены" : operation?.status === "PARTIAL" || operation?.status === "FAILED" ? "Результат назначения и комментариев" : "Назначаем инженеров и отправляем комментарии"}</h2><p>{operation?.message ?? "Операция добавлена в очередь."}</p></div>
-            {operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}
+            <div><h2>{operation?.status === "CANCELLED" ? "Назначение остановлено" : operation?.status === "SUCCEEDED" ? "Назначения и комментарии по XLSX завершены" : operation?.status === "PARTIAL" || operation?.status === "FAILED" ? "Результат назначения и комментариев" : "Назначаем инженеров и отправляем комментарии"}</h2><p>{operation?.message ?? "Операция добавлена в очередь."}</p></div>
+            <div className="operation-heading-actions">{operation && <span className="sites-total">{operation.completed} / {operation.total}</span>}{operationPending && <button className="stop-button" disabled={stopping} onClick={() => { setStopping(true); void stopOperation(operationId).catch((reason) => setError(errorMessage(reason))).finally(() => setStopping(false)); }}><OctagonX size={15} />{stopping ? "Останавливаем…" : "STOP"}</button>}</div>
           </div>
           {operationPending && <div className="operation-progress"><span style={{ transform: `scaleX(${operation && operation.total > 0 ? operation.completed / operation.total : 0.02})` }} /></div>}
           {operation && operation.items.length > 0 && <OperationSites items={operation.items} labelColumn="Адрес" labels={siteLabels} />}

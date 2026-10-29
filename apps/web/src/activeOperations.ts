@@ -25,6 +25,12 @@ export async function fetchActiveOperations(signal?: AbortSignal): Promise<Activ
   return data.items ?? [];
 }
 
+export async function stopOperation(id: string): Promise<void> {
+  const response = await apiFetch(`/api/assignments/${encodeURIComponent(id)}/stop`, { method: "POST" });
+  const data = await response.json() as { error?: string };
+  if (!response.ok) throw new Error(data.error ?? "Не удалось остановить операцию.");
+}
+
 /**
  * Активная операция нужного типа. Страницы сценариев вызывают это при монтировании,
  * когда своей операции ещё нет: так панель хода восстанавливается после ухода на

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Clock3, FileSpreadsheet, RefreshCw, Upload } from "lucide-react";
+import { AlertCircle, Clock3, FileSpreadsheet, OctagonX, RefreshCw, Upload } from "lucide-react";
 import { useStepScroll } from "./useStepScroll";
 import { apiFetch } from "./apiClient";
 import { fetchActiveOperations } from "./activeOperations";
@@ -64,6 +64,8 @@ export default function XlsxWorkCheckPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState<WorkCheckProgress | null>(null);
+  const [activeCheckId, setActiveCheckId] = useState("");
+  const [stopping, setStopping] = useState(false);
   const resultsStepRef = useRef<HTMLElement>(null);
   useStepScroll(checkedFile ? "results" : null, resultsStepRef);
 
@@ -98,6 +100,7 @@ export default function XlsxWorkCheckPage() {
         if (!activeCheck?.importId) return;
 
         setSource("history");
+        setActiveCheckId(activeCheck.id);
         setCheckedFile({
           id: activeCheck.importId,
           fileName: activeCheck.fileName ?? "Проверка работ",
@@ -175,6 +178,7 @@ export default function XlsxWorkCheckPage() {
     // площадку), поэтому живой прогресс опрашиваем отдельным лёгким запросом,
     // пока основной крутится в фоне.
     const checkId = `wc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    setActiveCheckId(checkId);
     let finished = false;
     const pollProgress = async () => {
       while (!finished) {
@@ -199,15 +203,17 @@ export default function XlsxWorkCheckPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rowNumbers, checkId })
       });
-      const data = await response.json() as { items?: WorkCheckItem[]; error?: string };
+      const data = await response.json() as { items?: WorkCheckItem[]; error?: string; stopped?: boolean };
       if (!response.ok) throw new Error(data.error ?? "Не удалось получить последние комментарии.");
       if (!data.items) throw new Error("Сервер не вернул результаты проверки.");
+      if (data.stopped) setError("Проверка остановлена. Показаны результаты обработанных площадок.");
       return data.items;
     } catch (reason) {
       throw new Error(errorMessage(reason));
     } finally {
       finished = true;
       setProgress(null);
+      setActiveCheckId("");
     }
   };
 
@@ -366,9 +372,22 @@ export default function XlsxWorkCheckPage() {
                   <span>Проверено {countRu(progress.processed, siteForms)} из {progress.total}</span>
                   <span>{remainingLabel}</span>
                 </div>
+              <button className="stop-button" disabled={stopping} onClick={() => {
+                setStopping(true);
+                void apiFetch(`/api/imports/work-check/${encodeURIComponent(activeCheckId)}/stop`, { method: "POST" })
+                  .then(async (response) => { const data = await response.json() as { error?: string }; if (!response.ok) throw new Error(data.error ?? "Не удалось остановить проверку."); })
+                  .catch((reason) => setError(errorMessage(reason)))
+                  .finally(() => setStopping(false));
+              }}><OctagonX size={15} />{stopping ? "Останавливаем…" : "STOP"}</button>
               </div>
             ) : (
-              <div className="import-audit-message"><RefreshCw size={15} className="audit-refreshing" /> Получаем последние комментарии из YouGile…</div>
+              <div className="work-check-loading"><div className="import-audit-message"><RefreshCw size={15} className="audit-refreshing" /> Получаем последние комментарии из YouGile…</div><button className="stop-button" disabled={!activeCheckId || stopping} onClick={() => {
+                setStopping(true);
+                void apiFetch(`/api/imports/work-check/${encodeURIComponent(activeCheckId)}/stop`, { method: "POST" })
+                  .then(async (response) => { const data = await response.json() as { error?: string }; if (!response.ok) throw new Error(data.error ?? "Не удалось остановить проверку."); })
+                  .catch((reason) => setError(errorMessage(reason)))
+                  .finally(() => setStopping(false));
+              }}><OctagonX size={15} />{stopping ? "Останавливаем…" : "STOP"}</button></div>
             )
           ) : items.length > 0 ? (
             <div className="work-check-table-wrap">

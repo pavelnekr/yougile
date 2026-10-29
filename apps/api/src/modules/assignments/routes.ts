@@ -61,6 +61,14 @@ export async function registerAssignmentRoutes(
 ) {
   const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
   const writeAccess = requireWorkspaceAccess("WORK_MANAGEMENT", true);
+  app.post<{ Params: { id: string } }>("/api/assignments/:id/stop", { preHandler: writeAccess }, async (request, reply) => {
+    const result = await prisma.operation.updateMany({
+      where: { id: request.params.id, type: { in: [OperationType.ASSIGN, OperationType.REMOVE] }, status: { in: [OperationStatus.QUEUED, OperationStatus.RUNNING] } },
+      data: { status: OperationStatus.CANCELLED, message: "Операция остановлена пользователем.", finishedAt: new Date() }
+    });
+    if (!result.count) return reply.code(409).send({ error: "Операция уже завершена или не найдена." });
+    return { ok: true };
+  });
   app.get("/api/users", { preHandler: readAccess }, async (request, reply) => {
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
