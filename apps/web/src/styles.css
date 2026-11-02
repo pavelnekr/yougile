@@ -1603,10 +1603,13 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
    Список закрыт только элементами без собственного `transition`, поэтому общих
    правил для transition здесь быть не должно — они сбросят остальные переходы. */
 .icon-button, .nav-link, .outline-button, .text-button, .profile, .login-password-toggle,
-.login-preview button, .removal-source-switch button, .removal-history-item,
+.login-preview button, .removal-source-switch button,
 .history-period button, .sites-pagination button, .history-pagination button,
 .portal-config-tab, .coordination-mode-switch button, .coordination-table-toolbar button {
   transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
+}
+.removal-history-item {
+  transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease;
 }
 .avr-column-chip {
   transition: background-color var(--dur-ui) ease, border-color var(--dur-ui) ease, color var(--dur-ui) ease, transform var(--dur-press) var(--ease-out);
@@ -1624,7 +1627,6 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .stat-card-button:active, .template-option:active, .profile:active, .xlsx-dropzone:active,
 .removal-source-switch button:not(.removal-source-active):active,
 .portal-config-tab:not(.portal-config-tab-active):active,
-.removal-history-item:active:not(:disabled),
 .history-period button:not(.history-period-active):active,
 .overview-active-card:active,
 .sites-pagination button:active:not(:disabled), .history-pagination button:active:not(:disabled),
