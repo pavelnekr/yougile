@@ -88,6 +88,39 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     };
   });
 
+  // Список пользователей с недавней активностью. Данные фото сюда не включаем,
+  // чтобы опрос присутствия не передавал крупные изображения каждые 30 секунд.
+  app.get("/api/presence", async (request, reply) => {
+    const userId = request.sessionUser?.id;
+    if (!userId) return reply.code(401).send({ error: "Требуется вход в портал." });
+    const now = new Date();
+    const activeAfter = new Date(now.getTime() - 2 * 60 * 1000);
+    const users = await prisma.$queryRaw<{ id: string; displayName: string; hasAvatar: boolean }[]>`
+      SELECT online_users."id", online_users."displayName", online_users."hasAvatar"
+      FROM (
+        SELECT DISTINCT ON (u."id")
+          u."id", u."displayName", (u."avatarData" IS NOT NULL) AS "hasAvatar", s."lastSeenAt"
+        FROM "PortalSession" AS s
+        INNER JOIN "PortalUser" AS u ON u."id" = s."userId"
+        WHERE s."expiresAt" > ${now}
+          AND s."lastSeenAt" > ${activeAfter}
+          AND u."active" = TRUE
+          AND u."id" <> ${userId}
+        ORDER BY u."id", s."lastSeenAt" DESC
+      ) AS online_users
+      ORDER BY online_users."lastSeenAt" DESC
+    `;
+    return { users };
+  });
+
+  app.get<{ Params: { userId: string } }>("/api/presence/:userId/avatar", async (request, reply) => {
+    const user = await prisma.portalUser.findUnique({ where: { id: request.params.userId }, select: { avatarData: true } });
+    const match = user?.avatarData?.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
+    if (!match) return reply.code(404).send({ error: "Фото не найдено." });
+    reply.header("Cache-Control", "private, max-age=300");
+    return reply.type(match[1]!).send(Buffer.from(match[2]!, "base64"));
+  });
+
   app.patch("/api/profile", { bodyLimit: Math.ceil(profileAvatarMaxBytes * 4 / 3) + 1024 }, async (request, reply) => {
     const userId = request.sessionUser?.id;
     if (!userId) return reply.code(401).send({ error: "Требуется вход в портал." });

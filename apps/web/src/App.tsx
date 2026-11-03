@@ -69,6 +69,7 @@ import { PORTAL_VERSION } from "./version";
 
 type Health = "loading" | "ok" | "error";
 type SiteLoadState = "loading" | "ready" | "error";
+type OnlinePortalUser = { id: string; displayName: string; hasAvatar: boolean };
 type PlannedSite = {
   taskId: string;
   siteNumber: string;
@@ -229,6 +230,7 @@ function App() {
     }
   });
   const [sessionUser, setSessionUser] = useState<PortalUser | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<OnlinePortalUser[]>([]);
   // null = проверяем, false = гость, true = вход выполнен.
   const [sessionChecked, setSessionChecked] = useState(false);
   const [section, navigate] = useSectionUrl();
@@ -265,6 +267,22 @@ function App() {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!sessionUser) { setOnlineUsers([]); return; }
+    let cancelled = false;
+    const loadPresence = async () => {
+      try {
+        const response = await apiFetch("/api/presence");
+        if (!response.ok) return;
+        const data = await response.json() as { users?: OnlinePortalUser[] };
+        if (!cancelled) setOnlineUsers(data.users ?? []);
+      } catch { /* присутствие не должно прерывать работу портала */ }
+    };
+    void loadPresence();
+    const timer = window.setInterval(() => void loadPresence(), 30_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [sessionUser?.id]);
 
   // Глобальная обработка 401: apiClient перехватывает любой отказ защищённого
   // эндпоинта и сообщает сюда. Сессия сбрасывается, форма входа показывается на
@@ -503,9 +521,17 @@ function App() {
           <div className="breadcrumbs"><span>Портал операций</span><span className="crumb-separator">/</span><strong>{activeSection}</strong></div>
           <div className="topbar-actions">
             <div className={`service-status status-${health}`}><span className="status-dot" />{health === "ok" ? "API и сервисы доступны" : health === "loading" ? "Проверка API" : "API не подключён"}</div>
-            <button className="topbar-profile-button" type="button" aria-label="Открыть личный кабинет" title="Личный кабинет" onClick={() => chooseSection("Личный кабинет")}>
-              <span className="topbar-avatar">{sessionUser.avatarData ? <img src={sessionUser.avatarData} alt="" /> : avatarInitial(sessionUser.displayName)}</span>
-            </button>
+            <div className="topbar-avatars" aria-label={`Вы и пользователи в сети: ${onlineUsers.map((user) => user.displayName).join(", ") || "только вы"}`}>
+              <button className="topbar-profile-button" type="button" aria-label="Открыть личный кабинет" title="Личный кабинет" onClick={() => chooseSection("Личный кабинет")}>
+                <span className="topbar-avatar">{sessionUser.avatarData ? <img src={sessionUser.avatarData} alt="" /> : avatarInitial(sessionUser.displayName)}</span>
+              </button>
+              {onlineUsers.slice(0, 5).map((user) => (
+                <span className="topbar-online-avatar" key={user.id} title={user.displayName} aria-label={user.displayName}>
+                  {user.hasAvatar ? <img src={`/api/presence/${encodeURIComponent(user.id)}/avatar`} alt="" /> : avatarInitial(user.displayName)}
+                </span>
+              ))}
+              {onlineUsers.length > 5 && <span className="topbar-avatar-overflow" title={onlineUsers.slice(5).map((user) => user.displayName).join(", ")}>+{onlineUsers.length - 5}</span>}
+            </div>
           </div>
         </header>
 
