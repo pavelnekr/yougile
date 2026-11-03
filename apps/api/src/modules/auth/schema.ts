@@ -31,3 +31,24 @@ export const registerSchema = z.object({
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
+
+export const profileAvatarMaxBytes = 20 * 1024 * 1024;
+const avatarDataSchema = z.string().nullable().refine((value) => {
+  if (value === null) return true;
+  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match) return false;
+  const bytes = Buffer.from(match[2]!, "base64");
+  if (bytes.length > profileAvatarMaxBytes) return false;
+  if (match[1] === "png") return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (match[1] === "jpeg") return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  return bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+}, "Фото должно быть изображением PNG, JPEG или WebP размером не более 20 МБ.");
+export const profileUpdateSchema = z.object({
+  displayName: z.string().trim().min(1, "Укажите отображаемое имя.").max(120, "Имя не должно быть длиннее 120 символов.").optional(),
+  avatarData: avatarDataSchema.optional()
+}).refine((value) => value.displayName !== undefined || value.avatarData !== undefined, "Нет изменений для сохранения.");
+
+export const profilePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: z.string().min(8, "Новый пароль должен быть не короче 8 символов.").max(256, "Пароль не должен быть длиннее 256 символов.")
+}).refine((value) => value.currentPassword !== value.newPassword, { message: "Новый пароль должен отличаться от текущего." });

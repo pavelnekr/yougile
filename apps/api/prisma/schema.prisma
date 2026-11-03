@@ -75,6 +75,7 @@ model PortalUser {
   login                 String          @unique
   passwordHash          String
   displayName           String
+  avatarData            String?         @db.Text
   role                  PortalRole      @default(OPERATOR)
   active                Boolean         @default(true)
   yougileTokenEncrypted String?

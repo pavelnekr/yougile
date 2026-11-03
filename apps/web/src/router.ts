@@ -15,6 +15,7 @@ export type Section =
   | "DAPS"
   | "1ЛТП"
   | "Журнал блокировок 1ЛТП"
+  | "Справочник ресурсов 1ЛТП"
   | "Ежедневный отчет по KPI"
   | "Netbox"
   | "Генератор Площадок"
@@ -34,13 +35,15 @@ export type Section =
   | "Настройки"
   | "Учётные записи"
   | "Логирование"
-  | "Конфигурация портала";
+  | "Конфигурация портала"
+  | "Личный кабинет";
 
 export const sectionSlugs: Record<Section, string> = {
   "Управление работами в YouGile": "",
   "DAPS": "daps",
   "1ЛТП": "1ltp",
   "Журнал блокировок 1ЛТП": "1ltp/blocks-log",
+  "Справочник ресурсов 1ЛТП": "1ltp/resources",
   "Ежедневный отчет по KPI": "daps/daily-kpi",
   "Netbox": "daps/netbox",
   "Генератор Площадок": "daps/site-generator",
@@ -60,7 +63,8 @@ export const sectionSlugs: Record<Section, string> = {
   "Настройки": "settings",
   "Учётные записи": "admin/users",
   "Логирование": "admin/logs",
-  "Конфигурация портала": "admin/config"
+  "Конфигурация портала": "admin/config",
+  "Личный кабинет": "profile"
 };
 
 const slugToSection = new Map<string, Section>(

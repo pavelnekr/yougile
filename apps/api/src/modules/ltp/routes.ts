@@ -54,6 +54,48 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
     }
   });
 
+  app.post("/api/ltp/resources/import", { preHandler: writeAccess }, async (request, reply) => {
+    if (!request.isMultipart()) return reply.code(406).send({ error: "Загрузите XLSX-файл." });
+    try {
+      const upload = await request.file();
+      if (!upload || !upload.filename.toLocaleLowerCase("ru").endsWith(".xlsx")) return reply.code(400).send({ error: "Поддерживаются файлы XLSX." });
+      const buffer = await upload.toBuffer();
+      if (buffer.byteLength > config.UPLOAD_MAX_BYTES) return reply.code(413).send({ error: "Файл слишком большой." });
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0]);
+      const sheet = workbook.worksheets[0];
+      if (!sheet || sheet.rowCount < 2) return reply.code(400).send({ error: "В XLSX нет строк справочника." });
+      const headers = sheet.getRow(1).values as (string | null | undefined)[];
+      const resourceColumn = headers.findIndex((value) => String(value ?? "").trim() === "Ресурс");
+      const sniColumn = headers.findIndex((value) => String(value ?? "").trim() === "SNI");
+      if (resourceColumn < 1 || sniColumn < 1) return reply.code(400).send({ error: "В первой строке XLSX должны быть столбцы «Ресурс» и «SNI»." });
+      const entries: { resource: string; sni: string }[] = [];
+      sheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        const resource = String(row.getCell(resourceColumn).text ?? "").trim();
+        const sni = String(row.getCell(sniColumn).text ?? "").trim();
+        if (resource || sni) entries.push({ resource, sni });
+      });
+      if (!entries.length) return reply.code(400).send({ error: "В XLSX нет заполненных строк." });
+      if (entries.length > 100_000) return reply.code(413).send({ error: "В файле больше 100 000 строк." });
+      const invalidRow = entries.findIndex((entry) => !entry.resource || !entry.sni);
+      if (invalidRow >= 0) return reply.code(400).send({ error: `Заполните ресурс и SNI во всех строках (ошибка около строки ${invalidRow + 2}).` });
+      const db = await database();
+      await db.$transaction(async (tx) => {
+        await tx.$executeRaw`DELETE FROM ltp_1.resources`;
+        for (let offset = 0; offset < entries.length; offset += 500) {
+          const batch = entries.slice(offset, offset + 500);
+          const values = Prisma.join(batch.map((entry) => Prisma.sql`(${entry.resource}, ${entry.sni})`));
+          await tx.$executeRaw(Prisma.sql`INSERT INTO ltp_1.resources (resource, sni) VALUES ${values}`);
+        }
+      });
+      return { imported: entries.length };
+    } catch (error) {
+      request.log.error({ err: error }, "Could not replace LTP resources from XLSX");
+      return reply.code(400).send({ error: "Не удалось обновить справочник. Проверьте структуру XLSX и подключение PostgreSQL." });
+    }
+  });
+
   app.post<{ Querystring: { resource?: string } }>("/api/ltp/blocks-log/process", { preHandler: writeAccess }, async (request, reply) => {
     const resource = z.string().trim().min(1).max(120).safeParse(request.query.resource);
     if (!resource.success) return reply.code(400).send({ error: "Выберите ресурс." });

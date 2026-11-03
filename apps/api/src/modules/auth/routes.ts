@@ -16,6 +16,7 @@ import {
   TooManyHashesError,
   verifyPassword
 } from "./service.js";
+import { profileAvatarMaxBytes, profileUpdateSchema, profilePasswordSchema } from "./schema.js";
 
 // Пределы на неудачные попытки входа за 15 минут (окно общее, см. rate-limit.ts).
 // По логину предел строгий: это и есть перебор пароля. По адресу — втрое выше,
@@ -56,6 +57,7 @@ function publicUser(user: {
   role: string;
   workspaces: string[];
   yougileTokenEncrypted?: string | null;
+  avatarData?: string | null;
 }) {
   return {
     id: user.id,
@@ -63,7 +65,8 @@ function publicUser(user: {
     displayName: user.displayName,
     role: user.role,
     workspaces: user.workspaces,
-    yougileTokenConfigured: Boolean(user.yougileTokenEncrypted)
+    yougileTokenConfigured: Boolean(user.yougileTokenEncrypted),
+    avatarData: user.avatarData ?? null
   };
 }
 
@@ -77,12 +80,40 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     if (!session) return reply.code(401).send({ error: "Активной сессии нет." });
     const yougileCredential = await prisma.portalUser.findUnique({
       where: { id: session.user.id },
-      select: { yougileTokenEncrypted: true }
+      select: { yougileTokenEncrypted: true, avatarData: true }
     });
     return {
-      user: publicUser({ ...session.user, yougileTokenEncrypted: yougileCredential?.yougileTokenEncrypted }),
+      user: publicUser({ ...session.user, yougileTokenEncrypted: yougileCredential?.yougileTokenEncrypted, avatarData: yougileCredential?.avatarData }),
       expiresAt: session.expiresAt.toISOString()
     };
+  });
+
+  app.patch("/api/profile", { bodyLimit: Math.ceil(profileAvatarMaxBytes * 4 / 3) + 1024 }, async (request, reply) => {
+    const userId = request.sessionUser?.id;
+    if (!userId) return reply.code(401).send({ error: "Требуется вход в портал." });
+    const parsed = profileUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные профиля." });
+    const user = await prisma.portalUser.update({ where: { id: userId }, data: parsed.data, select: { displayName: true, avatarData: true } });
+    annotateLog(request, { message: "Профиль обновлён" });
+    return { user };
+  });
+
+  app.put("/api/profile/password", async (request, reply) => {
+    const userId = request.sessionUser?.id;
+    if (!userId) return reply.code(401).send({ error: "Требуется вход в портал." });
+    const parsed = profilePasswordSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте пароль." });
+    const user = await prisma.portalUser.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+    if (!user) return reply.code(401).send({ error: "Учётная запись не найдена." });
+    try {
+      if (!(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) return reply.code(400).send({ error: "Текущий пароль указан неверно." });
+      await prisma.portalUser.update({ where: { id: userId }, data: { passwordHash: await hashPassword(parsed.data.newPassword) } });
+    } catch (error) {
+      if (error instanceof TooManyHashesError) return reply.code(503).send({ error: "Сервер перегружен. Попробуйте через минуту." });
+      throw error;
+    }
+    annotateLog(request, { message: "Пароль пользователя изменён" });
+    return { ok: true };
   });
 
   app.post("/api/auth/login", async (request, reply) => {

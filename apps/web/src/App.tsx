@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   AlertCircle,
+  Camera,
   ArrowDownToLine,
   ArrowLeft,
   ArrowRight,
@@ -17,12 +18,14 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  LockKeyhole,
   Menu,
   MapPin,
   MessageSquarePlus,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Save,
   ScrollText,
   Search,
   Settings2,
@@ -32,7 +35,8 @@ import {
   Trash2,
   TrendingUp,
   Network,
-  UsersRound
+  UsersRound,
+  UserRound
 } from "lucide-react";
 import XlsxAssignmentPage from "./XlsxAssignmentPage.js";
 import CommentTemplatesPage from "./CommentTemplatesPage.js";
@@ -52,6 +56,7 @@ import AdminUsersPage from "./AdminUsersPage.js";
 import LogsPage from "./LogsPage.js";
 import PortalConfigPage from "./PortalConfigPage.js";
 import LtpBlocksLogPage from "./LtpBlocksLogPage.js";
+import LtpResourcesPage from "./LtpResourcesPage.js";
 import { syncSectionUrl, useSectionUrl, type Section } from "./router.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
@@ -129,6 +134,7 @@ const workspaceBySection: Partial<Record<Section, string>> = {
   "DAPS": "DAPS",
   "1ЛТП": "LTP",
   "Журнал блокировок 1ЛТП": "LTP",
+  "Справочник ресурсов 1ЛТП": "LTP",
   "Ежедневный отчет по KPI": "DAPS",
   "Netbox": "DAPS",
   "Генератор Площадок": "DAPS",
@@ -408,6 +414,7 @@ function App() {
   // и пункт навигации остаются у родительского раздела.
   const parentSectionOf: Partial<Record<Section, Section>> = {
     "Журнал блокировок 1ЛТП": "1ЛТП",
+    "Справочник ресурсов 1ЛТП": "1ЛТП",
     "Согласование АВР": "Согласование/Оповещение",
     "Настройки согласования": "Согласование/Оповещение",
     "Ежедневный отчет по KPI": "DAPS",
@@ -467,7 +474,7 @@ function App() {
 
         <div className="sidebar-bottom">
           <button className="profile" type="button" onClick={() => void signOut()} title={sidebarCollapsed ? `Выйти из портала · ${sessionUser.displayName}` : "Выйти из портала"}>
-            <span className="profile-avatar">{sessionUser.displayName.slice(0, 1).toLocaleUpperCase("ru")}</span>
+            <span className="profile-avatar">{sessionUser.avatarData ? <img src={sessionUser.avatarData} alt="" /> : sessionUser.displayName.slice(0, 1).toLocaleUpperCase("ru")}</span>
             <span className="profile-copy"><strong>{sessionUser.displayName}</strong><small>{sessionUser.login} · выход</small></span>
             <LogOut size={15} />
           </button>
@@ -496,8 +503,9 @@ function App() {
           <div className="breadcrumbs"><span>Портал операций</span><span className="crumb-separator">/</span><strong>{activeSection}</strong></div>
           <div className="topbar-actions">
             <div className={`service-status status-${health}`}><span className="status-dot" />{health === "ok" ? "API и сервисы доступны" : health === "loading" ? "Проверка API" : "API не подключён"}</div>
-            <button className="icon-button search-button" aria-label="Поиск"><Search size={18} /></button>
-            <span className="topbar-avatar">{avatarInitial(sessionUser.displayName)}</span>
+            <button className="topbar-profile-button" type="button" aria-label="Открыть личный кабинет" title="Личный кабинет" onClick={() => chooseSection("Личный кабинет")}>
+              <span className="topbar-avatar">{sessionUser.avatarData ? <img src={sessionUser.avatarData} alt="" /> : avatarInitial(sessionUser.displayName)}</span>
+            </button>
           </div>
         </header>
 
@@ -514,7 +522,9 @@ function App() {
               </div>
             </div>
           )}
-          {activeSection === "Управление работами в YouGile" ? (
+          {activeSection === "Личный кабинет" ? (
+            <ProfilePage user={sessionUser} onBack={() => chooseSection("Управление работами в YouGile")} onUserUpdated={(patch) => setSessionUser((user) => user ? { ...user, ...patch } : user)} />
+          ) : activeSection === "Управление работами в YouGile" ? (
             <Overview
               onNavigate={chooseSection}
               health={health}
@@ -530,9 +540,11 @@ function App() {
           ) : activeSection === "DAPS" ? (
             <DapsLandingPage onNavigate={chooseSection} />
           ) : activeSection === "1ЛТП" ? (
-            <LtpLandingPage onOpenLog={() => chooseSection("Журнал блокировок 1ЛТП")} />
+            <LtpLandingPage onOpenLog={() => chooseSection("Журнал блокировок 1ЛТП")} onOpenResources={() => chooseSection("Справочник ресурсов 1ЛТП")} />
           ) : activeSection === "Журнал блокировок 1ЛТП" ? (
             <LtpBlocksLogPage onBack={() => chooseSection("1ЛТП")} canEdit={sessionUser.role !== "VIEWER"} />
+          ) : activeSection === "Справочник ресурсов 1ЛТП" ? (
+            <LtpResourcesPage onBack={() => chooseSection("1ЛТП")} canEdit={sessionUser.role !== "VIEWER"} />
           ) : activeSection === "Ежедневный отчет по KPI" ? (
             <DapsDailyKpiPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Netbox" ? (
@@ -599,7 +611,110 @@ function App() {
   );
 }
 
-function LtpLandingPage({ onOpenLog }: { onOpenLog: () => void }) {
+function ProfilePage({ user, onBack, onUserUpdated }: { user: PortalUser; onBack: () => void; onUserUpdated: (patch: Partial<PortalUser>) => void }) {
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [avatarData, setAvatarData] = useState<string | null>(user.avatarData ?? null);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileNotice, setProfileNotice] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [repeatPassword, setRepeatPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordNotice, setPasswordNotice] = useState("");
+  const roleLabels: Record<string, string> = { ADMIN: "Администратор", OPERATOR: "Оператор", VIEWER: "Наблюдатель" };
+  const workspaceLabels: Record<string, string> = {
+    WORK_MANAGEMENT: "Управление работами в YouGile",
+    COORDINATION: "Согласование и оповещения",
+    WORK_PLANNING: "Планирование работ",
+    DAPS: "DAPS",
+    LTP: "1ЛТП"
+  };
+
+  const selectAvatar = async (file?: File) => {
+    setProfileError(""); setProfileNotice("");
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) { setProfileError("Поддерживаются изображения PNG, JPEG и WebP."); return; }
+    const reader = new FileReader();
+    reader.onload = () => setAvatarData(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => setProfileError("Не удалось прочитать изображение.");
+    reader.readAsDataURL(file);
+  };
+
+  const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setProfileBusy(true); setProfileError(""); setProfileNotice("");
+    try {
+      const response = await apiFetch("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName: displayName.trim(), avatarData }) });
+      const data = await response.json() as { user?: { displayName: string; avatarData: string | null }; error?: string };
+      if (!response.ok || !data.user) throw new Error(data.error ?? "Не удалось сохранить профиль.");
+      setDisplayName(data.user.displayName); setAvatarData(data.user.avatarData); onUserUpdated(data.user); setProfileNotice("Профиль сохранён.");
+    } catch (error) { setProfileError(error instanceof Error ? error.message : "Не удалось сохранить профиль."); }
+    finally { setProfileBusy(false); }
+  };
+
+  const changePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setPasswordError(""); setPasswordNotice("");
+    if (newPassword.length < 8) { setPasswordError("Новый пароль должен быть не короче 8 символов."); return; }
+    if (newPassword !== repeatPassword) { setPasswordError("Новые пароли не совпадают."); return; }
+    setPasswordBusy(true);
+    try {
+      const response = await apiFetch("/api/profile/password", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword, newPassword }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось изменить пароль.");
+      setCurrentPassword(""); setNewPassword(""); setRepeatPassword(""); setPasswordNotice("Пароль изменён.");
+    } catch (error) { setPasswordError(error instanceof Error ? error.message : "Не удалось изменить пароль."); }
+    finally { setPasswordBusy(false); }
+  };
+
+  return (
+    <section className="section-view profile-page">
+      <div className="eyebrow"><span className="eyebrow-line" /> УЧЁТНАЯ ЗАПИСЬ</div>
+      <div className="section-hero">
+        <span className="section-hero-icon"><UserRound size={22} /></span>
+        <div className="profile-heading-copy"><h1>Личный кабинет</h1><p>Ваш профиль и параметры доступа к порталу.</p></div>
+        <button className="text-button profile-back" type="button" onClick={onBack}><ArrowLeft size={15} />Назад</button>
+      </div>
+
+      <section className="profile-overview panel">
+        <span className="profile-large-avatar">{avatarData ? <img src={avatarData} alt="" /> : avatarInitial(displayName || user.displayName)}</span>
+        <div className="profile-overview-copy"><span className="profile-kicker">ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ</span><h2>{displayName}</h2><p>@{user.login}</p></div>
+        <span className="profile-role-pill">{roleLabels[user.role] ?? user.role}</span>
+      </section>
+
+      <div className="profile-details-grid">
+        <section className="profile-detail-card panel">
+          <div className="profile-card-heading"><span className="profile-card-icon"><UserRound size={16} /></span><div><h2>Личные данные</h2><p>Имя и фото вашего профиля</p></div></div>
+          <form className="profile-edit-form" onSubmit={(event) => void saveProfile(event)}>
+            <label className="profile-field"><span>Отображаемое имя</span><input value={displayName} maxLength={120} onChange={(event) => setDisplayName(event.target.value)} required /></label>
+            <div className="profile-photo-controls"><label className="outline-button profile-upload-button"><Camera size={14} />Загрузить фото<input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { void selectAvatar(event.target.files?.[0]); event.currentTarget.value = ""; }} /></label>{avatarData && <button className="text-button profile-remove-photo" type="button" onClick={() => { setAvatarData(null); setProfileNotice(""); }}>Удалить фото</button>}<small>PNG, JPEG или WebP</small></div>
+            <dl className="profile-data-list"><div><dt>Логин</dt><dd>{user.login}</dd></div><div><dt>Роль в портале</dt><dd>{roleLabels[user.role] ?? user.role}</dd></div></dl>
+            {profileError && <p className="profile-form-message is-error">{profileError}</p>}{profileNotice && <p className="profile-form-message">{profileNotice}</p>}
+            <button className="btn-primary profile-save-button" type="submit" disabled={profileBusy}><Save size={14} />{profileBusy ? "Сохраняем…" : "Сохранить профиль"}</button>
+          </form>
+        </section>
+        <section className="profile-detail-card panel profile-access-card">
+          <div className="profile-card-heading"><span className="profile-card-icon profile-card-icon-green"><ShieldCheck size={16} /></span><div><h2>Доступ и подключения</h2><p>Настройки, связанные с вашей работой</p></div></div>
+          <div className="profile-connection-row"><span className={`profile-connection-dot ${user.yougileTokenConfigured ? "is-connected" : ""}`} /><div><strong>YouGile</strong><small>{user.yougileTokenConfigured ? "Личный токен настроен" : "Токен не настроен · обратитесь к администратору"}</small></div><span className={`profile-connection-state ${user.yougileTokenConfigured ? "is-connected" : ""}`}>{user.yougileTokenConfigured ? "Подключён" : "Не подключён"}</span></div>
+          <div className="profile-access-list"><strong>Рабочие пространства</strong><div>{user.role === "ADMIN" ? <span className="profile-access-chip">Все разделы портала</span> : user.workspaces.length ? user.workspaces.map((workspace) => <span className="profile-access-chip" key={workspace}>{workspaceLabels[workspace] ?? workspace}</span>) : <span className="profile-empty-access">Доступные пространства не назначены</span>}</div></div>
+        </section>
+        <section className="profile-detail-card panel profile-password-card">
+          <div className="profile-card-heading"><span className="profile-card-icon"><LockKeyhole size={16} /></span><div><h2>Смена пароля</h2><p>Для подтверждения потребуется текущий пароль</p></div></div>
+          <form className="profile-edit-form" onSubmit={(event) => void changePassword(event)}>
+            <label className="profile-field"><span>Текущий пароль</span><input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>
+            <label className="profile-field"><span>Новый пароль</span><input type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required /><small>Не короче 8 символов</small></label>
+            <label className="profile-field"><span>Повторите новый пароль</span><input type="password" autoComplete="new-password" value={repeatPassword} onChange={(event) => setRepeatPassword(event.target.value)} required /></label>
+            {passwordError && <p className="profile-form-message is-error">{passwordError}</p>}{passwordNotice && <p className="profile-form-message">{passwordNotice}</p>}
+            <button className="btn-primary profile-save-button" type="submit" disabled={passwordBusy}><LockKeyhole size={14} />{passwordBusy ? "Обновляем…" : "Изменить пароль"}</button>
+          </form>
+        </section>
+      </div>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Личный кабинет</span></footer>
+    </section>
+  );
+}
+
+function LtpLandingPage({ onOpenLog, onOpenResources }: { onOpenLog: () => void; onOpenResources: () => void }) {
   return (
     <section className="section-view">
       <div className="eyebrow"><span className="eyebrow-line" /> 1ЛТП</div>
@@ -614,7 +729,13 @@ function LtpLandingPage({ onOpenLog }: { onOpenLog: () => void }) {
           <p>Поиск ресурса, обработка CSV и аналитика блокировок.</p>
           <span className="action-link">Открыть журнал <ArrowRight size={15} /></span>
         </button>
-        {[2, 3, 4].map((card) => <article className="action-card ltp-empty-card" key={card} aria-label={`Пустая карточка ${card}`} />)}
+        <button type="button" className="action-card" onClick={onOpenResources}>
+          <div className="action-card-top"><span className="action-icon green"><FileSpreadsheet size={19} /></span></div>
+          <h3>Справочник ресурсов и SNI</h3>
+          <p>Загрузка XLSX и обновление справочника для журнала блокировок.</p>
+          <span className="action-link">Открыть справочник <ArrowRight size={15} /></span>
+        </button>
+        {[3, 4].map((card) => <article className="action-card ltp-empty-card" key={card} aria-label={`Пустая карточка ${card}`} />)}
       </section>
       <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Портал управления операциями</span></footer>
     </section>
@@ -1896,7 +2017,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Управление работами в YouGile" | "DAPS" | "1ЛТП" | "Журнал блокировок 1ЛТП" | "Netbox" | "Генератор Площадок" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Личный кабинет" | "Управление работами в YouGile" | "DAPS" | "1ЛТП" | "Журнал блокировок 1ЛТП" | "Справочник ресурсов 1ЛТП" | "Netbox" | "Генератор Площадок" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

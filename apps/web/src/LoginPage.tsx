@@ -10,6 +10,7 @@ export type PortalUser = {
   role: string;
   workspaces: string[];
   yougileTokenConfigured: boolean;
+  avatarData?: string | null;
 };
 
 type Mode = "login" | "register";
