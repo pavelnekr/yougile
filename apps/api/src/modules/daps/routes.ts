@@ -1146,6 +1146,144 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     return rows.map((row) => ({ date: row.date.toISOString().slice(0, 10), values: row.values }));
   });
 
+  app.get<{ Querystring: { year?: string } }>("/api/daps/daily-kpi/export", { preHandler: readAccess }, async (request, reply) => {
+    const year = Number(request.query.year);
+    if (!/^\d{4}$/.test(request.query.year ?? "") || year < 2000 || year > 2100) {
+      return reply.code(400).send({ error: "Укажите год отчёта в формате ГГГГ." });
+    }
+    const daps = await getDapsDatabase(prisma);
+    const { sourceSchema } = await getDapsSchemas(prisma);
+    const sourceTable = Prisma.raw(`${quoteDapsSchema(sourceSchema)}."all_k"`);
+    const kpiColumns = ["KPI-01", "KPI-02", "KPI-04", "KPI-05", "KPI-06", "KPI-07"] as const;
+    const dailyRows = await daps.$queryRaw<{ date: Date; values: (number | string | null)[] }[]>(Prisma.sql`
+      SELECT date::date AS date, ARRAY["KPI-01", "KPI-02", "KPI-04", "KPI-05", "KPI-06", "KPI-07"]::text[] AS values
+      FROM ${sourceTable}
+      WHERE date::date >= ${new Date(Date.UTC(year, 0, 1))}::date
+        AND date::date < ${new Date(Date.UTC(year + 1, 0, 1))}::date
+      ORDER BY date::date ASC
+    `);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "YouGile Operations Portal";
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet("Отчет в динамике", { views: [{ state: "frozen", ySplit: 2 }] });
+    sheet.columns = [
+      { key: "week", width: 14 }, { key: "date", width: 15 },
+      ...kpiColumns.map((key) => ({ key: `current-${key}`, width: 12 })),
+      { key: "spacer-1", width: 3 }, { key: "spacer-2", width: 3 },
+      ...kpiColumns.map((key) => ({ key: `average-${key}`, width: 14 }))
+    ];
+    sheet.mergeCells("C1:H1"); sheet.getCell("C1").value = "Текущие";
+    sheet.mergeCells("K1:P1"); sheet.getCell("K1").value = "Среднее в мес";
+    kpiColumns.forEach((code, index) => {
+      sheet.getCell(2, index + 3).value = Number(code.slice(-2));
+      sheet.getCell(2, index + 11).value = Number(code.slice(-2));
+    });
+    for (const cell of ["C1", "K1"]) sheet.getCell(cell).alignment = { horizontal: "center", vertical: "middle" };
+    for (let column = 1; column <= 16; column++) {
+      const cell = sheet.getCell(2, column);
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF5268A8" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = { bottom: { style: "thin", color: { argb: "FF34456F" } } };
+    }
+    sheet.getRow(1).height = 24; sheet.getRow(2).height = 22;
+
+    const sums = new Map<string, { sums: number[]; counts: number[] }>();
+    const weekGroups = new Map<string, { label: string; firstRow: number; lastRow: number; values: number[][] }>();
+    const rowsByDate = new Map(dailyRows.map((row) => [row.date.toISOString().slice(0, 10), row.values]));
+    const today = new Date();
+    const currentYear = today.getUTCFullYear();
+    const endDate = year < currentYear
+      ? Date.UTC(year, 11, 31)
+      : year === currentYear
+        ? Date.UTC(currentYear, today.getUTCMonth(), today.getUTCDate())
+        : Date.UTC(year, 0, 1);
+    const validRows: { date: Date; values: (number | null)[] }[] = [];
+    for (let timestamp = Date.UTC(year, 0, 1); timestamp <= endDate; timestamp += 86400000) {
+      const date = new Date(timestamp);
+      const storedValues = rowsByDate.get(date.toISOString().slice(0, 10));
+      validRows.push({
+        date,
+        values: storedValues
+          ? storedValues.map((value) => value === null ? null : Number(value))
+          : Array(6).fill(null)
+      });
+    }
+    const isoWeek = (value: Date) => {
+      const thursday = new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+      thursday.setUTCDate(thursday.getUTCDate() + 3 - ((thursday.getUTCDay() + 6) % 7));
+      const firstThursday = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 4));
+      firstThursday.setUTCDate(firstThursday.getUTCDate() + 3 - ((firstThursday.getUTCDay() + 6) % 7));
+      return { year: thursday.getUTCFullYear(), week: 1 + Math.round((thursday.getTime() - firstThursday.getTime()) / 604800000) };
+    };
+    let activeWeek = "";
+    let excelRow = 3;
+    for (const item of validRows) {
+      const date = new Date(Date.UTC(item.date.getUTCFullYear(), item.date.getUTCMonth(), item.date.getUTCDate()));
+      const dateKey = date.toISOString().slice(0, 10);
+      const monthKey = dateKey.slice(0, 7);
+      const month = sums.get(monthKey) ?? { sums: Array(6).fill(0), counts: Array(6).fill(0) };
+      item.values.forEach((value, index) => {
+        if (value !== null && Number.isFinite(value)) { month.sums[index] += value; month.counts[index]++; }
+      });
+      sums.set(monthKey, month);
+      const weekInfo = isoWeek(date);
+      const weekKey = `${weekInfo.year}-${weekInfo.week}`;
+      if (activeWeek && activeWeek !== weekKey) {
+        const group = weekGroups.get(activeWeek)!;
+        const averageRow = sheet.getRow(excelRow++);
+        averageRow.getCell(2).value = "среднее";
+        for (let index = 0; index < 6; index++) {
+          const values = group.values.map((values) => values[index]).filter((value): value is number => value !== null && Number.isFinite(value));
+          if (values.length) averageRow.getCell(index + 3).value = values.reduce((total, value) => total + value, 0) / values.length;
+        }
+        averageRow.font = { italic: true, bold: true, color: { argb: "FF5268A8" } };
+        averageRow.eachCell((cell) => { cell.border = { top: { style: "thin", color: { argb: "FFBFC8DC" } } }; });
+      }
+      if (!weekGroups.has(weekKey)) weekGroups.set(weekKey, { label: `${weekInfo.week} неделя`, firstRow: excelRow, lastRow: excelRow, values: [] });
+      activeWeek = weekKey;
+      const group = weekGroups.get(weekKey)!;
+      group.lastRow = excelRow; group.values.push(item.values);
+      const row = sheet.getRow(excelRow++);
+      row.getCell(2).value = date;
+      row.getCell(2).numFmt = "dd-mmm";
+      row.getCell(2).alignment = { horizontal: "center" };
+      item.values.forEach((value, index) => { if (value !== null && Number.isFinite(value)) row.getCell(index + 3).value = value; });
+      month.sums.forEach((sum, index) => {
+        if (month.counts[index]) row.getCell(index + 11).value = sum / month.counts[index];
+      });
+      for (let column = 3; column <= 16; column++) row.getCell(column).numFmt = "0.00";
+      row.eachCell((cell, column) => {
+        if (column !== 1) cell.border = { bottom: { style: "hair", color: { argb: "FFE5E9F0" } } };
+      });
+    }
+    if (activeWeek) {
+      const group = weekGroups.get(activeWeek)!;
+      const averageRow = sheet.getRow(excelRow++);
+      averageRow.getCell(2).value = "среднее";
+      for (let index = 0; index < 6; index++) {
+        const values = group.values.map((values) => values[index]).filter((value): value is number => value !== null && Number.isFinite(value));
+        if (values.length) averageRow.getCell(index + 3).value = values.reduce((total, value) => total + value, 0) / values.length;
+      }
+      averageRow.font = { italic: true, bold: true, color: { argb: "FF5268A8" } };
+      averageRow.eachCell((cell) => { cell.border = { top: { style: "thin", color: { argb: "FFBFC8DC" } } }; });
+    }
+    for (const group of weekGroups.values()) {
+      const end = group.lastRow + (group.lastRow < excelRow - 1 ? 1 : 0);
+      sheet.mergeCells(group.firstRow, 1, end, 1);
+      const cell = sheet.getCell(group.firstRow, 1); cell.value = group.label;
+      cell.alignment = { horizontal: "center", vertical: "middle", textRotation: 0, wrapText: true };
+      cell.font = { color: { argb: "FF5268A8" }, bold: true };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF1F4FA" } };
+    }
+    const buffer = await workbook.xlsx.writeBuffer();
+    return reply
+      .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .header("Content-Disposition", `attachment; filename="daily-kpi-${year}.xlsx"`)
+      .send(Buffer.from(buffer));
+  });
+
   app.put<{ Params: { date: string } }>("/api/daps/daily-kpi/:date", { preHandler: writeAccess }, async (request, reply) => {
     const date = parseDate(request.params.date);
     if (!date) return reply.code(400).send({ error: "Укажите дату в формате ГГГГ-ММ-ДД." });

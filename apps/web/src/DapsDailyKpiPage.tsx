@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronDown, ImageDown, LoaderCircle, RefreshCw, Save, TrendingUp } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, FileSpreadsheet, ImageDown, LoaderCircle, RefreshCw, Save, TrendingUp } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import { PORTAL_VERSION } from "./version";
 
@@ -55,6 +55,7 @@ export default function DapsDailyKpiPage({ onBack, canEdit }: { onBack: () => vo
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -235,6 +236,25 @@ export default function DapsDailyKpiPage({ onBack, canEdit }: { onBack: () => vo
     }
   };
 
+  const exportXlsx = async () => {
+    setExportingXlsx(true); setError("");
+    try {
+      const response = await apiFetch(`/api/daps/daily-kpi/export?year=${encodeURIComponent(date.slice(0, 4))}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? "Не удалось выгрузить данные KPI.");
+      }
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl; link.download = `daily-kpi-${date.slice(0, 4)}.xlsx`;
+      link.click(); window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setNotice("Данные KPI выгружены в XLSX.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось выгрузить данные KPI.");
+    } finally { setExportingXlsx(false); }
+  };
+
   const chartRows = useMemo(() => {
     let rows = chart;
     if (period === "month") rows = rows.filter((row) => row.date.slice(0, 7) === date.slice(0, 7));
@@ -287,7 +307,7 @@ export default function DapsDailyKpiPage({ onBack, canEdit }: { onBack: () => vo
 
     <section className="panel daps-daily-table-panel">
       <div className="panel-heading"><div><h2>Показатели</h2><p>Значения за день сравниваются с целевыми и минимальными порогами.</p></div>
-        <div className="daps-report-heading-actions"><button type="button" className="outline-button" onClick={() => void exportTablePng()} disabled={exporting || loading}>{exporting ? <LoaderCircle size={14} className="template-spinner" /> : <ImageDown size={14} />}{exporting ? "Создаём PNG…" : "Скачать PNG"}</button>
+        <div className="daps-report-heading-actions"><button type="button" className="outline-button" onClick={() => void exportTablePng()} disabled={exporting || exportingXlsx || loading}>{exporting ? <LoaderCircle size={14} className="template-spinner" /> : <ImageDown size={14} />}{exporting ? "Создаём PNG…" : "Скачать PNG"}</button><button type="button" className="outline-button" onClick={() => void exportXlsx()} disabled={exportingXlsx || exporting || loading}>{exportingXlsx ? <LoaderCircle size={14} className="template-spinner" /> : <FileSpreadsheet size={14} />}{exportingXlsx ? "Выгружаем…" : "Выгрузить данные"}</button>
           <button type="button" className="text-button" onClick={() => setCustomOpen((open) => !open)}>{customOpen ? "Скрыть ручной ввод" : "Ручной ввод"}<ChevronDown size={14} className={customOpen ? "daps-chevron-open" : ""} /></button></div>
       </div>
       {customOpen && <div className="daps-manual-grid">{fields.map((field) => <div className="daps-manual-row" key={field.code}><strong>{field.code}</strong><label>Факт<input type="number" step="0.01" value={custom[`${field.code}:daily`] ?? ""} onChange={(event) => setCustom((current) => ({ ...current, [`${field.code}:daily`]: event.target.value }))} /></label><label>Среднее<input type="number" step="0.01" value={custom[`${field.code}:average`] ?? ""} onChange={(event) => setCustom((current) => ({ ...current, [`${field.code}:average`]: event.target.value }))} /></label></div>)}</div>}
