@@ -1156,9 +1156,9 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     const aggregateTable = Prisma.raw(`${quoteDapsSchema(aggregateSchema)}."Aggregate_for_KPI"`);
     const updated = await daps.$queryRaw<{ date: Date }[]>(Prisma.sql`
       UPDATE ${aggregateTable}
-      SET "KPI-0(MM_day)" = ${String(parsed.data.k0Fact)},
-          "KPI-0(MM_mounth)" = ${String(parsed.data.k0Accum)},
-          "KPI-03(CUMM)" = ${String(parsed.data.k3Accum)}
+       SET "KPI-0(MM_day)" = CAST(${parsed.data.k0Fact} AS numeric),
+           "KPI-0(MM_mounth)" = CAST(${parsed.data.k0Accum} AS numeric),
+           "KPI-03(CUMM)" = CAST(${parsed.data.k3Accum} AS numeric)
       WHERE "Data"::date = ${date}::date
       RETURNING "Data"::date AS date
     `);
