@@ -17,7 +17,15 @@ test("отклоняет повторяющиеся адреса получат�
 });
 
 test("ограничивает пустые и чрезмерно длинные письма", () => {
-  assert.equal(sendLetterSchema.safeParse({ subject: "Тема", body: "Текст" }).success, true);
-  assert.equal(sendLetterSchema.safeParse({ subject: "", body: "Текст" }).success, false);
-  assert.equal(sendLetterSchema.safeParse({ subject: "Тема", body: "x".repeat(100_001) }).success, false);
+  const validPayload = {
+    siteNumber: "00123",
+    directoryImportedAt: "2026-10-25T10:00:00.000Z",
+    subject: "Тема",
+    body: "Текст"
+  };
+  assert.equal(sendLetterSchema.safeParse(validPayload).success, true);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, siteNumber: "123A" }).success, false);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, directoryImportedAt: "invalid" }).success, false);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, subject: "" }).success, false);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, body: "x".repeat(100_001) }).success, false);
 });

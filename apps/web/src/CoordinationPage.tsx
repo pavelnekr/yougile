@@ -20,11 +20,14 @@ import { PORTAL_VERSION } from "./version";
 // apps/api/src/modules/coordination/schema.ts — сервер проверяет поле как enum.
 const contractorOptions = ["ООО «Юстас»", "ФГУП «НПП Гамма»", "ООО «РТК-Сервис»"];
 
-type CoordinationConfig = { recipients: string[]; smtpConfigured: boolean };
+type CoordinationConfig = { smtpConfigured: boolean };
 type LetterPreview = {
   subject: string;
   body: string;
   fileName: string;
+  siteNumber: string;
+  directoryImportedAt: string;
+  recipients: string[];
   extracted: {
     avrNumber: string | null;
     site: string | null;
@@ -95,7 +98,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
         const response = await apiFetch("/api/coordination/config", { signal: controller.signal });
         const data = await response.json() as CoordinationConfig & { error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить конфигурацию оповещений.");
-        setConfig({ recipients: data.recipients ?? [], smtpConfigured: Boolean(data.smtpConfigured) });
+        setConfig({ smtpConfigured: Boolean(data.smtpConfigured) });
         setConfigError("");
       } catch (reason) {
         if (!controller.signal.aborted) setConfigError(errorMessage(reason));
@@ -149,7 +152,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
       const response = await apiFetch("/api/coordination/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject: preview.subject, body: preview.body })
+        body: JSON.stringify({ subject: preview.subject, body: preview.body, siteNumber: preview.siteNumber, directoryImportedAt: preview.directoryImportedAt })
       });
       const data = await response.json() as { sent?: boolean; recipients?: string[]; error?: string };
       if (!response.ok || !data.sent) throw new Error(data.error ?? "Не удалось отправить письмо.");
@@ -356,7 +359,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
           <p>Загрузите DOCX-план работ — портал соберёт письмо согласования АВР. Проверьте тему и текст, затем отправьте получателям.</p>
         </div>
         <div className="coordination-heading-actions">
-          {config && !sent && <span className="sites-total">{countRu(config.recipients.length, recipientForms)}</span>}
+          {(preview || sent) && <span className="sites-total">{countRu(preview?.recipients.length ?? sent?.recipients.length ?? 0, recipientForms)}</span>}
           {onBack && (
             <button className="text-button" onClick={onBack}>
               <ArrowLeft size={14} /> Назад
@@ -473,7 +476,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
               <div className={`coordination-recipients ${smtpReady ? "" : "coordination-recipients-off"}`}>
                 <Mail size={14} />
                 <span>
-                  {config ? <>Кому: {config.recipients.join(", ")}</> : "Загружаем получателей…"}
+                  <>Кому: {preview.recipients.join(", ")}</>
                   {!smtpReady && " · SMTP не настроен — отправка недоступна"}
                 </span>
               </div>

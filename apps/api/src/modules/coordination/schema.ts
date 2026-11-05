@@ -27,6 +27,8 @@ export const previewFieldsSchema = z.object({
 // Тело — HTML (письмо формируется таблицами), поэтому верхняя граница щедрая,
 // но ограничена, чтобы в одном запросе нельзя было перегрузить SMTP-сервер.
 export const sendLetterSchema = z.object({
+  siteNumber: z.string().trim().min(1, "Не найден номер площадки для определения адресатов.").max(64).regex(/^\d+$/, "Номер площадки должен состоять из цифр."),
+  directoryImportedAt: z.string().datetime("Обновите предпросмотр перед отправкой."),
   subject: z.string().trim()
     .min(1, "Укажите тему письма.")
     .max(500, "Тема не должна превышать 500 символов."),

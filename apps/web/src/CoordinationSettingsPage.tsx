@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, LoaderCircle, Save } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import OperatorContactsSettings from "./OperatorContactsSettings.js";
 import { PORTAL_VERSION } from "./version";
@@ -7,8 +7,6 @@ import { PORTAL_VERSION } from "./version";
 const defaultTemplate = { subject: "", body: "" };
 
 export default function CoordinationSettingsPage({ onBack }: { onBack: () => void }) {
-  const [recipients, setRecipients] = useState<string[]>([]);
-  const [savedRecipients, setSavedRecipients] = useState<string[]>([]);
   const [template, setTemplate] = useState(defaultTemplate);
   const [savedTemplate, setSavedTemplate] = useState(defaultTemplate);
   const [loading, setLoading] = useState(true);
@@ -17,17 +15,14 @@ export default function CoordinationSettingsPage({ onBack }: { onBack: () => voi
   const [notice, setNotice] = useState("");
   const [activeTab, setActiveTab] = useState<"avr" | "operators">("avr");
   const bodyEditorRef = useRef<HTMLDivElement>(null);
-  const recipientsChanged = JSON.stringify(recipients) !== JSON.stringify(savedRecipients);
 
   useEffect(() => {
     const controller = new AbortController();
     void apiFetch("/api/coordination/config", { signal: controller.signal })
       .then(async (response) => {
-        const data = await response.json() as { recipients?: string[]; template?: typeof defaultTemplate; error?: string };
+        const data = await response.json() as { template?: typeof defaultTemplate; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить настройки.");
-        const nextRecipients = data.recipients ?? [];
         const nextTemplate = data.template ?? defaultTemplate;
-        setRecipients(nextRecipients); setSavedRecipients(nextRecipients);
         setTemplate(nextTemplate); setSavedTemplate(nextTemplate);
       })
       .catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Не удалось загрузить настройки."); })
@@ -48,12 +43,6 @@ export default function CoordinationSettingsPage({ onBack }: { onBack: () => voi
     const templateChanged = nextTemplate.subject !== savedTemplate.subject || nextTemplate.body !== savedTemplate.body;
     setSaving(true); setError(""); setNotice("");
     try {
-      if (recipientsChanged) {
-        const response = await apiFetch("/api/coordination/recipients", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipients: recipients.map((item) => item.trim()) }) });
-        const data = await response.json() as { recipients?: string[]; error?: string };
-        if (!response.ok || !data.recipients) throw new Error(data.error ?? "Не удалось сохранить получателей.");
-        setRecipients(data.recipients); setSavedRecipients(data.recipients);
-      }
       if (templateChanged) {
         const response = await apiFetch("/api/coordination/template", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nextTemplate) });
         const data = await response.json() as { template?: typeof defaultTemplate; error?: string };
@@ -70,7 +59,7 @@ export default function CoordinationSettingsPage({ onBack }: { onBack: () => voi
     <section className="section-view coordination-settings-page">
       <div className="eyebrow"><span className="eyebrow-line" /> СОГЛАСОВАНИЕ/ОПОВЕЩЕНИЕ</div>
       <div className="sites-page-heading">
-        <div><h1>Настройки</h1><p>Получатели писем и шаблон письма для сценариев этого рабочего пространства.</p></div>
+        <div><h1>Настройки</h1><p>Шаблон письма и справочник адресов операторов для этого рабочего пространства.</p></div>
         <button className="text-button" type="button" onClick={onBack}><ArrowLeft size={14} /> Назад</button>
       </div>
 
@@ -89,13 +78,8 @@ export default function CoordinationSettingsPage({ onBack }: { onBack: () => voi
         <section className="portal-config-section" id="coordination-settings-panel-avr" role="tabpanel" aria-labelledby="coordination-settings-tab-avr" hidden={activeTab !== "avr"}>
         {loading ? <div className="portal-config-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем настройки…</div> : <>
         <section className="coordination-settings-subsection">
-          <h2>Получатели писем</h2>
-          <p>Список адресов, на которые отправляются письма согласования.</p>
-          {recipients.map((address, index) => <div className="portal-config-row portal-config-row-single" key={index}>
-            <input type="email" value={address} maxLength={254} placeholder="name@example.ru" aria-label={`Адрес получателя, строка ${index + 1}`} onChange={(event) => setRecipients((current) => current.map((item, i) => i === index ? event.target.value : item))} />
-            <button className="icon-button portal-config-row-remove" type="button" aria-label={`Удалить адрес, строка ${index + 1}`} onClick={() => setRecipients((current) => current.filter((_, i) => i !== index))}><Trash2 size={15} /></button>
-          </div>)}
-          <button type="button" className="outline-button" disabled={recipients.length >= 20} onClick={() => setRecipients((current) => [...current, ""])}><Plus size={14} /> Добавить адрес</button>
+          <h2>Адресаты писем</h2>
+          <p>Адреса автоматически подбираются по номеру площадки из DOCX и справочника в подразделе «Email операторов». Перед отправкой справочник проверяется повторно.</p>
         </section>
         <section className="coordination-settings-subsection">
           <h2>Шаблон письма</h2>

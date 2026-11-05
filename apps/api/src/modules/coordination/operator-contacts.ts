@@ -16,6 +16,22 @@ export type OperatorContactRow = {
   invalidEmails: string[];
 };
 
+export class OperatorContactsLookupError extends Error {
+  constructor(
+    readonly code: "DIRECTORY_MISSING" | "SITE_MISSING" | "SITE_AMBIGUOUS" | "EMAILS_MISSING" | "EMAILS_INVALID",
+    readonly statusCode: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "OperatorContactsLookupError";
+  }
+}
+
+export function extractSiteNumber(value: string | null): string | null {
+  if (!value) return null;
+  return value.trim().match(/^(?:ID\s*:?\s*)?(\d+)(?:\b|$)/i)?.[1] ?? null;
+}
+
 export type OperatorContactsSnapshot = {
   rows: OperatorContactRow[];
   importedAt: string;
@@ -33,6 +49,7 @@ type StoredContacts = {
 function cellText(cell: ExcelJS.Cell): string {
   const value = cell.value;
   if (value === null || value === undefined) return "";
+  if (typeof value === "number") return cell.text.trim() || String(value);
   if (typeof value === "object" && "richText" in value) {
     return value.richText.map((part) => part.text).join("").trim();
   }
@@ -77,7 +94,7 @@ export async function parseOperatorContactsWorkbook(buffer: Buffer, password: st
 
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.load(workbookBuffer);
+    await workbook.xlsx.load(new Uint8Array(workbookBuffer).buffer);
   } catch {
     throw new Error("Не удалось прочитать расшифрованный XLSX. Проверьте формат файла.");
   }
@@ -153,4 +170,42 @@ export async function loadOperatorContacts(prisma: PrismaClient): Promise<Operat
   if (!stored) return null;
   const rows = JSON.parse(decryptOperatorContacts(stored.ciphertext)) as OperatorContactRow[];
   return { rows, importedAt: stored.importedAt, importedBy: stored.importedBy };
+}
+
+export async function resolveOperatorRecipients(prisma: PrismaClient, siteNumber: string): Promise<{ recipients: string[]; directoryImportedAt: string }> {
+  const snapshot = await loadOperatorContacts(prisma);
+  if (!snapshot) {
+    throw new OperatorContactsLookupError("DIRECTORY_MISSING", 503, "Справочник email операторов не загружен. Загрузите актуальный XLSX в настройках.");
+  }
+  const matches = snapshot.rows.filter((row) => row.siteNumber === siteNumber);
+  if (matches.length === 0) {
+    throw new OperatorContactsLookupError("SITE_MISSING", 404, `Площадка ${siteNumber} не найдена в справочнике email операторов.`);
+  }
+  if (matches.length > 1) {
+    throw new OperatorContactsLookupError("SITE_AMBIGUOUS", 409, `Для площадки ${siteNumber} в справочнике несколько строк. Исправьте справочник и загрузите его повторно.`);
+  }
+
+  const row = matches[0]!;
+  const invalid = [...row.invalidEmails];
+  const recipients: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of row.emails) {
+    const address = candidate.trim();
+    if (!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(address) || address.length > 254) {
+      invalid.push(address);
+      continue;
+    }
+    const key = address.toLocaleLowerCase("en");
+    if (!seen.has(key)) {
+      seen.add(key);
+      recipients.push(address);
+    }
+  }
+  if (invalid.length > 0) {
+    throw new OperatorContactsLookupError("EMAILS_INVALID", 422, `Для площадки ${siteNumber} в справочнике есть некорректные email-адреса. Исправьте строку и загрузите файл повторно.`);
+  }
+  if (recipients.length === 0) {
+    throw new OperatorContactsLookupError("EMAILS_MISSING", 422, `Для площадки ${siteNumber} в справочнике не указаны email-адреса.`);
+  }
+  return { recipients, directoryImportedAt: snapshot.importedAt };
 }

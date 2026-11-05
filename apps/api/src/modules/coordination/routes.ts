@@ -6,12 +6,11 @@ import { operatorContactsViewRateLimit, previewRateLimit, rateLimitPerUser, send
 import { requireRole, requireWorkspaceAccess, verifyPassword } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
 import { letterTemplateSchema, mailRecipientsSchema, operatorContactsViewSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
-import { clearOperatorContacts, getOperatorContactsMetadata, loadOperatorContacts, parseOperatorContactsWorkbook, saveOperatorContacts } from "./operator-contacts.js";
+import { clearOperatorContacts, extractSiteNumber, getOperatorContactsMetadata, loadOperatorContacts, OperatorContactsLookupError, parseOperatorContactsWorkbook, resolveOperatorRecipients, saveOperatorContacts } from "./operator-contacts.js";
 import {
   buildLetterFromDocx,
   describeSendError,
   isSmtpConfigured,
-  loadMailRecipients,
   loadLetterTemplate,
   loadSmtpSettings,
   saveMailRecipients,
@@ -36,8 +35,8 @@ const previewMultipartLimits = {
  * Раздел «Согласование/Оповещение»: предпросмотр письма по DOCX-плану
  * и отправка его по SMTP. Файл разбирается на сервере (mammoth), тема и тело
  * правятся оператором в предпросмотре, отправка — только по явному нажатию.
- * Список получателей и параметры SMTP живут в AppSetting и редактируются
- * в «Конфигурации портала» → «Оповещения».
+ * Получатели определяются по номеру площадки из зашифрованного справочника
+ * операторов; настройки SMTP остаются в AppSetting.
  */
 export async function registerCoordinationRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const adminOnly = requireRole(PortalRole.ADMIN);
@@ -46,13 +45,11 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
 
   app.get("/api/coordination/config", { preHandler: readAccess }, async (_request, reply) => {
     try {
-      const [recipients, settings, template] = await Promise.all([
-        loadMailRecipients(prisma),
+      const [settings, template] = await Promise.all([
         loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message)),
         loadLetterTemplate(prisma)
       ]);
       return {
-        recipients,
         template,
         smtpConfigured: isSmtpConfigured(settings),
         // Пароль в ответ не попадает — только флаг, что он задан.
@@ -286,8 +283,27 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     try {
       const template = await loadLetterTemplate(prisma);
       const letter = await buildLetterFromDocx(buffer, fieldsParsed.data, template);
-      return { ...letter, fileName: normalized.slice(0, 255) };
+      const siteNumber = extractSiteNumber(letter.extracted.site);
+      if (!siteNumber) {
+        app.log.warn({ actor: request.sessionUser?.login, reason: "SITE_NUMBER_MISSING" }, "Could not determine coordination email recipients");
+        return reply.code(422).send({ error: "В DOCX не найден корректный номер площадки. Проверьте поле «ID» в заявке." });
+      }
+      try {
+        const directory = await resolveOperatorRecipients(prisma, siteNumber);
+        return { ...letter, fileName: normalized.slice(0, 255), siteNumber, recipients: directory.recipients, directoryImportedAt: directory.directoryImportedAt };
+      } catch (error) {
+        if (error instanceof OperatorContactsLookupError) {
+          app.log.warn({ actor: request.sessionUser?.login, siteNumber, lookupCode: error.code }, "Could not determine coordination email recipients");
+          return reply.code(error.statusCode).send({ error: error.message });
+        }
+        app.log.error({ err: error, siteNumber }, "Could not read operator contacts for preview");
+        return reply.code(500).send({ error: "Не удалось прочитать справочник email операторов. Предпросмотр недоступен." });
+      }
     } catch (error) {
+      if (error instanceof OperatorContactsLookupError) {
+        app.log.warn({ actor: request.sessionUser?.login, lookupCode: error.code }, "Could not determine coordination email recipients");
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
       app.log.error({ err: error }, "Could not parse coordination DOCX");
       return reply.code(400).send({ error: "Не удалось разобрать DOCX-файл. Убедитесь, что это документ Word и он не повреждён." });
     }
@@ -299,10 +315,22 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте тему и текст письма." });
     }
 
-    const [recipients, smtpSettings] = await Promise.all([
-      loadMailRecipients(prisma),
-      loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message))
-    ]);
+    let directory: Awaited<ReturnType<typeof resolveOperatorRecipients>>;
+    try {
+      directory = await resolveOperatorRecipients(prisma, parsed.data.siteNumber);
+    } catch (error) {
+      if (error instanceof OperatorContactsLookupError) {
+        app.log.warn({ actor: request.sessionUser?.login, siteNumber: parsed.data.siteNumber, lookupCode: error.code }, "Could not determine coordination email recipients before sending");
+        return reply.code(error.statusCode).send({ error: error.message });
+      }
+      app.log.error({ err: error, siteNumber: parsed.data.siteNumber }, "Could not read operator contacts before sending");
+      return reply.code(500).send({ error: "Не удалось прочитать справочник email операторов. Письмо не отправлено." });
+    }
+    if (directory.directoryImportedAt !== parsed.data.directoryImportedAt) {
+      return reply.code(409).send({ error: "Справочник адресатов обновился после предпросмотра. Пересоберите письмо и проверьте адресатов." });
+    }
+    const recipients = directory.recipients;
+    const smtpSettings = await loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message));
     const actor = request.sessionUser;
     const logBase = {
       actorId: actor?.id ?? null,
@@ -311,7 +339,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       ip: request.ip,
       method: request.method,
       path: request.url,
-      request: { subject: parsed.data.subject, recipients }
+      request: { subject: parsed.data.subject, siteNumber: parsed.data.siteNumber, recipientCount: recipients.length }
     };
 
     try {
@@ -319,7 +347,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       void recordLog(prisma, {
         ...logBase,
         action: "POST /api/coordination/send",
-        message: `Письмо «${parsed.data.subject}» отправлено получателям: ${recipients.join(", ")}`,
+        message: `Письмо «${parsed.data.subject}» отправлено адресатам площадки ${parsed.data.siteNumber} (${recipients.length}).`,
         status: 200
       });
       return { sent: true, recipients, messageId: result.messageId };
