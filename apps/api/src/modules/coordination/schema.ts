@@ -70,6 +70,10 @@ export const smtpSettingsSchema = z.object({
   from: z.string().trim().max(254, "Адрес отправителя слишком длинный.")
 });
 
+export const operatorContactsViewSchema = z.object({
+  password: z.string().min(1, "Введите пароль учётной записи.").max(255)
+});
+
 export type PreviewFields = z.infer<typeof previewFieldsSchema>;
 export type SendLetter = z.infer<typeof sendLetterSchema>;
 export type SmtpSettingsInput = z.infer<typeof smtpSettingsSchema>;

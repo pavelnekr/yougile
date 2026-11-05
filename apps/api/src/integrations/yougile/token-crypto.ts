@@ -86,3 +86,11 @@ export function encryptNetboxApiToken(token: string) {
 export function decryptNetboxApiToken(value: string) {
   return decryptWithAad(value, "netbox-api-token:v1", "NetBox API token");
 }
+
+export function encryptOperatorContacts(value: string) {
+  return encryptWithAad(value, "coordination-operator-contacts:v1");
+}
+
+export function decryptOperatorContacts(value: string) {
+  return decryptWithAad(value, "coordination-operator-contacts:v1", "operator contacts");
+}

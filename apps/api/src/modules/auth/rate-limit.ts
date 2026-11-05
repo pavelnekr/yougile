@@ -110,6 +110,11 @@ export const sendLetterRateLimit: RateLimit = {
   message: "Слишком много писем подряд. Подождите несколько минут и отправьте снова."
 };
 
+export const operatorContactsViewRateLimit: RateLimit = {
+  limit: 10,
+  message: "Слишком много запросов на просмотр справочника. Попробуйте позже."
+};
+
 /**
  * preHandler, считающий каждый запрос, а не только неудачные попытки.
  *

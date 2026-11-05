@@ -25,6 +25,7 @@
     "ioredis": "^5.4.2",
     "mammoth": "^1.13.0",
     "nodemailer": "^10.0.16",
+    "officecrypto-tool": "^0.0.19",
     "zod": "^3.24.1"
   },
   "devDependencies": {

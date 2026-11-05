@@ -2,10 +2,11 @@ import type { FastifyInstance } from "fastify";
 import { PortalRole, type PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
 import { YougileTokenEncryptionKeyError } from "../../integrations/yougile/token-crypto.js";
-import { previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
-import { requireRole, requireWorkspaceAccess } from "../auth/service.js";
+import { operatorContactsViewRateLimit, previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
+import { requireRole, requireWorkspaceAccess, verifyPassword } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
-import { letterTemplateSchema, mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
+import { letterTemplateSchema, mailRecipientsSchema, operatorContactsViewSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
+import { clearOperatorContacts, getOperatorContactsMetadata, loadOperatorContacts, parseOperatorContactsWorkbook, saveOperatorContacts } from "./operator-contacts.js";
 import {
   buildLetterFromDocx,
   describeSendError,
@@ -98,6 +99,96 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       "Mail recipients updated via portal config"
     );
     return { recipients: parsed.data.recipients };
+  });
+
+  app.get("/api/coordination/operator-contacts/status", { preHandler: readAccess }, async (request, reply) => {
+    try {
+      return { ...await getOperatorContactsMetadata(prisma), canManage: request.sessionUser?.role === PortalRole.ADMIN };
+    } catch (error) {
+      app.log.error({ err: error }, "Could not read operator contacts metadata");
+      return reply.code(500).send({ error: "Не удалось прочитать состояние справочника." });
+    }
+  });
+
+  app.delete("/api/coordination/operator-contacts", { preHandler: adminOnly }, async (request, reply) => {
+    try {
+      const deleted = await clearOperatorContacts(prisma);
+      app.log.warn({ actor: request.sessionUser?.login, deleted }, "Operator contacts directory cleared");
+      return { deleted, message: deleted ? "Справочник удалён." : "Справочник уже был пуст." };
+    } catch (error) {
+      app.log.error({ err: error, actor: request.sessionUser?.login }, "Could not clear operator contacts directory");
+      return reply.code(500).send({ error: "Не удалось очистить справочник операторов." });
+    }
+  });
+
+  app.post("/api/coordination/operator-contacts/upload", { preHandler: adminOnly }, async (request, reply) => {
+    if (!request.isMultipart()) return reply.code(406).send({ error: "Загрузите XLSX-файл." });
+    try {
+      let buffer: Buffer | null = null;
+      let originalFilename = "";
+      let workbookPassword = "";
+      for await (const part of request.parts({ limits: { files: 1, fields: 1, parts: 2, fileSize: config.UPLOAD_MAX_BYTES, fieldSize: 255 } })) {
+        if (part.type === "file") {
+          buffer = await part.toBuffer();
+          if (part.file.truncated) return reply.code(413).send({ error: "Файл превышает допустимый размер." });
+          originalFilename = part.filename;
+        } else if (part.fieldname === "password") {
+          workbookPassword = String(part.value ?? "");
+        }
+      }
+      if (!buffer) return reply.code(400).send({ error: "Выберите XLSX-файл справочника." });
+      if (!workbookPassword) return reply.code(400).send({ error: "Введите пароль от XLSX-файла." });
+      if (workbookPassword.length > 255) return reply.code(400).send({ error: "Пароль файла не должен превышать 255 символов." });
+      const filename = originalFilename.split(/[\\/]/).pop() ?? "";
+      if (!filename.toLocaleLowerCase("en").endsWith(".xlsx")) return reply.code(400).send({ error: "Поддерживаются файлы .xlsx." });
+      const rows = await parseOperatorContactsWorkbook(buffer, workbookPassword);
+      const actor = request.sessionUser;
+      const result = await saveOperatorContacts(prisma, rows, actor?.login ?? null);
+      app.log.warn({ actor: actor?.login, rowCount: result.rowCount }, "Operator contacts directory replaced");
+      return { ...result, message: "Справочник загружен и сохранён в зашифрованном виде." };
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "FST_REQ_FILE_TOO_LARGE") {
+        return reply.code(413).send({ error: "Файл превышает допустимый размер." });
+      }
+      if (error instanceof Error && (error.message.startsWith("Не удалось расшифровать файл") || error.message.startsWith("Не удалось прочитать расшифрованный XLSX"))) {
+        app.log.warn({ actor: request.sessionUser?.login, reason: error.message }, "Operator contacts XLSX could not be parsed");
+        return reply.code(400).send({ error: error.message });
+      }
+      if (error instanceof Error && /колонки|строк с данными|номер площадки|больше \d+ строк|В книге нет листов|защищён паролем/.test(error.message)) {
+        app.log.warn({ actor: request.sessionUser?.login, reason: error.message }, "Operator contacts XLSX validation failed");
+        return reply.code(400).send({ error: error.message });
+      }
+      if (error instanceof YougileTokenEncryptionKeyError) {
+        app.log.error({ actor: request.sessionUser?.login }, "Operator contacts encryption key is not configured");
+        return reply.code(503).send({ error: "На сервере не настроен ключ шифрования справочника." });
+      }
+      app.log.error({ err: error }, "Could not save operator contacts directory");
+      return reply.code(500).send({ error: "Не удалось сохранить справочник операторов." });
+    }
+  });
+
+  app.post("/api/coordination/operator-contacts/view", { preHandler: [adminOnly, rateLimitPerUser(operatorContactsViewRateLimit)] }, async (request, reply) => {
+    const parsed = operatorContactsViewSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Введите пароль учётной записи." });
+    const userId = request.sessionUser?.id;
+    if (!userId) return reply.code(401).send({ error: "Требуется войти в портал заново." });
+    try {
+      const user = await prisma.portalUser.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+      if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
+        return reply.code(403).send({ error: "Пароль учётной записи указан неверно." });
+      }
+      const snapshot = await loadOperatorContacts(prisma);
+      if (!snapshot) return reply.code(404).send({ error: "Справочник ещё не загружен." });
+      app.log.warn({ actor: request.sessionUser?.login, rowCount: snapshot.rows.length }, "Operator contacts directory viewed");
+      return snapshot;
+    } catch (error) {
+      if (error instanceof YougileTokenEncryptionKeyError) {
+        app.log.error({ actor: request.sessionUser?.login }, "Operator contacts encryption key is not configured");
+        return reply.code(503).send({ error: "На сервере не настроен ключ шифрования справочника." });
+      }
+      app.log.error({ err: error }, "Could not decrypt operator contacts directory");
+      return reply.code(500).send({ error: "Не удалось расшифровать справочник." });
+    }
   });
 
   app.put("/api/coordination/smtp", { preHandler: adminOnly }, async (request, reply) => {
