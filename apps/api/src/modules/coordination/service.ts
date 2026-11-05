@@ -209,12 +209,12 @@ export type SendResult = {
  * умолчанию из окружения). Ошибки транспорта оборачиваются в понятный русский
  * текст для оператора, детали уходят в лог сервера.
  */
-export async function sendLetter(letter: SendLetter, recipients: string[], settings: SmtpSettings): Promise<SendResult> {
+export async function sendLetter(letter: SendLetter, recipients: string[], cc: string[], settings: SmtpSettings): Promise<SendResult> {
   if (!isSmtpConfigured(settings)) {
     throw new Error("SMTP не настроен: укажите SMTP_HOST в настройках портала.");
   }
   if (recipients.length === 0) {
-    throw new Error("Нет получателей: добавьте адреса в разделе «Конфигурация портала».");
+    throw new Error("Нет получателей: укажите хотя бы один адрес в поле «Кому».");
   }
 
   const transport = nodemailer.createTransport({
@@ -233,6 +233,7 @@ export async function sendLetter(letter: SendLetter, recipients: string[], setti
     const info = await transport.sendMail({
       from: settings.from || settings.user,
       to: recipients.join(", "),
+      ...(cc.length > 0 ? { cc: cc.join(", ") } : {}),
       subject: letter.subject,
       html: letter.body
     });

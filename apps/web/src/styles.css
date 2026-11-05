@@ -450,6 +450,12 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .field-label { display: grid; gap: 7px; color: #6a7486; font-size: 9px; font-weight: 600; }
 .field-label select, .field-label input { width: 100%; min-height: 37px; padding: 0 10px; border: 1px solid #e5e9f0; border-radius: 7px; outline: 0; color: #475367; background: #fff; font: inherit; font-size: 10px; }
 .field-label select:focus, .field-label input:focus { border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; }
+.coordination-address-fields { display: grid; gap: 12px; margin-bottom: 16px; }
+.coordination-address-fields textarea { width: 100%; min-height: 58px; padding: 9px 10px; border: 1px solid #e5e9f0; border-radius: 7px; outline: 0; color: #475367; background: #fff; font: inherit; font-size: 10px; line-height: 1.5; resize: vertical; }
+.coordination-address-fields textarea:focus { border-color: #aab8ef; box-shadow: 0 0 0 3px #eef1ff; }
+.coordination-address-fields textarea:disabled { color: #8992a2; background: #f6f7f9; }
+.coordination-address-hint { display: flex; align-items: flex-start; gap: 6px; margin: -4px 0 0; color: #7d8799; font-size: 9px; line-height: 1.5; font-weight: 400; }
+.coordination-address-hint svg { flex: 0 0 auto; margin-top: 1px; }
 .assignment-preview-button, .assignment-confirm-button { width: 100%; }
 .assignment-loading { color: #929aaa; font-size: 9px; }
 .assignment-error { padding: 10px 11px; border: 1px solid #f1d7d1; border-radius: 7px; color: #aa5c50; background: #fff7f5; font-size: 9px; line-height: 1.5; }

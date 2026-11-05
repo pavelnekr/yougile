@@ -36,7 +36,7 @@ type LetterPreview = {
   };
   warnings: string[];
 };
-type SentLetter = { recipients: string[]; subject: string };
+type SentLetter = { recipients: string[]; cc: string[]; subject: string };
 // Состояние панели правки таблицы: она видна, пока курсор над таблицей.
 // Счётчики нужны, чтобы гасить кнопки удаления, когда строка/столбец последний.
 type TableToolbarState = {
@@ -46,6 +46,10 @@ type TableToolbarState = {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось выполнить запрос.";
+}
+
+function parseRecipientInput(value: string): string[] {
+  return value.split(/[;,\n\r]+/).map((address) => address.trim()).filter(Boolean);
 }
 
 /**
@@ -68,6 +72,8 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
   const [workDate, setWorkDate] = useState("");
 
   const [preview, setPreview] = useState<LetterPreview | null>(null);
+  const [recipientInput, setRecipientInput] = useState("");
+  const [ccInput, setCcInput] = useState("");
   const [bodyMode, setBodyMode] = useState<"rendered" | "source">("rendered");
   const [bodyRevision, setBodyRevision] = useState(0);
   const [tableToolbar, setTableToolbar] = useState<TableToolbarState | null>(null);
@@ -135,6 +141,8 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
         throw new Error("Сервер вернул неполные данные письма.");
       }
       setPreview(data);
+      setRecipientInput(data.recipients.join("; "));
+      setCcInput("");
       setBodyMode("rendered");
       setBodyRevision((value) => value + 1);
     } catch (reason) {
@@ -152,11 +160,18 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
       const response = await apiFetch("/api/coordination/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject: preview.subject, body: preview.body, siteNumber: preview.siteNumber, directoryImportedAt: preview.directoryImportedAt })
+        body: JSON.stringify({
+          subject: preview.subject,
+          body: preview.body,
+          siteNumber: preview.siteNumber,
+          directoryImportedAt: preview.directoryImportedAt,
+          recipients: parseRecipientInput(recipientInput),
+          cc: parseRecipientInput(ccInput)
+        })
       });
-      const data = await response.json() as { sent?: boolean; recipients?: string[]; error?: string };
+      const data = await response.json() as { sent?: boolean; recipients?: string[]; cc?: string[]; error?: string };
       if (!response.ok || !data.sent) throw new Error(data.error ?? "Не удалось отправить письмо.");
-      setSent({ recipients: data.recipients ?? [], subject: preview.subject });
+      setSent({ recipients: data.recipients ?? [], cc: data.cc ?? [], subject: preview.subject });
       setPreview(null);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -171,6 +186,8 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
     setContractor("");
     setWorkDate("");
     setPreview(null);
+    setRecipientInput("");
+    setCcInput("");
     setSent(null);
     setBodyMode("rendered");
     setError("");
@@ -359,7 +376,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
           <p>Загрузите DOCX-план работ — портал соберёт письмо согласования АВР. Проверьте тему и текст, затем отправьте получателям.</p>
         </div>
         <div className="coordination-heading-actions">
-          {(preview || sent) && <span className="sites-total">{countRu(preview?.recipients.length ?? sent?.recipients.length ?? 0, recipientForms)}</span>}
+          {(preview || sent) && <span className="sites-total">{countRu(preview ? parseRecipientInput(recipientInput).length : sent?.recipients.length ?? 0, recipientForms)}</span>}
           {onBack && (
             <button className="text-button" onClick={onBack}>
               <ArrowLeft size={14} /> Назад
@@ -473,12 +490,16 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
                 </div>
               )}
 
-              <div className={`coordination-recipients ${smtpReady ? "" : "coordination-recipients-off"}`}>
-                <Mail size={14} />
-                <span>
-                  <>Кому: {preview.recipients.join(", ")}</>
-                  {!smtpReady && " · SMTP не настроен — отправка недоступна"}
-                </span>
+              <div className="coordination-address-fields">
+                <label className="field-label" htmlFor="coordination-recipients">
+                  <span>Кому</span>
+                  <textarea id="coordination-recipients" value={recipientInput} rows={2} maxLength={3000} disabled={sending} placeholder="Адреса через точку с запятой или с новой строки" onChange={(event) => setRecipientInput(event.target.value)} />
+                </label>
+                <label className="field-label" htmlFor="coordination-cc">
+                  <span>Копия</span>
+                  <textarea id="coordination-cc" value={ccInput} rows={2} maxLength={3000} disabled={sending} placeholder="Необязательно: адреса через точку с запятой или с новой строки" onChange={(event) => setCcInput(event.target.value)} />
+                </label>
+                <p className="coordination-address-hint"><Mail size={13} /> Адреса из справочника уже подставлены, их можно изменить. Некорректные адреса заблокируют отправку.{!smtpReady && " SMTP не настроен — отправка недоступна."}</p>
               </div>
 
               <label className="field-label coordination-subject-field" htmlFor="coordination-subject">
@@ -599,6 +620,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
             <span>
               Письмо ушло получателям: {sent.recipients.join(", ") || "—"}
               {" · "}{countRu(sent.recipients.length, recipientForms)}
+              {sent.cc.length > 0 && <> · Копия: {sent.cc.join(", ")}</>}
             </span>
           </div>
           <div className="coordination-preview-actions">
@@ -609,7 +631,7 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
 
       <footer className="page-footer">
         <span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span>
-        <span><Mail size={14} /> Получатели настраиваются в разделе «Конфигурация портала», отправка журналируется</span>
+        <span><Mail size={14} /> Адресатов можно изменить перед отправкой, отправка журналируется</span>
       </footer>
     </section>
   );

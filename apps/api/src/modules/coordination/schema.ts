@@ -23,24 +23,33 @@ export const previewFieldsSchema = z.object({
   workDate: workDateSchema
 });
 
-// Письмо после предпросмотра: тема и тело редактируются оператором до отправки.
+const emailSchema = z.string().trim()
+  .min(1, "Адрес не может быть пустым.")
+  .max(254, "Адрес слишком длинный.")
+  .email("Проверьте адрес электронной почты.");
+
+// Письмо после предпросмотра: адресаты, тема и тело редактируются оператором до отправки.
 // Тело — HTML (письмо формируется таблицами), поэтому верхняя граница щедрая,
 // но ограничена, чтобы в одном запросе нельзя было перегрузить SMTP-сервер.
 export const sendLetterSchema = z.object({
   siteNumber: z.string().trim().min(1, "Не найден номер площадки для определения адресатов.").max(64).regex(/^\d+$/, "Номер площадки должен состоять из цифр."),
   directoryImportedAt: z.string().datetime("Обновите предпросмотр перед отправкой."),
+  recipients: z.array(emailSchema).min(1, "Укажите хотя бы одного адресата в поле «Кому».").max(50, "Можно указать не больше 50 адресатов.")
+    .refine((items) => new Set(items.map((item) => item.toLowerCase())).size === items.length, "Адреса в поле «Кому» не должны повторяться."),
+  cc: z.array(emailSchema).max(50, "Можно указать не больше 50 адресатов в копии.").default([])
+    .refine((items) => new Set(items.map((item) => item.toLowerCase())).size === items.length, "Адреса в копии не должны повторяться."),
   subject: z.string().trim()
     .min(1, "Укажите тему письма.")
     .max(500, "Тема не должна превышать 500 символов."),
   body: z.string().trim()
     .min(1, "Текст письма пуст.")
     .max(100_000, "Текст письма не должен превышать 100 000 символов.")
+}).superRefine((value, context) => {
+  const to = new Set(value.recipients.map((item) => item.toLowerCase()));
+  if (value.cc.some((item) => to.has(item.toLowerCase()))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["cc"], message: "Один адрес не может одновременно находиться в полях «Кому» и «Копия»." });
+  }
 });
-
-const emailSchema = z.string().trim()
-  .min(1, "Адрес не может быть пустым.")
-  .max(254, "Адрес слишком длинный.")
-  .email("Проверьте адрес электронной почты.");
 
 export const mailRecipientsSchema = z.object({
   recipients: z.array(emailSchema)

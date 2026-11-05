@@ -20,10 +20,16 @@ test("ограничивает пустые и чрезмерно длинные
   const validPayload = {
     siteNumber: "00123",
     directoryImportedAt: "2026-10-25T10:00:00.000Z",
+    recipients: ["ops@example.com"],
+    cc: ["copy@example.com"],
     subject: "Тема",
     body: "Текст"
   };
   assert.equal(sendLetterSchema.safeParse(validPayload).success, true);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, recipients: [] }).success, false);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, recipients: ["bad-address"] }).success, false);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, cc: ["bad-address"] }).success, false);
+  assert.equal(sendLetterSchema.safeParse({ ...validPayload, cc: ["OPS@example.com"] }).success, false);
   assert.equal(sendLetterSchema.safeParse({ ...validPayload, siteNumber: "123A" }).success, false);
   assert.equal(sendLetterSchema.safeParse({ ...validPayload, directoryImportedAt: "invalid" }).success, false);
   assert.equal(sendLetterSchema.safeParse({ ...validPayload, subject: "" }).success, false);

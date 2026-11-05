@@ -329,7 +329,8 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     if (directory.directoryImportedAt !== parsed.data.directoryImportedAt) {
       return reply.code(409).send({ error: "Справочник адресатов обновился после предпросмотра. Пересоберите письмо и проверьте адресатов." });
     }
-    const recipients = directory.recipients;
+    const recipients = parsed.data.recipients;
+    const cc = parsed.data.cc;
     const smtpSettings = await loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message));
     const actor = request.sessionUser;
     const logBase = {
@@ -339,18 +340,18 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       ip: request.ip,
       method: request.method,
       path: request.url,
-      request: { subject: parsed.data.subject, siteNumber: parsed.data.siteNumber, recipientCount: recipients.length }
+      request: { subject: parsed.data.subject, siteNumber: parsed.data.siteNumber, recipientCount: recipients.length, ccCount: cc.length }
     };
 
     try {
-      const result = await sendLetter(parsed.data, recipients, smtpSettings);
+      const result = await sendLetter(parsed.data, recipients, cc, smtpSettings);
       void recordLog(prisma, {
         ...logBase,
         action: "POST /api/coordination/send",
-        message: `Письмо «${parsed.data.subject}» отправлено адресатам площадки ${parsed.data.siteNumber} (${recipients.length}).`,
+        message: `Письмо «${parsed.data.subject}» отправлено адресатам площадки ${parsed.data.siteNumber} (${recipients.length}, копия: ${cc.length}).`,
         status: 200
       });
-      return { sent: true, recipients, messageId: result.messageId };
+      return { sent: true, recipients, cc, messageId: result.messageId };
     } catch (error) {
       app.log.error({ err: error }, "Could not send coordination letter");
       const message = describeSendError(error);
