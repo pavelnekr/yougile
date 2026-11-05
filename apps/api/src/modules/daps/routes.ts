@@ -1190,7 +1190,7 @@ export async function registerDapsRoutes(app: FastifyInstance, prisma: PrismaCli
     sheet.getRow(1).height = 24; sheet.getRow(2).height = 22;
 
     const sums = new Map<string, { sums: number[]; counts: number[] }>();
-    const weekGroups = new Map<string, { label: string; firstRow: number; lastRow: number; values: number[][] }>();
+    const weekGroups = new Map<string, { label: string; firstRow: number; lastRow: number; values: (number | null)[][] }>();
     const rowsByDate = new Map(dailyRows.map((row) => [row.date.toISOString().slice(0, 10), row.values]));
     const today = new Date();
     const currentYear = today.getUTCFullYear();
