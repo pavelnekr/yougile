@@ -192,7 +192,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   const currentPage = Math.min(page, pageCount);
   const visibleRows = filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const selectedReadyRows = (planImport?.rows ?? []).filter((row) => selectedRows.includes(row.rowNumber) && row.status === "READY");
-  const validComment = comment.trim().length > 0 && comment.length <= 10_000;
+  const validComment = comment.length <= 10_000;
   const operationPending = Boolean(operationId && (!operation || operation.status === "QUEUED" || operation.status === "RUNNING"));
   // Адреса площадок для таблицы состояний. Из предпросмотра — для своей
   // операции; при восстановлении после ухода со страницы предпросмотра уже нет,
@@ -216,6 +216,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     setOperation(null);
     setOperationId("");
     setComment("");
+    setSelectedCommentTemplate("");
     try {
       const body = new FormData();
       body.append("file", file);
@@ -251,7 +252,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   };
 
   const requestAssignmentPreview = async () => {
-    if (!planImport || selectedReadyRows.length === 0 || !selectedCommentTemplate || !validComment) return;
+    if (!planImport || selectedReadyRows.length === 0 || !validComment) return;
     setBusy(true);
     setError("");
     setPreview(null);
@@ -276,7 +277,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
   };
 
   const confirmAssignment = async () => {
-    if (!planImport || !preview || !selectedCommentTemplate || !validComment) return;
+    if (!planImport || !preview || !validComment) return;
     setBusy(true);
     setError("");
     try {
@@ -346,6 +347,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
     setOperation(null);
     setOperationId("");
     setComment("");
+    setSelectedCommentTemplate("");
     setError("");
     setBulkWarning(null);
   };
@@ -439,17 +441,17 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
           </div>
 
           <div className="panel import-comment-panel">
-            <div className="assignment-panel-heading"><div><h2>2. Шаблон комментария</h2><p>Для каждой выбранной строки шаблон будет сформирован по значениям XLSX.</p></div></div>
+            <div className="assignment-panel-heading"><div><h2>2. Комментарий (необязательно)</h2><p>Оставьте поле пустым, напишите свой текст или вставьте шаблон. Переменные шаблона подставятся из XLSX.</p></div></div>
             <div className="saved-template-picker">
               <label className="field-label" htmlFor="saved-comment-template">
-                <span>Категория работ / шаблон</span>
+                <span>Шаблон комментария</span>
                 <select
                   id="saved-comment-template"
                   value={selectedCommentTemplate}
                   disabled={templatesLoading || operationPending}
                   onChange={(event) => setSelectedCommentTemplate(event.target.value)}
                 >
-                  <option value="">{templatesLoading ? "Загружаем шаблоны…" : "Выберите категорию и шаблон"}</option>
+                  <option value="">{templatesLoading ? "Загружаем шаблоны…" : "Без шаблона"}</option>
                   {commentTemplates.map((template) => (
                     <option key={template.type} value={template.type}>
                       {template.label}{template.isCustom ? " · Другое" : ""}{template.value.trim() ? "" : " · пустой"}
@@ -471,7 +473,7 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
             </div>
             {templatesError && <p className="saved-template-error">{templatesError} Можно ввести текст вручную.</p>}
             <label className="field-label import-comment-field">
-              <span>Текст шаблона</span>
+              <span>Текст комментария</span>
               <textarea
                 value={comment}
                 maxLength={10_000}
@@ -481,10 +483,10 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
                   setComment(event.target.value);
                   setPreview(null);
                 }}
-                placeholder="Например: Работы запланированы на ${data}, время ${time}"
+                placeholder="Можно оставить пустым или написать комментарий вручную"
               />
             </label>
-            <p className="comment-template-hint">Выберите один из четырёх видов работ для статистики. Этот тип сохраняется вместе с операцией; сам текст комментария можно отредактировать вручную. <code>{"${data}"}</code> и <code>{"${time}"}</code> подставляются из XLSX.</p>
+            <p className="comment-template-hint">Выбранный шаблон задаёт категорию для статистики. Без шаблона категория не указывается. <code>{"${data}"}</code> и <code>{"${time}"}</code> подставляются из XLSX.</p>
             <span className="comment-character-count">{comment.length.toLocaleString("ru-RU")} / 10 000</span>
           </div>
 
@@ -515,18 +517,17 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
           )}
 
           <div className="import-preview-action">
-            <button className="btn-primary" disabled={busy || selectedReadyRows.length === 0 || !selectedCommentTemplate || !validComment || operationPending} onClick={() => void requestAssignmentPreview()}>
-              <ShieldCheck size={16} /> {busy ? "Проверяем…" : "Проверить назначения и комментарий"}
+            <button className="btn-primary" disabled={busy || selectedReadyRows.length === 0 || !validComment || operationPending} onClick={() => void requestAssignmentPreview()}>
+              <ShieldCheck size={16} /> {busy ? "Проверяем…" : "Проверить назначения"}
             </button>
-            {selectedReadyRows.length > 0 && !selectedCommentTemplate && <span>Выберите вид работ, чтобы назначение попало в статистику по категориям.</span>}
-            {selectedReadyRows.length > 0 && selectedCommentTemplate && !validComment && <span>Введите шаблон комментария для выбранных задач.</span>}
+            {selectedReadyRows.length > 0 && !validComment && <span>Комментарий не должен превышать 10 000 символов.</span>}
           </div>
 
           {preview && (
             <div className="panel xlsx-assignment-preview" ref={previewStepRef}>
               <div className="assignment-panel-heading"><div><h2>3. Предпросмотр изменений</h2><p>{countRu(preview.count, siteForms)}, только из загруженного XLSX</p></div><span className="preview-valid-label"><CheckCircle2 size={14} /> Проверено</span></div>
-              <div className="preview-summary">Для каждой строки будет назначен инженер из XLSX, а сформированный по её дате и времени комментарий отправлен в чат задачи. Если в строке заполнен столбец «klaster», в чат дополнительно уйдёт комментарий кластера («Обрати внимание! Кластер: площадка-кластер»). Существующие ответственные сохраняются; комментарий отправится и если инженер уже назначен.</div>
-              <blockquote className="comment-preview"><strong>Шаблон:</strong> {renderCommentMarkup(comment.trim())}</blockquote>
+              <div className="preview-summary">Для каждой строки будет назначен инженер из XLSX. {comment.trim() ? "Комментарий будет отправлен в чат задачи." : "Комментарий не будет отправлен, так как поле оставлено пустым."} Если в строке заполнен столбец «klaster», в чат дополнительно уйдёт комментарий кластера («Обрати внимание! Кластер: площадка-кластер»). Существующие ответственные сохраняются.</div>
+              <blockquote className="comment-preview"><strong>Комментарий:</strong> {comment.trim() ? renderCommentMarkup(comment.trim()) : "Не отправляется"}</blockquote>
               <div className="xlsx-preview-list">
                 {preview.items.map((item) => (
                   <div className="xlsx-preview-row" key={item.rowNumber}>
@@ -535,13 +536,13 @@ export default function XlsxAssignmentPage({ onComplete }: { onComplete: () => v
                     <span className="xlsx-preview-engineer">{item.engineerName}<small>{item.alreadyAssigned ? "Уже назначен" : "Будет добавлен"}</small></span>
                     <span className="xlsx-preview-current" title={item.currentEngineers.map((user) => user.name).join(", ")}>
                       <span>Сейчас: {item.currentEngineers.map((user) => user.name).join(", ") || "нет ответственных"}</span>
-                      <small className="xlsx-preview-comment">{renderCommentMarkup(item.comment)}</small>
+                      <small className="xlsx-preview-comment">{item.comment ? renderCommentMarkup(item.comment) : "Комментарий не отправляется"}</small>
                     </span>
                   </div>
                 ))}
               </div>
-              <button className="btn-primary assignment-confirm-button" disabled={!selectedCommentTemplate || !validComment || busy || operationPending} onClick={() => void confirmAssignment()}>
-                <CheckCircle2 size={16} /> Подтвердить назначения и комментарии
+              <button className="btn-primary assignment-confirm-button" disabled={!validComment || busy || operationPending} onClick={() => void confirmAssignment()}>
+                <CheckCircle2 size={16} /> Подтвердить назначение
               </button>
             </div>
           )}

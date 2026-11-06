@@ -57,9 +57,11 @@ const DETAIL_ROW_LIMIT = 300;
 const previewSchema = z.object({
   rowNumbers: z.array(z.number().int().positive()).min(1).max(maxSitesPerOperation, tooManySitesError("строк XLSX"))
     .refine((rows) => new Set(rows).size === rows.length, "В плане выбраны повторяющиеся строки."),
-  workType: z.enum(["filter", "balancers", "bypasses", "ehw", "other"]),
-  commentTemplate: z.string().trim().min(1, "Введите шаблон комментария.")
-    .max(10_000, "Шаблон комментария не должен превышать 10 000 символов.")
+  workType: z.enum(["filter", "balancers", "bypasses", "ehw", "other"]).optional(),
+  commentTemplate: z.string().trim()
+    .max(10_000, "Комментарий не должен превышать 10 000 символов.")
+    .optional()
+    .default("")
 });
 
 const applySchema = previewSchema;
@@ -1108,7 +1110,7 @@ export async function registerImportRoutes(
 
   app.post<{ Params: { id: string } }>("/api/imports/:id/assign", { preHandler: writeAccess }, async (request, reply) => {
     const parsed = applySchema.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: "Выберите проверенные строки плана и введите шаблон комментария." });
+    if (!parsed.success) return reply.code(400).send({ error: "Выберите проверенные строки плана." });
 
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
@@ -1132,7 +1134,7 @@ export async function registerImportRoutes(
             metadata: {
               importBatchId: prepared.batchId,
               fileName: prepared.fileName,
-              workType: parsed.data.workType,
+              ...(parsed.data.workType ? { workType: parsed.data.workType } : {}),
               commentTemplate: parsed.data.commentTemplate
             },
             items: {
