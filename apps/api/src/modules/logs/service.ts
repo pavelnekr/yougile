@@ -160,12 +160,13 @@ export async function recordLog(prisma: PrismaClient, entry: LogEntry): Promise<
  */
 export function annotateLog(
   request: FastifyRequest,
-  annotation: { message?: string; action?: string; level?: LogLevel; entityId?: string }
+  annotation: { message?: string; action?: string; level?: LogLevel; entityId?: string; details?: unknown }
 ): void {
   if (annotation.message !== undefined) request.logMessage = annotation.message;
   if (annotation.action !== undefined) request.logAction = annotation.action;
   if (annotation.level !== undefined) request.logLevel = annotation.level;
   if (annotation.entityId !== undefined) request.logEntityId = annotation.entityId;
+  if (annotation.details !== undefined) request.logDetails = annotation.details;
 }
 
 declare module "fastify" {
@@ -178,6 +179,8 @@ declare module "fastify" {
     logLevel?: LogLevel;
     /** Связанный объект: операция, импорт, учётная запись. */
     logEntityId?: string;
+    /** Дополнительные диагностические данные, прикреплённые маршрутом. */
+    logDetails?: unknown;
   }
 }
 
@@ -296,7 +299,7 @@ export function registerLogHooks(app: FastifyInstance, prisma: PrismaClient): vo
       path: pathname,
       status,
       durationMs,
-      request: request.body ?? null,
+      request: request.logDetails ?? request.body ?? null,
       error: detailError,
       entityId: request.logEntityId ?? null
     });

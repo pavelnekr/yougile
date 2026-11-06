@@ -3,7 +3,9 @@ import type { PrismaClient } from "@prisma/client";
 import { requireWorkspaceAccess } from "../auth/service.js";
 import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { isYougileBusy } from "../../lib/yougile-activity.js";
-import { loadAvrColumns } from "../portal-config/service.js";
+import { describeError } from "../../lib/error-details.js";
+import { annotateLog } from "../logs/service.js";
+import { getPlanColumn, loadAvrColumns } from "../portal-config/service.js";
 import { getAvrSites, getPlannedSites, peekAvrSites, peekPlannedSites, type AvrSitesList } from "./service.js";
 
 // Карточке и странице «Площадки АВР» нужен один и тот же ответ: список столбцов
@@ -28,6 +30,8 @@ function avrResponse(result: AvrSitesList, paused: boolean) {
 export async function registerSiteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
   app.get("/api/sites/in-plan", { preHandler: readAccess }, async (request, reply) => {
+    let stage = "получение личного клиента YouGile";
+    let planColumnId: string | null = null;
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
 
@@ -45,6 +49,8 @@ export async function registerSiteRoutes(app: FastifyInstance, prisma: PrismaCli
         };
       }
 
+      stage = "загрузка задач из колонки плана";
+      planColumnId = getPlanColumn().id;
       const items = await getPlannedSites(yougile);
       return {
         items,
@@ -54,8 +60,16 @@ export async function registerSiteRoutes(app: FastifyInstance, prisma: PrismaCli
       };
     } catch (error) {
       if (error instanceof UserYougileCredentialError) {
+        annotateLog(request, {
+          message: "Не удалось загрузить колонку плана: не настроены учётные данные YouGile",
+          details: { stage, planColumnId, error: describeError(error) }
+        });
         return reply.code(error.statusCode).send({ error: error.message });
       }
+      annotateLog(request, {
+        message: "Не удалось загрузить колонку плана из YouGile",
+        details: { stage, planColumnId, error: describeError(error) }
+      });
       app.log.error({ err: error }, "Could not load planned sites from YouGile");
       return reply.code(502).send({
         error: "Не удалось загрузить площадки из YouGile. Проверьте доступ к колонке плана."
