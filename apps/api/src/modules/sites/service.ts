@@ -3,7 +3,6 @@ import { YougileClient } from "../../integrations/yougile/client.js";
 import { getPlanColumn } from "../portal-config/service.js";
 import type { PortalColumn } from "../portal-config/schema.js";
 import { extractSiteIdFromTaskTitle } from "./extract-site-id.js";
-import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 
 const taskSchema = z.object({
   id: z.string(),
@@ -168,13 +167,12 @@ export async function getAvrSites(
   if (entry.data && Date.now() < entry.expiresAt) return entry.data;
   if (entry.pending) return entry.pending;
 
-  // Столбцы обходим последовательно с паузой, чтобы не перегружать YouGile.
+  // Столбцы обходим последовательно; общий интервал task-list задаёт YougileClient.
   const pending = (async (): Promise<AvrSitesList> => {
     const items: AvrColumnSites[] = [];
-    for (const [index, column] of columns.entries()) {
+    for (const column of columns) {
       const tasks = await fetchColumnTasks(client, column.id);
       items.push({ id: column.id, name: column.name, sites: toPlannedSites(tasks, true) });
-      if (index < columns.length - 1) await delayBetweenYougileActions();
     }
     return {
       columns: items,

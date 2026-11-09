@@ -1,5 +1,31 @@
 import { createHash } from "node:crypto";
 import { config } from "../../config.js";
+import { yougileActionDelayMs } from "../../lib/action-delay.js";
+
+// Все task-list запросы процесса идут через общий интервал: проверка новых
+// столбцов в конфигурации иначе могла пересечься со списком плана или АВР.
+let taskListQueue: Promise<void> = Promise.resolve();
+let lastTaskListResponseAt = 0;
+
+async function requestTaskList(fetchRequest: () => Promise<Response>): Promise<Response> {
+  let release!: () => void;
+  const turn = new Promise<void>((resolve) => { release = resolve; });
+  const previous = taskListQueue;
+  taskListQueue = previous.then(() => turn);
+  await previous;
+
+  try {
+    const waitMs = lastTaskListResponseAt + yougileActionDelayMs - Date.now();
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+    try {
+      return await fetchRequest();
+    } finally {
+      lastTaskListResponseAt = Date.now();
+    }
+  } finally {
+    release();
+  }
+}
 
 export class YougileApiError extends Error {
   constructor(
@@ -69,12 +95,14 @@ export class YougileClient {
     // недопустимо.
     const maxRateLimitRetries = 10;
     let rateLimitRetries = 0;
+    const isTaskListRequest = relativePath.split("?", 1)[0] === "task-list";
     while (true) {
-      response = await fetch(new URL(relativePath, baseUrl), {
+      const fetchRequest = () => fetch(new URL(relativePath, baseUrl), {
         ...init,
         headers,
         signal: init.signal ?? AbortSignal.timeout(15_000)
       });
+      response = isTaskListRequest ? await requestTaskList(fetchRequest) : await fetchRequest();
       responseText = await response.text();
       if (response.status !== 429 || !this.options.retryOnRateLimit) break;
       if (rateLimitRetries >= maxRateLimitRetries) {
