@@ -6,7 +6,8 @@ import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { describeError } from "../../lib/error-details.js";
 import { renderCommentForYougile } from "../../lib/comment-markup.js";
-import { getPlannedSites } from "../sites/service.js";
+import type { PlannedSite } from "../sites/service.js";
+import { getPlanSitesSnapshot } from "../sites/snapshot.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, readTask, validatePlanTask } from "../assignments/service.js";
 import { commentTemplateTypeSchema } from "../settings/schema.js";
@@ -60,11 +61,8 @@ function describeChatError(error: unknown) {
  * Предпросмотр перечитывает каждую задачу из YouGile заново: площадка могла уйти
  * из плана, а чат — получить новые сообщения с момента загрузки страницы.
  */
-export async function previewComments(client: YougileClient, input: CommentInput) {
-  const [plannedSites, employees] = await Promise.all([
-    getPlannedSites(client),
-    getAssignmentUsers(client)
-  ]);
+export async function previewComments(client: YougileClient, input: CommentInput, plannedSites: PlannedSite[]) {
+  const employees = await getAssignmentUsers(client);
   const siteByTaskId = new Map(plannedSites.map((site) => [site.taskId, site]));
   const nameByUserId = new Map(employees.map((user) => [user.id, user.name]));
 
@@ -148,7 +146,7 @@ export async function processCommentOperation(
     data: { status: OperationStatus.RUNNING, startedAt: new Date() }
   });
 
-  const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
+  const siteByTaskId = new Map((await getPlanSitesSnapshot(prisma, { requireCurrentConfig: true })).items.map((site) => [site.taskId, site]));
   // Комментарии отправляются строго по очереди, с паузой 4 секунды между
   // площадками, как и остальные записи в YouGile. Параллельная отправка
   // (раньше — 3 воркера) давала трекеру пачку запросов разом и ломала

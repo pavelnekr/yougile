@@ -5,7 +5,7 @@ import type { OperationJob } from "../../jobs/queue.js";
 import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { normalizeEngineerName } from "../../lib/engineer-name.js";
 import { describeError } from "../../lib/error-details.js";
-import { getPlannedSites } from "../sites/service.js";
+import { getPlanSitesSnapshot } from "../sites/snapshot.js";
 import { getAssignmentUsers } from "../users/service.js";
 import { AssignmentValidationError, maxSitesPerOperation, readTask, tooManySitesError, validatePlanTask } from "./service.js";
 
@@ -44,7 +44,7 @@ export async function prepareImportRemoval(
   }
 
   const employees = await getAssignmentUsers(client);
-  const plannedSites = await getPlannedSites(client);
+  const plannedSites = (await getPlanSitesSnapshot(prisma, { requireCurrentConfig: true })).items;
   const usersById = new Map(employees.map((user) => [user.id, user]));
   const taskById = new Map(plannedSites.map((site) => [site.taskId, site]));
   const siteIds = new Set<string>();
@@ -124,7 +124,7 @@ export async function processRemovalOperation(
   });
   if (!started.count) return;
 
-  const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
+  const siteByTaskId = new Map((await getPlanSitesSnapshot(prisma, { requireCurrentConfig: true })).items.map((site) => [site.taskId, site]));
   for (const item of operation.items) {
     const currentOperation = await prisma.operation.findUnique({ where: { id: operationId }, select: { status: true } });
     if (currentOperation?.status === OperationStatus.CANCELLED) break;

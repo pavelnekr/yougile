@@ -25,7 +25,7 @@ import {
   tooManySitesError
 } from "../assignments/service.js";
 import { importRemovalSchema, prepareImportRemoval } from "../assignments/removal.js";
-import { getPlannedSites } from "../sites/service.js";
+import { getPlanSitesSnapshot } from "../sites/snapshot.js";
 import { renderCommentTemplate, getRawField } from "./comment-template.js";
 import { parsePlanWorkbook } from "./xlsx.js";
 import {
@@ -628,7 +628,7 @@ export async function registerImportRoutes(
 
       const buffer = await upload.toBuffer();
       const parsedPlan = await parsePlanWorkbook(buffer);
-      const sites = await getPlannedSites(yougile);
+      const sites = (await getPlanSitesSnapshot(prisma, { requireCurrentConfig: true })).items;
       const users = await getAssignmentUsers(yougile);
       const taskBySiteId = new Map<string, typeof sites[number]>();
       for (const site of sites) {
@@ -858,7 +858,7 @@ export async function registerImportRoutes(
     const usersById = new Map(employees.map((user) => [user.id, user]));
     const siteIds = new Set<string>();
     const items = [];
-    const allTasks = await getPlannedSites(yougile);
+    const allTasks = (await getPlanSitesSnapshot(prisma, { requireCurrentConfig: true })).items;
     const taskById = new Map(allTasks.map((site) => [site.taskId, site]));
 
     for (const row of batch.rows) {
@@ -899,7 +899,10 @@ export async function registerImportRoutes(
 
     const previews = new Map<string, Awaited<ReturnType<typeof previewAssignments>>["items"][number]>();
     for (const [userId, taskIds] of grouped) {
-      const preview = await previewAssignments(yougile, { userId, taskIds });
+      const preview = await previewAssignments(yougile, { userId, taskIds }, {
+        plannedSites: allTasks,
+        avrSites: { columns: [], items: [], total: 0 }
+      });
       for (const item of preview.items) previews.set(item.taskId, item);
     }
 

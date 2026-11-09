@@ -8,6 +8,7 @@ import { getAssignmentUsers } from "../users/service.js";
 import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
 import { requireWorkspaceAccess } from "../auth/service.js";
 import { loadAvrColumns } from "../portal-config/service.js";
+import { getAvrSitesSnapshot, getPlanSitesSnapshot } from "../sites/snapshot.js";
 import {
   assignmentPreviewBodySchema,
   AssignmentValidationError,
@@ -91,7 +92,17 @@ export async function registerAssignmentRoutes(
 
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
-      return await previewAssignments(yougile, parsed.data, await loadAvrColumns(prisma));
+      const columns = await loadAvrColumns(prisma);
+      const [planSnapshot, avrSnapshot] = await Promise.all([
+        getPlanSitesSnapshot(prisma, { requireCurrentConfig: true }),
+        getAvrSitesSnapshot(prisma, columns, { requireCurrentConfig: true })
+      ]);
+      return await previewAssignments(
+        yougile,
+        parsed.data,
+        { plannedSites: planSnapshot.items, avrSites: avrSnapshot.data },
+        columns
+      );
     } catch (error) {
       if (error instanceof UserYougileCredentialError) {
         return reply.code(error.statusCode).send({ error: error.message });
@@ -308,7 +319,17 @@ export async function registerAssignmentRoutes(
 
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id, { retryOnRateLimit: true });
-      const preview = await previewAssignments(yougile, parsed.data, await loadAvrColumns(prisma));
+      const columns = await loadAvrColumns(prisma);
+      const [planSnapshot, avrSnapshot] = await Promise.all([
+        getPlanSitesSnapshot(prisma, { requireCurrentConfig: true }),
+        getAvrSitesSnapshot(prisma, columns, { requireCurrentConfig: true })
+      ]);
+      const preview = await previewAssignments(
+        yougile,
+        parsed.data,
+        { plannedSites: planSnapshot.items, avrSites: avrSnapshot.data },
+        columns
+      );
       const operation = await prisma.operation.create({
         data: {
           type: "ASSIGN",

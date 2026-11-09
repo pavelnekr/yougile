@@ -330,7 +330,7 @@ function App() {
             const error = await response.json().catch(() => null) as { error?: string } | null;
             throw new Error(error?.error ?? "Не удалось загрузить площадки.");
           }
-          return response.json() as Promise<{ items: PlannedSite[]; paused?: boolean }>;
+          return response.json() as Promise<{ items: PlannedSite[]; paused?: boolean; refreshing?: boolean }>;
         })
         .then((data) => {
           if (cancelled) return;
@@ -340,7 +340,7 @@ function App() {
           // Сервер приостановил обновление, потому что идёт операция: показываем
           // последний кэш и повторяем запрос, пока операции не закончатся.
           setSitePaused(Boolean(data.paused));
-          if (data.paused) retry = setTimeout(load, pausedSitesRetryMs);
+          retry = setTimeout(load, data.paused ? pausedSitesRetryMs : data.refreshing ? pausedSitesRetryMs : 5 * 60_000);
         })
         .catch((error: unknown) => {
           if (cancelled || controller.signal.aborted) return;

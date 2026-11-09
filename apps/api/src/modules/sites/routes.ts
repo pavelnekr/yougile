@@ -1,13 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import type { PrismaClient } from "@prisma/client";
 import { requireWorkspaceAccess } from "../auth/service.js";
-import { UserYougileCredentialError, getUserYougileClient } from "../../integrations/yougile/user-client.js";
 import { isYougileBusy } from "../../lib/yougile-activity.js";
 import { describeError } from "../../lib/error-details.js";
 import { annotateLog } from "../logs/service.js";
-import { getPlanColumn, loadAvrColumns } from "../portal-config/service.js";
-import { getPlannedSites, peekPlannedSites, type AvrSitesList } from "./service.js";
-import { getAvrSitesSnapshot } from "./snapshot.js";
+import { loadAvrColumns } from "../portal-config/service.js";
+import type { AvrSitesList } from "./service.js";
+import { getAvrSitesSnapshot, getPlanSitesSnapshot } from "./snapshot.js";
 
 // Карточке и странице «Площадки АВР» нужен один и тот же ответ: список столбцов
 // с их площадками. Разворачиваем его в плоскую таблицу с именем столбца у каждой
@@ -32,49 +31,24 @@ function avrResponse(result: AvrSitesList, paused: boolean, updatedAt = new Date
 export async function registerSiteRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const readAccess = requireWorkspaceAccess("WORK_MANAGEMENT");
   app.get("/api/sites/in-plan", { preHandler: readAccess }, async (request, reply) => {
-    let stage = "получение личного клиента YouGile";
-    let planColumnId: string | null = null;
     try {
-      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
-
-      // Пока идёт операция, списки площадок не перечитываются: параллельные
-      // запросы к YouGile дают HTTP 429 «Too Many Requests». Отдаём последний
-      // кэш (даже просроченный) и помечаем ответ флагом paused — фронтенд
-      // покажет пометку и повторит запрос, когда операции закончатся.
-      if (await isYougileBusy(prisma)) {
-        const cached = peekPlannedSites(yougile);
-        return {
-          items: cached ?? [],
-          count: cached?.length ?? 0,
-          updatedAt: new Date().toISOString(),
-          paused: true
-        };
-      }
-
-      stage = "загрузка задач из колонки плана";
-      planColumnId = getPlanColumn().id;
-      const items = await getPlannedSites(yougile);
+      const snapshot = await getPlanSitesSnapshot(prisma);
+      const paused = await isYougileBusy(prisma);
       return {
-        items,
-        count: items.length,
-        updatedAt: new Date().toISOString(),
-        paused: false
+        items: snapshot.items,
+        count: snapshot.items.length,
+        updatedAt: snapshot.updatedAt,
+        paused,
+        refreshing: snapshot.refreshing
       };
-    } catch (error) {
-      if (error instanceof UserYougileCredentialError) {
-        annotateLog(request, {
-          message: "Не удалось загрузить колонку плана: не настроены учётные данные YouGile",
-          details: { stage, planColumnId, error: describeError(error) }
-        });
-        return reply.code(error.statusCode).send({ error: error.message });
-      }
+    } catch (error: unknown) {
       annotateLog(request, {
-        message: "Не удалось загрузить колонку плана из YouGile",
-        details: { stage, planColumnId, error: describeError(error) }
+        message: "Не удалось прочитать общий снимок плана",
+        details: { error: describeError(error) }
       });
-      app.log.error({ err: error }, "Could not load planned sites from YouGile");
+      app.log.error({ err: error }, "Could not read shared planned sites snapshot");
       return reply.code(502).send({
-        error: "Не удалось загрузить площадки из YouGile. Проверьте доступ к колонке плана."
+        error: "Не удалось загрузить общий список площадок из базы данных."
       });
     }
   });

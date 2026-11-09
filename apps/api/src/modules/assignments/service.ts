@@ -7,9 +7,9 @@ import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 import { describeError } from "../../lib/error-details.js";
 import { renderCommentForYougile } from "../../lib/comment-markup.js";
 import { getPlanColumn, loadAvrColumns } from "../portal-config/service.js";
-import { getAvrSites } from "../sites/service.js";
+import type { AvrSitesList, PlannedSite } from "../sites/service.js";
+import { getAvrSitesSnapshot, getPlanSitesSnapshot } from "../sites/snapshot.js";
 import type { PortalColumn } from "../portal-config/schema.js";
-import { getPlannedSites, type PlannedSite } from "../sites/service.js";
 import { getAssignmentUsers } from "../users/service.js";
 
 const taskDetailsSchema = z.object({
@@ -92,14 +92,15 @@ export function validatePlanTask(task: TaskDetails, siteByTaskId: Map<string, Pl
 export async function previewAssignments(
   client: YougileClient,
   input: AssignmentPreviewInput,
+  siteSnapshot: { plannedSites: PlannedSite[]; avrSites: AvrSitesList },
   additionalColumns: PortalColumn[] = []
 ) {
   const users = await getAssignmentUsers(client);
   const user = users.find((candidate) => candidate.id === input.userId);
   if (!user) throw new AssignmentValidationError("Выбранный инженер не найден среди пользователей YouGile.");
 
-  const plannedSites = await getPlannedSites(client);
-  const avrSites = additionalColumns.length ? (await getAvrSites(client, additionalColumns)).items : [];
+  const plannedSites = siteSnapshot.plannedSites;
+  const avrSites = additionalColumns.length ? siteSnapshot.avrSites.items : [];
   const allowedColumnIds = [getPlanColumn().id, ...additionalColumns.map((column) => column.id)];
   const siteByTaskId = new Map([...plannedSites, ...avrSites].map((site) => [site.taskId, site]));
   const missingTask = input.taskIds.find((taskId) => !siteByTaskId.has(taskId));
@@ -195,12 +196,13 @@ export async function processAssignmentOperation(
   });
   if (!started.count) return;
 
-  const siteByTaskId = new Map((await getPlannedSites(client)).map((site) => [site.taskId, site]));
   const avrColumns = await loadAvrColumns(prisma);
-  if (avrColumns.length) {
-    const avrSites = await getAvrSites(client, avrColumns);
-    for (const site of avrSites.items) siteByTaskId.set(site.taskId, site);
-  }
+  const [planSnapshot, avrSnapshot] = await Promise.all([
+    getPlanSitesSnapshot(prisma, { requireCurrentConfig: true }),
+    getAvrSitesSnapshot(prisma, avrColumns, { requireCurrentConfig: true })
+  ]);
+  const siteByTaskId = new Map(planSnapshot.items.map((site) => [site.taskId, site]));
+  for (const site of avrSnapshot.data.items) siteByTaskId.set(site.taskId, site);
   const allowedColumnIds = [getPlanColumn().id, ...avrColumns.map((column) => column.id)];
   for (const item of operation.items) {
     const currentOperation = await prisma.operation.findUnique({ where: { id: operationId }, select: { status: true } });

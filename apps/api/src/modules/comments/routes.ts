@@ -5,6 +5,7 @@ import { operationQueue } from "../../jobs/queue.js";
 import { AssignmentValidationError } from "../assignments/service.js";
 import { previewRateLimit, rateLimitPerUser } from "../auth/rate-limit.js";
 import { requireWorkspaceAccess } from "../auth/service.js";
+import { getPlanSitesSnapshot } from "../sites/snapshot.js";
 import { commentRequestBodySchema, previewComments } from "./service.js";
 
 export async function registerCommentRoutes(
@@ -23,7 +24,8 @@ export async function registerCommentRoutes(
 
     try {
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
-      return await previewComments(yougile, parsed.data);
+      const plannedSites = (await getPlanSitesSnapshot(prisma, { requireCurrentConfig: true })).items;
+      return await previewComments(yougile, parsed.data, plannedSites);
     } catch (error) {
       if (error instanceof UserYougileCredentialError) {
         return reply.code(error.statusCode).send({ error: error.message });
@@ -48,7 +50,8 @@ export async function registerCommentRoutes(
       const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       // Запись в YouGile разрешена только после предпросмотра, поэтому задачи
       // перечитываются заново и здесь, а не берутся из тела запроса.
-      const preview = await previewComments(yougile, parsed.data);
+      const plannedSites = (await getPlanSitesSnapshot(prisma, { requireCurrentConfig: true })).items;
+      const preview = await previewComments(yougile, parsed.data, plannedSites);
       const operation = await prisma.operation.create({
         data: {
           type: OperationType.COMMENT,

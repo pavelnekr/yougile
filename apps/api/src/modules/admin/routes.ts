@@ -4,7 +4,7 @@ import { hashPassword, requireRole } from "../auth/service.js";
 import { YougileApiError, YougileClient } from "../../integrations/yougile/client.js";
 import { encryptYougileToken, YougileTokenEncryptionKeyError } from "../../integrations/yougile/token-crypto.js";
 import { getAssignmentUsers } from "../users/service.js";
-import { getPlannedSites } from "../sites/service.js";
+import { getPlanColumn } from "../portal-config/service.js";
 import { adminUsersQuerySchema, createUserSchema, passwordResetSchema, updateUserSchema, yougileTokenSchema } from "./schema.js";
 import { listUsersWithStats, resolveStatsPeriod } from "./service.js";
 
@@ -205,7 +205,11 @@ export async function registerAdminRoutes(app: FastifyInstance, prisma: PrismaCl
     try {
       const encryptedToken = encryptYougileToken(parsed.data.token, target.id);
       const yougile = new YougileClient(parsed.data.token);
-      await Promise.all([getAssignmentUsers(yougile), getPlannedSites(yougile)]);
+      const planColumnId = getPlanColumn().id;
+      await Promise.all([
+        getAssignmentUsers(yougile),
+        yougile.request(`task-list?columnId=${encodeURIComponent(planColumnId)}&limit=1&offset=0`)
+      ]);
       await prisma.portalUser.update({
         where: { id: target.id },
         data: { yougileTokenEncrypted: encryptedToken }

@@ -108,14 +108,17 @@ async function fetchPlannedSites(client: YougileClient): Promise<PlannedSite[]> 
   return toPlannedSites(await fetchColumnTasks(client, getPlanColumn().id));
 }
 
-export async function getPlannedSites(client: YougileClient): Promise<PlannedSite[]> {
+export async function getPlannedSites(
+  client: YougileClient,
+  options: { forceRefresh?: boolean } = {}
+): Promise<PlannedSite[]> {
   // Ключ включает ID столбца плана: смена колонки в конфигурации меняет
   // источник данных, и старая запись не должна отдаваться.
   const key = `${client.cacheKey}|${getPlanColumn().id}`;
   const entry = plannedSitesCache.get(key) ?? { data: null, expiresAt: 0, pending: null };
   plannedSitesCache.set(key, entry);
 
-  if (entry.data && Date.now() < entry.expiresAt) return entry.data;
+  if (!options.forceRefresh && entry.data && Date.now() < entry.expiresAt) return entry.data;
   if (entry.pending) return entry.pending;
 
   const pending = fetchPlannedSites(client);

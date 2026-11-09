@@ -4,7 +4,7 @@ import { requireRole } from "../auth/service.js";
 import { getUserYougileClient, UserYougileCredentialError } from "../../integrations/yougile/user-client.js";
 import type { YougileClient } from "../../integrations/yougile/client.js";
 import { invalidateAvrSitesCache, invalidateSitesCache } from "../sites/service.js";
-import { avrSnapshotAdminKey, refreshAvrSitesSnapshot } from "../sites/snapshot.js";
+import { siteSnapshotAdminKey, refreshSiteSnapshots } from "../sites/snapshot.js";
 import { annotateLog } from "../logs/service.js";
 import { avrColumnsSchema, planColumnSchema } from "./schema.js";
 import { decryptDapsDatabaseUrl, decryptNetboxApiToken, encryptDapsDatabaseUrl, encryptNetboxApiToken, encryptPortalColumnId } from "../../integrations/yougile/token-crypto.js";
@@ -252,11 +252,18 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     }
     try {
       const encryptedPlanColumn = { ...parsed.data, id: encryptPortalColumnId(parsed.data.id, "plan") };
-      await prisma.appSetting.upsert({
-        where: { key: planColumnSettingKey },
-        create: { key: planColumnSettingKey, value: encryptedPlanColumn },
-        update: { value: encryptedPlanColumn }
-      });
+      await prisma.$transaction([
+        prisma.appSetting.upsert({
+          where: { key: planColumnSettingKey },
+          create: { key: planColumnSettingKey, value: encryptedPlanColumn },
+          update: { value: encryptedPlanColumn }
+        }),
+        prisma.appSetting.upsert({
+          where: { key: siteSnapshotAdminKey },
+          create: { key: siteSnapshotAdminKey, value: request.sessionUser?.id ?? "" },
+          update: { value: request.sessionUser?.id ?? "" }
+        })
+      ]);
     } catch (error) {
       app.log.error({ err: error }, "Could not save plan column setting");
       return reply.code(500).send({ error: "Не удалось сохранить столбец «Фильтрация»." });
@@ -265,6 +272,9 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     // Кэш площадок собран из старой колонки — сбрасываем, чтобы новый план
     // подхватился сразу после сохранения, а не через 30 секунд.
     invalidateSitesCache();
+    void refreshSiteSnapshots(prisma).catch((error: unknown) => {
+      app.log.error({ err: error }, "Could not refresh shared site snapshots after plan configuration update");
+    });
     app.log.warn(
       { actor: request.sessionUser?.login },
       "Plan column updated via portal config"
@@ -316,8 +326,8 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
           update: { value: encryptedColumns }
         }),
         prisma.appSetting.upsert({
-          where: { key: avrSnapshotAdminKey },
-          create: { key: avrSnapshotAdminKey, value: request.sessionUser?.id ?? "" },
+          where: { key: siteSnapshotAdminKey },
+          create: { key: siteSnapshotAdminKey, value: request.sessionUser?.id ?? "" },
           update: { value: request.sessionUser?.id ?? "" }
         })
       ]);
@@ -328,8 +338,8 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     // Список столбцов изменился — подсчёт площадок по старым ID невалиден,
     // сбрасываем кэш, чтобы карточка «Площадки в АВР» сразу показала новое число.
     invalidateAvrSitesCache();
-    void refreshAvrSitesSnapshot(prisma).catch((error: unknown) => {
-      app.log.error({ err: error }, "Could not refresh AVR sites snapshot after configuration update");
+    void refreshSiteSnapshots(prisma).catch((error: unknown) => {
+      app.log.error({ err: error }, "Could not refresh shared site snapshots after AVR configuration update");
     });
     app.log.warn(
       { actor: request.sessionUser?.login, count: parsed.data.items.length },
