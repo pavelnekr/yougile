@@ -94,3 +94,13 @@ export function encryptOperatorContacts(value: string) {
 export function decryptOperatorContacts(value: string) {
   return decryptWithAad(value, "coordination-operator-contacts:v1", "operator contacts");
 }
+
+export type PortalColumnScope = "plan" | "avr";
+
+export function encryptPortalColumnId(id: string, scope: PortalColumnScope) {
+  return encryptWithAad(id, `portal-column-id:${scope}:v1`);
+}
+
+export function decryptPortalColumnId(value: string, scope: PortalColumnScope) {
+  return decryptWithAad(value, `portal-column-id:${scope}:v1`, `${scope} YouGile column ID`);
+}

@@ -372,7 +372,7 @@ function App() {
             const error = await response.json().catch(() => null) as { error?: string } | null;
             throw new Error(error?.error ?? "Не удалось загрузить площадки АВР.");
           }
-          return response.json() as Promise<AvrSitesList & { paused?: boolean }>;
+          return response.json() as Promise<AvrSitesList & { paused?: boolean; refreshing?: boolean }>;
         })
         .then((data) => {
           if (cancelled) return;
@@ -382,7 +382,7 @@ function App() {
           // Как и у списка площадок: во время операции показываем кэш и
           // повторяем запрос, пока операции не закончатся.
           setAvrPaused(Boolean(data.paused));
-          if (data.paused) retry = setTimeout(load, pausedSitesRetryMs);
+          retry = setTimeout(load, data.paused ? pausedSitesRetryMs : data.refreshing ? pausedSitesRetryMs : 5 * 60_000);
         })
         .catch((error: unknown) => {
           if (cancelled || controller.signal.aborted) return;

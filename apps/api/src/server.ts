@@ -22,6 +22,7 @@ import { registerPlanningRoutes } from "./modules/planning/routes.js";
 import { registerLogRoutes } from "./modules/logs/routes.js";
 import { registerDapsRoutes } from "./modules/daps/routes.js";
 import { registerLtpRoutes } from "./modules/ltp/routes.js";
+import { startAvrSitesSnapshotRefresh } from "./modules/sites/snapshot.js";
 import { registerLogHooks, startLogRetention, stopLogRetention } from "./modules/logs/service.js";
 import { requireSession } from "./modules/auth/service.js";
 
@@ -85,9 +86,13 @@ await registerLtpRoutes(app, prisma);
 // Очистка старых записей журнала. Таймер гаснет вместе с сервером, иначе
 // процесс не завершится: интервал живёт дольше, чем соединения.
 startLogRetention(prisma);
+const stopAvrSitesSnapshotRefresh = startAvrSitesSnapshotRefresh(prisma, (error) => {
+  app.log.error({ err: error }, "Could not refresh shared AVR sites snapshot");
+});
 
 app.addHook("onClose", async () => {
   stopLogRetention();
+  stopAvrSitesSnapshotRefresh();
   await operationWorker.close();
   await closeOperationQueue();
   await prisma.$disconnect();

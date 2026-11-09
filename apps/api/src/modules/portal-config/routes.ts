@@ -4,8 +4,10 @@ import { requireRole } from "../auth/service.js";
 import { getUserYougileClient, UserYougileCredentialError } from "../../integrations/yougile/user-client.js";
 import type { YougileClient } from "../../integrations/yougile/client.js";
 import { invalidateAvrSitesCache, invalidateSitesCache } from "../sites/service.js";
+import { avrSnapshotAdminKey, refreshAvrSitesSnapshot } from "../sites/snapshot.js";
+import { annotateLog } from "../logs/service.js";
 import { avrColumnsSchema, planColumnSchema } from "./schema.js";
-import { decryptDapsDatabaseUrl, decryptNetboxApiToken, encryptDapsDatabaseUrl, encryptNetboxApiToken } from "../../integrations/yougile/token-crypto.js";
+import { decryptDapsDatabaseUrl, decryptNetboxApiToken, encryptDapsDatabaseUrl, encryptNetboxApiToken, encryptPortalColumnId } from "../../integrations/yougile/token-crypto.js";
 import {
   defaultDapsAggregateSchema,
   defaultDapsSourceSchema,
@@ -213,7 +215,7 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     if (!client) return;
     const result = await checkColumnInYougile(client, parsed.data);
     if (result.status === "error") {
-      app.log.warn({ columnId: parsed.data, reason: result.reason }, "Column status check failed");
+      app.log.warn({ reason: result.reason }, "Column status check failed");
     }
     const message =
       result.status === "ok" ? "Столбец подключён"
@@ -223,6 +225,7 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
   });
 
   app.put("/api/portal-config/plan-column", { preHandler: adminOnly }, async (request, reply) => {
+    annotateLog(request, { details: { configuration: "plan-column" } });
     const parsed = planColumnSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные столбца." });
@@ -236,7 +239,6 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
       app.log.warn(
         {
           actor: request.sessionUser?.login,
-          columnId: parsed.data.id,
           status: checked.status,
           ...(checked.status === "error" ? { reason: checked.reason } : {})
         },
@@ -249,10 +251,11 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
       });
     }
     try {
+      const encryptedPlanColumn = { ...parsed.data, id: encryptPortalColumnId(parsed.data.id, "plan") };
       await prisma.appSetting.upsert({
         where: { key: planColumnSettingKey },
-        create: { key: planColumnSettingKey, value: parsed.data },
-        update: { value: parsed.data }
+        create: { key: planColumnSettingKey, value: encryptedPlanColumn },
+        update: { value: encryptedPlanColumn }
       });
     } catch (error) {
       app.log.error({ err: error }, "Could not save plan column setting");
@@ -263,13 +266,14 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     // подхватился сразу после сохранения, а не через 30 секунд.
     invalidateSitesCache();
     app.log.warn(
-      { actor: request.sessionUser?.login, columnId: parsed.data.id },
+      { actor: request.sessionUser?.login },
       "Plan column updated via portal config"
     );
     return { plan: parsed.data };
   });
 
   app.put("/api/portal-config/avr-columns", { preHandler: adminOnly }, async (request, reply) => {
+    annotateLog(request, { details: { configuration: "avr-columns" } });
     const parsed = avrColumnsSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные столбцов." });
@@ -289,7 +293,7 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
         app.log.warn(
           {
             actor: request.sessionUser?.login,
-            columnId: column.id,
+            columnName: column.name,
             status: checked.status,
             ...(checked.status === "error" ? { reason: checked.reason } : {})
           },
@@ -301,11 +305,22 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
       return reply.code(400).send({ error: `Не сохраняем: ${failures.join(" ")}` });
     }
     try {
-      await prisma.appSetting.upsert({
-        where: { key: avrColumnsSettingKey },
-        create: { key: avrColumnsSettingKey, value: parsed.data.items },
-        update: { value: parsed.data.items }
-      });
+      const encryptedColumns = parsed.data.items.map((column) => ({
+        ...column,
+        id: encryptPortalColumnId(column.id, "avr")
+      }));
+      await prisma.$transaction([
+        prisma.appSetting.upsert({
+          where: { key: avrColumnsSettingKey },
+          create: { key: avrColumnsSettingKey, value: encryptedColumns },
+          update: { value: encryptedColumns }
+        }),
+        prisma.appSetting.upsert({
+          where: { key: avrSnapshotAdminKey },
+          create: { key: avrSnapshotAdminKey, value: request.sessionUser?.id ?? "" },
+          update: { value: request.sessionUser?.id ?? "" }
+        })
+      ]);
     } catch (error) {
       app.log.error({ err: error }, "Could not save AVR columns setting");
       return reply.code(500).send({ error: "Не удалось сохранить столбцы АВР." });
@@ -313,6 +328,9 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     // Список столбцов изменился — подсчёт площадок по старым ID невалиден,
     // сбрасываем кэш, чтобы карточка «Площадки в АВР» сразу показала новое число.
     invalidateAvrSitesCache();
+    void refreshAvrSitesSnapshot(prisma).catch((error: unknown) => {
+      app.log.error({ err: error }, "Could not refresh AVR sites snapshot after configuration update");
+    });
     app.log.warn(
       { actor: request.sessionUser?.login, count: parsed.data.items.length },
       "AVR columns updated via portal config"

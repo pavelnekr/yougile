@@ -1,6 +1,7 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
 import { YougileApiError, type YougileClient } from "../../integrations/yougile/client.js";
+import { decryptPortalColumnId, encryptPortalColumnId, type PortalColumnScope } from "../../integrations/yougile/token-crypto.js";
 import type { PortalColumn } from "./schema.js";
 
 export const planColumnSettingKey = "portal-config:plan-column";
@@ -17,14 +18,19 @@ const columnIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 
 // Читает сохранённое значение как столбец. Повреждённая запись не роняет сервис:
 // возвращается null, и вызывающий код остаётся на значении по умолчанию.
-function readColumn(value: unknown): PortalColumn | null {
+function readColumn(value: unknown, scope: PortalColumnScope): PortalColumn | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.id !== "string" || typeof candidate.name !== "string") return null;
-  const id = candidate.id.trim();
+  const storedId = candidate.id.trim();
+  const id = storedId.startsWith("v1:") ? decryptPortalColumnId(storedId, scope) : storedId;
   const name = candidate.name.trim();
   if (!columnIdPattern.test(id) || !name) return null;
   return { id, name };
+}
+
+function isEncryptedColumnId(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("v1:");
 }
 
 // Текущий столбец плана живёт в памяти процесса: API и очередевой воркер работают
@@ -43,16 +49,41 @@ export function setPlanColumn(column: PortalColumn): void {
 
 export async function loadPlanColumn(prisma: PrismaClient): Promise<void> {
   const setting = await prisma.appSetting.findUnique({ where: { key: planColumnSettingKey } });
-  planColumn = readColumn(setting?.value) ?? defaultPlanColumn;
+  const stored = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
+    ? setting.value as Record<string, unknown>
+    : null;
+  const column = readColumn(setting?.value, "plan");
+  planColumn = column ?? defaultPlanColumn;
+  if (column && stored && !isEncryptedColumnId(stored.id)) {
+    const encryptedPlanColumn = { ...stored, id: encryptPortalColumnId(column.id, "plan") };
+    await prisma.appSetting.upsert({
+      where: { key: planColumnSettingKey },
+      create: { key: planColumnSettingKey, value: encryptedPlanColumn },
+      update: { value: encryptedPlanColumn }
+    });
+  }
 }
 
 export async function loadAvrColumns(prisma: PrismaClient): Promise<PortalColumn[]> {
   const setting = await prisma.appSetting.findUnique({ where: { key: avrColumnsSettingKey } });
   if (!Array.isArray(setting?.value)) return [];
   const columns: PortalColumn[] = [];
-  for (const item of setting.value) {
-    const column = readColumn(item);
+  let needsEncryption = false;
+  const migrated = setting.value.map((item) => {
+    const column = readColumn(item, "avr");
     if (column) columns.push(column);
+    if (!column || typeof item !== "object" || item === null || Array.isArray(item)) return item;
+    const record = item as Record<string, unknown>;
+    if (isEncryptedColumnId(record.id)) return item;
+    needsEncryption = true;
+    return { ...record, id: encryptPortalColumnId(column.id, "avr") };
+  });
+  if (needsEncryption) {
+    await prisma.appSetting.upsert({
+      where: { key: avrColumnsSettingKey },
+      create: { key: avrColumnsSettingKey, value: migrated as unknown as Prisma.InputJsonValue },
+      update: { value: migrated as unknown as Prisma.InputJsonValue }
+    });
   }
   return columns;
 }

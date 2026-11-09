@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Info, LoaderCircle, Plus, Save, SlidersHorizontal, Trash2, XCircle } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, Info, LoaderCircle, Plus, Save, SlidersHorizontal, Trash2, XCircle } from "lucide-react";
 import { apiFetch } from "./apiClient";
 import { columnForms, countRu, recipientForms } from "./plural";
 import { PORTAL_VERSION } from "./version";
@@ -150,6 +150,11 @@ export default function PortalConfigPage({
   const [savedPlan, setSavedPlan] = useState<PortalColumn>({ id: "", name: "" });
   const [avr, setAvr] = useState<PortalColumn[]>([]);
   const [savedAvr, setSavedAvr] = useState<PortalColumn[]>([]);
+  const [visibleColumnIds, setVisibleColumnIds] = useState<Record<string, boolean>>({});
+
+  const toggleColumnIdVisibility = (key: string) => {
+    setVisibleColumnIds((current) => ({ ...current, [key]: !current[key] }));
+  };
 
   // Статусы ID столбцов в YouGile: «Подключён» или причина ошибки. Проверяются
   // при загрузке, после сохранения и при потере фокуса полем ID.
@@ -888,12 +893,23 @@ export default function PortalConfigPage({
                     id="portal-config-plan-id"
                     aria-label="ID столбца в YouGile"
                     value={plan.id}
+                    type={visibleColumnIds.plan ? "text" : "password"}
+                    autoComplete="new-password"
                     maxLength={36}
                     disabled={savingPlan}
                     placeholder="11111111-1111-4111-8111-111111111111"
                     onChange={(event) => { setPlan((current) => ({ ...current, id: event.target.value })); setPlanStatus({ state: "none", message: "" }); setNotice(""); }}
                     onBlur={() => void runColumnCheck("plan", plan.id)}
                   />
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={visibleColumnIds.plan ? "Скрыть ID столбца" : "Показать ID столбца"}
+                    title={visibleColumnIds.plan ? "Скрыть ID" : "Показать ID"}
+                    onClick={() => toggleColumnIdVisibility("plan")}
+                  >
+                    {visibleColumnIds.plan ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
                   <ColumnStatusBadge info={planStatus} />
                 </span>
               </label>
@@ -972,6 +988,8 @@ export default function PortalConfigPage({
                       <span className="portal-config-column">
                         <input
                           value={column.id}
+                          type={visibleColumnIds[`avr-${index}`] ? "text" : "password"}
+                          autoComplete="new-password"
                           maxLength={36}
                           disabled={savingAvr}
                           placeholder="00000000-0000-0000-0000-000000000000"
@@ -979,6 +997,15 @@ export default function PortalConfigPage({
                           onChange={(event) => updateAvrColumn(index, { id: event.target.value })}
                           onBlur={() => void runColumnCheck(index, column.id)}
                         />
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={visibleColumnIds[`avr-${index}`] ? "Скрыть ID столбца" : "Показать ID столбца"}
+                          title={visibleColumnIds[`avr-${index}`] ? "Скрыть ID" : "Показать ID"}
+                          onClick={() => toggleColumnIdVisibility(`avr-${index}`)}
+                        >
+                          {visibleColumnIds[`avr-${index}`] ? <EyeOff size={15} /> : <Eye size={15} />}
+                        </button>
                         <ColumnStatusBadge info={avrStatuses[index] ?? { state: "none", message: "" }} />
                       </span>
                       <button

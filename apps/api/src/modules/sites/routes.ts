@@ -6,12 +6,13 @@ import { isYougileBusy } from "../../lib/yougile-activity.js";
 import { describeError } from "../../lib/error-details.js";
 import { annotateLog } from "../logs/service.js";
 import { getPlanColumn, loadAvrColumns } from "../portal-config/service.js";
-import { getAvrSites, getPlannedSites, peekAvrSites, peekPlannedSites, type AvrSitesList } from "./service.js";
+import { getPlannedSites, peekPlannedSites, type AvrSitesList } from "./service.js";
+import { getAvrSitesSnapshot } from "./snapshot.js";
 
 // Карточке и странице «Площадки АВР» нужен один и тот же ответ: список столбцов
 // с их площадками. Разворачиваем его в плоскую таблицу с именем столбца у каждой
 // площадки — одинаково и для свежих данных, и для ответа из кэша.
-function avrResponse(result: AvrSitesList, paused: boolean) {
+function avrResponse(result: AvrSitesList, paused: boolean, updatedAt = new Date().toISOString(), refreshing = false) {
   return {
     columns: result.columns.map((column) => ({
       id: column.id,
@@ -22,8 +23,9 @@ function avrResponse(result: AvrSitesList, paused: boolean) {
       column.sites.map((site) => ({ ...site, columnId: column.id, columnName: column.name }))
     ),
     total: result.total,
-    updatedAt: new Date().toISOString(),
-    paused
+    updatedAt,
+    paused,
+    refreshing
   };
 }
 
@@ -80,25 +82,12 @@ export async function registerSiteRoutes(app: FastifyInstance, prisma: PrismaCli
   // Единая таблица площадок АВР: столбцы из «Конфигурация портала» → «АВР»,
   // к каждому столбцу — его площадки. Карточка и страница «Площадки АВР»
   // используют один и тот же ответ, поэтому у них всегда одни и те же числа.
-  app.get("/api/sites/in-avr", { preHandler: readAccess }, async (request, reply) => {
+  app.get("/api/sites/in-avr", { preHandler: readAccess }, async (_request, reply) => {
     try {
-      const yougile = await getUserYougileClient(prisma, request.sessionUser?.id);
       const configured = await loadAvrColumns(prisma);
-
-      // Пока идёт операция — только кэш, без обращения к YouGile (как в in-plan).
-      if (await isYougileBusy(prisma)) {
-        const cached = peekAvrSites(yougile, configured);
-        return avrResponse(
-          cached ?? { columns: [], items: [], total: 0 },
-          true
-        );
-      }
-
-      return avrResponse(await getAvrSites(yougile, configured), false);
+      const snapshot = await getAvrSitesSnapshot(prisma, configured);
+      return avrResponse(snapshot.data, await isYougileBusy(prisma), snapshot.updatedAt, snapshot.refreshing);
     } catch (error) {
-      if (error instanceof UserYougileCredentialError) {
-        return reply.code(error.statusCode).send({ error: error.message });
-      }
       app.log.error({ err: error }, "Could not load sites from AVR columns");
       return reply.code(502).send({
         error: "Не удалось загрузить площадки из YouGile. Проверьте доступ к столбцам АВР."

@@ -158,13 +158,14 @@ const avrSitesCache = new Map<string, CacheEntry<AvrSitesList>>();
 
 export async function getAvrSites(
   client: YougileClient,
-  columns: PortalColumn[]
+  columns: PortalColumn[],
+  options: { forceRefresh?: boolean } = {}
 ): Promise<AvrSitesList> {
   const key = `${client.cacheKey}|${columns.map((column) => `${column.id}:${column.name}`).join("|")}`;
   const entry = avrSitesCache.get(key) ?? { data: null, expiresAt: 0, pending: null };
   avrSitesCache.set(key, entry);
 
-  if (entry.data && Date.now() < entry.expiresAt) return entry.data;
+  if (!options.forceRefresh && entry.data && Date.now() < entry.expiresAt) return entry.data;
   if (entry.pending) return entry.pending;
 
   // Столбцы обходим последовательно; общий интервал task-list задаёт YougileClient.
