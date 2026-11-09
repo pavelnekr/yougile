@@ -3,6 +3,7 @@ import { YougileClient } from "../../integrations/yougile/client.js";
 import { getPlanColumn } from "../portal-config/service.js";
 import type { PortalColumn } from "../portal-config/schema.js";
 import { extractSiteIdFromTaskTitle } from "./extract-site-id.js";
+import { delayBetweenYougileActions } from "../../lib/action-delay.js";
 
 const taskSchema = z.object({
   id: z.string(),
@@ -153,7 +154,7 @@ export type AvrSitesList = { columns: AvrColumnSites[]; items: PlannedSite[]; to
 // токену (см. plannedSitesCache), и по полному списку столбцов: как только
 // администратор поменял ID, прежний результат по старым колонкам становится
 // невалидным и не отдаётся.
-const avrSitesDurationMs = 30_000;
+const avrSitesDurationMs = 5 * 60_000;
 const avrSitesCache = new Map<string, CacheEntry<AvrSitesList>>();
 
 export async function getAvrSites(
@@ -167,13 +168,13 @@ export async function getAvrSites(
   if (entry.data && Date.now() < entry.expiresAt) return entry.data;
   if (entry.pending) return entry.pending;
 
-  // Столбцы обходим по одному: у YouGile нет пакетного запроса, а параллельные
-  // обращения легко упираются в лимиты их API.
+  // Столбцы обходим последовательно с паузой, чтобы не перегружать YouGile.
   const pending = (async (): Promise<AvrSitesList> => {
     const items: AvrColumnSites[] = [];
-    for (const column of columns) {
+    for (const [index, column] of columns.entries()) {
       const tasks = await fetchColumnTasks(client, column.id);
       items.push({ id: column.id, name: column.name, sites: toPlannedSites(tasks) });
+      if (index < columns.length - 1) await delayBetweenYougileActions();
     }
     return {
       columns: items,
