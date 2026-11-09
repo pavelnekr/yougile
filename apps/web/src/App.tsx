@@ -1700,7 +1700,7 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
             <div className="sites-table-header avr-sites-table"><span>№ площадки</span><span>Площадка / адрес</span><span>Столбец</span><span>Инженеры</span><span>Статус</span><span>ID задачи</span></div>
             {visibleSites.map((site) => (
               <div className="sites-table-row avr-sites-table" key={site.taskId}>
-                <span className="site-number">{site.siteNumber}</span>
+                <span className="site-number">{site.siteNumber || "—"}</span>
                 <span className="site-title" title={site.title}>{site.title}</span>
                 <span className="site-column" title={site.columnName}>{site.columnName || "Без названия"}</span>
                 <span className="site-assignees">{site.assignedCount}</span>
@@ -1715,7 +1715,7 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
           </>
         )}
       </div>
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Обновление списка при открытии страницы · кэш API 30 секунд</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Обновление списка при открытии страницы · кэш API 5 минут</span></footer>
     </section>
   );
 }

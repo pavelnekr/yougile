@@ -81,18 +81,18 @@ async function fetchColumnTasks(client: YougileClient, columnId: string): Promis
   return tasks;
 }
 
-// Площадка — задача без признаков удаления/архива, чей заголовок начинается с
-// номера площадки. Это ровно то правило, по которому собирается список «Площадки».
-function toPlannedSites(tasks: YougileTask[]): PlannedSite[] {
+// Для обычного списка площадок требуется распознанный номер в заголовке.
+// Список АВР включает все активные задачи столбцов, даже если номер не распознан.
+function toPlannedSites(tasks: YougileTask[], includeUnnumbered = false): PlannedSite[] {
   return tasks
     .filter((task) => !task.deleted && !task.archived)
     .flatMap((task) => {
       const siteNumber = extractSiteIdFromTaskTitle(task.title);
-      if (!siteNumber) return [];
+      if (!siteNumber && !includeUnnumbered) return [];
 
       return [{
         taskId: task.id,
-        siteNumber,
+        siteNumber: siteNumber ?? "",
         title: task.title,
         assignedCount: task.assigned?.length ?? 0,
         completed: task.completed ?? false,
@@ -173,7 +173,7 @@ export async function getAvrSites(
     const items: AvrColumnSites[] = [];
     for (const [index, column] of columns.entries()) {
       const tasks = await fetchColumnTasks(client, column.id);
-      items.push({ id: column.id, name: column.name, sites: toPlannedSites(tasks) });
+      items.push({ id: column.id, name: column.name, sites: toPlannedSites(tasks, true) });
       if (index < columns.length - 1) await delayBetweenYougileActions();
     }
     return {

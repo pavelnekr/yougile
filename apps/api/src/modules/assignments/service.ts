@@ -82,7 +82,7 @@ export function validatePlanTask(task: TaskDetails, siteByTaskId: Map<string, Pl
     !allowedColumnIds.includes(task.columnId) ||
     task.archived ||
     task.deleted ||
-    plannedSite.siteNumber !== task.title.match(/^(\d+)/)?.[1]
+    plannedSite.siteNumber !== (task.title.match(/^(\d+)/)?.[1] ?? "")
   ) {
     throw new AssignmentValidationError("Задача больше не находится в активном плане или настроенном столбце АВР. Обновите список площадок.");
   }
