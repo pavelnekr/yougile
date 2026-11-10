@@ -320,6 +320,11 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 /* Сводка: одна строка 25% / 25% / 50% — по две узкие карточки площадок
    и карточка «Назначено работ за месяц» на половину строки. */
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 14px; }
+.engineer-assignments-panel { margin-top: 14px; padding: 16px; }
+.engineer-assignments-list { max-height: 360px; overflow-y: auto; overscroll-behavior-y: auto; }
+.engineer-assignments-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 16px; padding: 10px 8px; border-top: 1px solid #f0f2f6; color: #596477; font-size: 11px; }
+.engineer-assignments-row strong { color: #3d4658; font-variant-numeric: tabular-nums; text-align: right; }
+.engineer-assignments-header { color: #929aaa; font-size: 9px; }
 .stat-card { min-height: 122px; padding: 15px 16px 13px; border: 1px solid #eaedf3; border-radius: 9px; background: #fff; box-shadow: 0 2px 5px #26365905; }
 .stat-card-button { display: flex; width: 100%; flex-direction: column; align-items: stretch; padding-top: 11px; color: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-ui) var(--ease-out), box-shadow var(--dur-ui) var(--ease-out), transform var(--dur-press) var(--ease-out); }
 .stat-top { display: flex; align-items: center; justify-content: center; gap: 9px; color: #778193; font-size: 10px; font-weight: 500; }
@@ -707,6 +712,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   h1 { font-size: 22px; }
   .welcome-subtitle { max-width: 440px; line-height: 1.55; }
   .stats-grid { gap: 9px; }
+  .engineer-assignments-row { grid-template-columns: minmax(0, 1fr) 110px; gap: 8px; }
   .stat-card { min-height: 112px; padding: 12px; }
   .stat-top { font-size: 9px; }
   .section-heading { align-items: flex-start; flex-direction: column; margin-top: 25px; }
@@ -888,7 +894,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .imported-rows-toolbar .sites-search { flex: 0 1 280px; }
 .import-row-header, .import-plan-row { display: grid; grid-template-columns: minmax(105px, .55fr) minmax(150px, 1.4fr) minmax(130px, 1fr) minmax(120px, .8fr); align-items: center; gap: 12px; padding: 0 12px; }
 .import-row-header { min-height: 32px; border-top: 1px solid #eff1f5; border-bottom: 1px solid #eff1f5; color: #98a0ae; background: #fafbfc; font-size: 8px; font-weight: 600; }
-.import-row-list { max-height: 515px; overflow: auto; }
+.import-row-list { overflow: visible; }
 .import-plan-row { min-height: 45px; border-bottom: 1px solid #f0f2f6; cursor: default; }
 .import-plan-row-ready { cursor: pointer; }
 .import-plan-row-invalid { background: #fffdfb; }
@@ -930,7 +936,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .problem-site-details, .problem-site-reason { overflow: hidden; color: #697488; font-size: 8px; line-height: 1.45; text-overflow: ellipsis; }
 .problem-site-details small { display: block; margin-top: 3px; color: #a0a6b1; font-size: 7px; }
 .problem-site-reason { color: #a36e4e; }
-.xlsx-preview-list { max-height: 310px; overflow: auto; border-top: 1px solid #eff1f5; }
+.xlsx-preview-list { overflow: visible; border-top: 1px solid #eff1f5; }
 .xlsx-preview-row { display: grid; grid-template-columns: 58px minmax(125px, 1.2fr) minmax(115px, .8fr) minmax(130px, 1fr); align-items: center; gap: 10px; min-height: 47px; border-bottom: 1px solid #f0f2f6; }
 .xlsx-preview-address, .xlsx-preview-engineer { overflow: hidden; color: #58657a; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .xlsx-preview-address small, .xlsx-preview-engineer small { display: block; margin-top: 3px; color: #9aa2b0; font-size: 7px; }

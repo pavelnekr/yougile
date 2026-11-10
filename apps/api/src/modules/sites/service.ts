@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { YougileClient } from "../../integrations/yougile/client.js";
 import { getPlanColumn } from "../portal-config/service.js";
+import { getAssignmentUsers } from "../users/service.js";
 import type { PortalColumn } from "../portal-config/schema.js";
 import { extractSiteIdFromTaskTitle } from "./extract-site-id.js";
 
@@ -150,7 +151,7 @@ export function peekPlannedSites(client: YougileClient): PlannedSite[] | null {
 }
 
 export type AvrColumnSites = { id: string; name: string; sites: PlannedSite[] };
-export type AvrSitesList = { columns: AvrColumnSites[]; items: PlannedSite[]; total: number };
+export type AvrSitesList = { columns: AvrColumnSites[]; items: PlannedSite[]; total: number; engineerAssignments: { name: string; siteCount: number }[] };
 
 // Площадки по столбцам АВР из «Конфигурации портала». Кэш ключуется и по
 // токену (см. plannedSitesCache), и по полному списку столбцов: как только
@@ -174,15 +175,38 @@ export async function getAvrSites(
   // Столбцы обходим последовательно; общий интервал task-list задаёт YougileClient.
   const pending = (async (): Promise<AvrSitesList> => {
     const items: AvrColumnSites[] = [];
+    const siteCountsByEngineer = new Map<string, number>();
+    const countedTaskIds = new Set<string>();
+    // Добавляем задачи основной колонки плана (панель «Площадки в фильтрации»)
+    // к задачам АВР для общего списка назначений.
+    const plannedTasks = await fetchColumnTasks(client, getPlanColumn().id);
+    for (const task of plannedTasks) {
+      if (task.deleted || task.archived || !extractSiteIdFromTaskTitle(task.title)) continue;
+      countedTaskIds.add(task.id);
+      task.assigned?.forEach((userId) => siteCountsByEngineer.set(userId, (siteCountsByEngineer.get(userId) ?? 0) + 1));
+    }
     for (const column of columns) {
       const tasks = await fetchColumnTasks(client, column.id);
+      for (const task of tasks) {
+        if (!task.deleted && !task.archived && !countedTaskIds.has(task.id)) {
+          countedTaskIds.add(task.id);
+          task.assigned?.forEach((userId) => siteCountsByEngineer.set(userId, (siteCountsByEngineer.get(userId) ?? 0) + 1));
+        }
+      }
       items.push({ id: column.id, name: column.name, sites: toPlannedSites(tasks, true) });
     }
+    const users = await getAssignmentUsers(client);
+    const namesById = new Map(users.map((user) => [user.id, user.name]));
+    const engineerAssignments = [...siteCountsByEngineer].map(([userId, siteCount]) => ({
+      name: namesById.get(userId) ?? "Сотрудник не найден",
+      siteCount
+    })).sort((left, right) => right.siteCount - left.siteCount || left.name.localeCompare(right.name, "ru"));
     return {
       columns: items,
       // Единая таблица: площадки идут столбцом за столбцом в порядке конфигурации.
       items: items.flatMap((item) => item.sites),
-      total: items.reduce((sum, item) => sum + item.sites.length, 0)
+      total: items.reduce((sum, item) => sum + item.sites.length, 0),
+      engineerAssignments
     };
   })();
 

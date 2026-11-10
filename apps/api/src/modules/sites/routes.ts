@@ -22,6 +22,7 @@ function avrResponse(result: AvrSitesList, paused: boolean, updatedAt = new Date
       column.sites.map((site) => ({ ...site, columnId: column.id, columnName: column.name }))
     ),
     total: result.total,
+    engineerAssignments: result.engineerAssignments,
     updatedAt,
     paused,
     refreshing

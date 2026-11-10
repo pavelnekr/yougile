@@ -31,7 +31,8 @@ const planSnapshotSchema = z.object({
 const avrDataSchema = z.object({
   columns: z.array(z.object({ id: z.string(), name: z.string(), sites: z.array(siteSchema) })),
   items: z.array(siteSchema),
-  total: z.number()
+  total: z.number(),
+  engineerAssignments: z.array(z.object({ name: z.string(), siteCount: z.number() })).default([])
 });
 const avrSnapshotSchema = z.object({
   version: z.literal(1),
@@ -160,7 +161,7 @@ async function performRefresh(prisma: PrismaClient): Promise<void> {
 
   const avrData: AvrSitesList = columns.length
     ? await getAvrSites(client, columns, { forceRefresh: true })
-    : { columns: [], items: [], total: 0 };
+    : { columns: [], items: [], total: 0, engineerAssignments: [] };
   await saveAvrSnapshot(prisma, avrData, columns, admin.id);
 }
 
@@ -228,7 +229,7 @@ export async function getAvrSitesSnapshot(
   let snapshot = await readAvrSnapshot(prisma);
   if (!snapshot && await isYougileBusy(prisma)) {
     return {
-      data: { columns: columns.map((column) => ({ ...column, sites: [] })), items: [], total: 0 },
+      data: { columns: columns.map((column) => ({ ...column, sites: [] })), items: [], total: 0, engineerAssignments: [] },
       updatedAt: new Date().toISOString(),
       refreshing: true
     };

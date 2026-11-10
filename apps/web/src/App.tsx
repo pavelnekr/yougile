@@ -114,6 +114,7 @@ type AvrSitesList = {
   columns: { id: string; name: string; count: number }[];
   items: AvrSite[];
   total: number;
+  engineerAssignments: { name: string; siteCount: number }[];
 };
 
 // adminOnly — пункт показывается только роли ADMIN. Проверка роли есть и в API
@@ -1436,6 +1437,17 @@ function Overview({
           error={workTypeStatisticsError}
           onClick={() => onNavigate("История")}
         />
+      </section>
+
+      <section className="panel engineer-assignments-panel" aria-label="Инженеры и назначенные площадки">
+        <div className="panel-heading"><div><h2>Статистика по назначенным работам</h2></div></div>
+        {avrLoadState === "loading" ? <div className="sites-message">Загружаем данные…</div>
+          : avrLoadState === "error" ? <div className="sites-message sites-message-error">{avrError}</div>
+            : !avrSites?.engineerAssignments.length ? <div className="sites-message">Нет инженеров с назначенными площадками.</div>
+              : <div className="engineer-assignments-list">
+                <div className="engineer-assignments-row engineer-assignments-header"><span>ФИО</span><span>Количество площадок</span></div>
+                {avrSites.engineerAssignments.map((engineer, index) => <div className="engineer-assignments-row" key={`${engineer.name}-${index}`}><span>{engineer.name}</span><strong>{engineer.siteCount.toLocaleString("ru-RU")}</strong></div>)}
+              </div>}
       </section>
 
       <section className="section-heading">

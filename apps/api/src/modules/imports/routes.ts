@@ -901,7 +901,7 @@ export async function registerImportRoutes(
     for (const [userId, taskIds] of grouped) {
       const preview = await previewAssignments(yougile, { userId, taskIds }, {
         plannedSites: allTasks,
-        avrSites: { columns: [], items: [], total: 0 }
+        avrSites: { columns: [], items: [], total: 0, engineerAssignments: [] }
       });
       for (const item of preview.items) previews.set(item.taskId, item);
     }
