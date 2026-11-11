@@ -77,6 +77,7 @@ type PlannedSite = {
   assignedCount: number;
   completed: boolean;
   updatedAt: string | null;
+  columnName?: string;
 };
 type AssignmentUser = { id: string; name: string; status: string | null };
 type AssignmentPreview = {
@@ -1611,7 +1612,7 @@ function sortSites<T extends PlannedSite>(sites: T[], sort: SiteSort | null): T[
         comparison = left.title.localeCompare(right.title, "ru");
         break;
       case "columnName":
-        comparison = ((left as AvrSite).columnName ?? "").localeCompare((right as AvrSite).columnName ?? "", "ru");
+        comparison = (left.columnName ?? "").localeCompare(right.columnName ?? "", "ru");
         break;
       case "assignedCount":
         comparison = left.assignedCount - right.assignedCount;
