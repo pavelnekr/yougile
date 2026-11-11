@@ -321,7 +321,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
    и карточка «Назначено работ за месяц» на половину строки. */
 .stats-grid { display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 14px; }
 .engineer-assignments-panel { margin-top: 14px; padding: 16px; }
-.engineer-assignments-list { max-height: 360px; overflow-y: auto; overscroll-behavior-y: auto; }
+.engineer-assignments-list { max-height: 190px; overflow-y: auto; overscroll-behavior-y: auto; }
 .engineer-assignments-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 16px; padding: 10px 8px; border-top: 1px solid #f0f2f6; color: #596477; font-size: 11px; }
 .engineer-assignments-row strong { color: #3d4658; font-variant-numeric: tabular-nums; text-align: right; }
 .engineer-assignments-header { color: #929aaa; font-size: 9px; }
@@ -412,11 +412,14 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .sites-search:focus-within { border-color: #aebcf0; }
 .sites-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #4c5669; background: transparent; font: inherit; font-size: 9px; }
 .sites-search input::placeholder { color: #a0a7b4; }
-.sites-table-header, .sites-table-row { display: grid; grid-template-columns: 90px minmax(150px, 1fr) 82px 100px 110px; align-items: center; gap: 12px; padding: 0 17px; }
+.sites-table-header, .sites-table-row { display: grid; grid-template-columns: 90px minmax(150px, 1fr) 82px 100px; align-items: center; gap: 12px; padding: 0 17px; }
 .sites-table-header { min-height: 34px; border-top: 1px solid #eff1f5; border-bottom: 1px solid #eff1f5; color: #98a0ae; background: #fafbfc; font-size: 8px; font-weight: 600; }
+.sites-sort-button { display: inline-flex; width: fit-content; align-items: center; gap: 5px; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.sites-sort-button:hover, .sites-sort-button:focus-visible { color: #4c69d8; outline: none; }
+.sites-sort-button span { color: #7685bd; font-size: 11px; line-height: 1; }
 .sites-table-row { min-height: 43px; border-bottom: 1px solid #f0f2f6; }
 /* У таблицы АВР на одну колонку больше — «Столбец» между адресом и инженерами. */
-.sites-table-header.avr-sites-table, .sites-table-row.avr-sites-table { grid-template-columns: 90px minmax(150px, 1fr) 130px 82px 100px 110px; }
+.sites-table-header.avr-sites-table, .sites-table-row.avr-sites-table { grid-template-columns: 90px minmax(150px, 1fr) 130px 82px 100px; }
 .avr-column-filter { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 17px 13px; }
 .avr-column-chip { padding: 5px 9px; border: 1px solid #e6eaf1; border-radius: 12px; color: #667184; background: #fff; font-size: 8px; font-weight: 600; cursor: pointer; }
 .avr-column-chip-active { border-color: #d8dcf2; color: #4c5fc0; background: #f0f3fd; }
@@ -748,7 +751,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .sites-table-row > :nth-child(3), .sites-table-row > :nth-child(5) { display: none; }
   /* В таблице АВР оставляем №, адрес и статус; столбец, инженеры и ID прячем. */
   .sites-table-row.avr-sites-table { grid-template-columns: 38px minmax(0, 1fr) auto; }
-  .sites-table-row.avr-sites-table > :nth-child(3), .sites-table-row.avr-sites-table > :nth-child(4), .sites-table-row.avr-sites-table > :nth-child(6) { display: none; }
+  .sites-table-row.avr-sites-table > :nth-child(3), .sites-table-row.avr-sites-table > :nth-child(4) { display: none; }
   .sites-toolbar { align-items: flex-start; flex-direction: column; }
   .sites-search { width: 100%; }
   .sites-pagination { align-items: flex-start; flex-direction: column; }

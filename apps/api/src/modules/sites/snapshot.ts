@@ -10,7 +10,7 @@ import { getAvrSites, getPlannedSites, type AvrSitesList, type PlannedSite } fro
 const planSnapshotKey = "sites:plan-snapshot";
 const avrSnapshotKey = "sites:avr-snapshot";
 export const siteSnapshotAdminKey = "sites:snapshot-admin-id";
-const refreshIntervalMs = 5 * 60_000;
+const refreshIntervalMs = 2 * 60_000;
 const refreshFailureCooldownMs = 60_000;
 
 const siteSchema = z.object({

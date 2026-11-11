@@ -341,7 +341,7 @@ function App() {
           // Сервер приостановил обновление, потому что идёт операция: показываем
           // последний кэш и повторяем запрос, пока операции не закончатся.
           setSitePaused(Boolean(data.paused));
-          retry = setTimeout(load, data.paused ? pausedSitesRetryMs : data.refreshing ? pausedSitesRetryMs : 5 * 60_000);
+          retry = setTimeout(load, data.paused ? pausedSitesRetryMs : data.refreshing ? pausedSitesRetryMs : 2 * 60_000);
         })
         .catch((error: unknown) => {
           if (cancelled || controller.signal.aborted) return;
@@ -383,7 +383,7 @@ function App() {
           // Как и у списка площадок: во время операции показываем кэш и
           // повторяем запрос, пока операции не закончатся.
           setAvrPaused(Boolean(data.paused));
-          retry = setTimeout(load, data.paused ? pausedSitesRetryMs : data.refreshing ? pausedSitesRetryMs : 5 * 60_000);
+          retry = setTimeout(load, data.paused ? pausedSitesRetryMs : data.refreshing ? pausedSitesRetryMs : 2 * 60_000);
         })
         .catch((error: unknown) => {
           if (cancelled || controller.signal.aborted) return;
@@ -1595,14 +1595,56 @@ function SiteRow({ site, columnName }: { site: PlannedSite; columnName?: string 
   );
 }
 
+type SiteSortKey = "siteNumber" | "title" | "columnName" | "assignedCount" | "completed";
+type SiteSort = { key: SiteSortKey; direction: "asc" | "desc" };
+
+function sortSites<T extends PlannedSite>(sites: T[], sort: SiteSort | null): T[] {
+  if (!sort) return sites;
+  const direction = sort.direction === "asc" ? 1 : -1;
+  return [...sites].sort((left, right) => {
+    let comparison = 0;
+    switch (sort.key) {
+      case "siteNumber":
+        comparison = left.siteNumber.localeCompare(right.siteNumber, "ru", { numeric: true });
+        break;
+      case "title":
+        comparison = left.title.localeCompare(right.title, "ru");
+        break;
+      case "columnName":
+        comparison = ((left as AvrSite).columnName ?? "").localeCompare((right as AvrSite).columnName ?? "", "ru");
+        break;
+      case "assignedCount":
+        comparison = left.assignedCount - right.assignedCount;
+        break;
+      case "completed":
+        comparison = Number(left.completed) - Number(right.completed);
+        break;
+    }
+    return comparison * direction;
+  });
+}
+
+function SortableSitesHeader({ label, sortKey, sort, onSort }: { label: string; sortKey: SiteSortKey; sort: SiteSort | null; onSort: (key: SiteSortKey) => void }) {
+  const active = sort?.key === sortKey;
+  return <button className="sites-sort-button" type="button" onClick={() => onSort(sortKey)} aria-label={`Сортировать по столбцу «${label}»`} title={`Сортировать по столбцу «${label}»`}>
+    {label}<span aria-hidden="true">{active ? sort.direction === "asc" ? "↑" : "↓" : "↕"}</span>
+  </button>;
+}
+
 function SitesPage({ sites, loadState, error, paused }: { sites: PlannedSite[]; loadState: SiteLoadState; error: string; paused: boolean }) {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<SiteSort | null>(null);
   const pageSize = 25;
   const filteredSites = sites.filter((site) => `${site.siteNumber} ${site.title}`.toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru")));
+  const sortedSites = sortSites(filteredSites, sort);
   const pageCount = Math.max(1, Math.ceil(filteredSites.length / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const visibleSites = filteredSites.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visibleSites = sortedSites.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const changeSort = (key: SiteSortKey) => {
+    setSort((current) => ({ key, direction: current?.key === key && current.direction === "asc" ? "desc" : "asc" }));
+    setPage(1);
+  };
 
   return (
     <section className="section-view">
@@ -1626,14 +1668,13 @@ function SitesPage({ sites, loadState, error, paused }: { sites: PlannedSite[]; 
           <div className="sites-page-message">{query ? "По вашему запросу площадок не найдено." : "В колонке плана пока нет площадок."}</div>
         ) : (
           <>
-            <div className="sites-table-header"><span>№ площадки</span><span>Площадка / адрес</span><span>Инженеры</span><span>Статус</span><span>ID задачи</span></div>
+            <div className="sites-table-header"><SortableSitesHeader label="№ площадки" sortKey="siteNumber" sort={sort} onSort={changeSort} /><SortableSitesHeader label="Площадка / адрес" sortKey="title" sort={sort} onSort={changeSort} /><SortableSitesHeader label="Инженеры" sortKey="assignedCount" sort={sort} onSort={changeSort} /><SortableSitesHeader label="Статус" sortKey="completed" sort={sort} onSort={changeSort} /></div>
             {visibleSites.map((site) => (
               <div className="sites-table-row" key={site.taskId}>
                 <span className="site-number">{site.siteNumber}</span>
                 <span className="site-title" title={site.title}>{site.title}</span>
                 <span className="site-assignees">{site.assignedCount}</span>
                 <span><span className={`site-status ${site.completed ? "site-status-complete" : ""}`}>{site.completed ? "Выполнена" : "В плане"}</span></span>
-                <span className="site-task-id" title={site.taskId}>{site.taskId.slice(0, 8)}…</span>
               </div>
             ))}
             <div className="sites-pagination">
@@ -1657,6 +1698,7 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [columnFilter, setColumnFilter] = useState("");
+  const [sort, setSort] = useState<SiteSort | null>(null);
   const pageSize = 25;
   const sites = avrSites?.items ?? [];
   const normalizedQuery = query.trim().toLocaleLowerCase("ru");
@@ -1664,9 +1706,14 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
     if (columnFilter && site.columnId !== columnFilter) return false;
     return `${site.siteNumber} ${site.title} ${site.columnName}`.toLocaleLowerCase("ru").includes(normalizedQuery);
   });
+  const sortedSites = sortSites(filteredSites, sort);
   const pageCount = Math.max(1, Math.ceil(filteredSites.length / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const visibleSites = filteredSites.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visibleSites = sortedSites.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const changeSort = (key: SiteSortKey) => {
+    setSort((current) => ({ key, direction: current?.key === key && current.direction === "asc" ? "desc" : "asc" }));
+    setPage(1);
+  };
 
   return (
     <section className="section-view">
@@ -1709,7 +1756,7 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
           <div className="sites-page-message">{query || columnFilter ? "По вашему запросу площадок не найдено." : "В столбцах АВР пока нет площадок."}</div>
         ) : (
           <>
-            <div className="sites-table-header avr-sites-table"><span>№ площадки</span><span>Площадка / адрес</span><span>Столбец</span><span>Инженеры</span><span>Статус</span><span>ID задачи</span></div>
+            <div className="sites-table-header avr-sites-table"><SortableSitesHeader label="№ площадки" sortKey="siteNumber" sort={sort} onSort={changeSort} /><SortableSitesHeader label="Площадка / адрес" sortKey="title" sort={sort} onSort={changeSort} /><SortableSitesHeader label="Столбец" sortKey="columnName" sort={sort} onSort={changeSort} /><SortableSitesHeader label="Инженеры" sortKey="assignedCount" sort={sort} onSort={changeSort} /><SortableSitesHeader label="Статус" sortKey="completed" sort={sort} onSort={changeSort} /></div>
             {visibleSites.map((site) => (
               <div className="sites-table-row avr-sites-table" key={site.taskId}>
                 <span className="site-number">{site.siteNumber || "—"}</span>
@@ -1717,7 +1764,6 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
                 <span className="site-column" title={site.columnName}>{site.columnName || "Без названия"}</span>
                 <span className="site-assignees">{site.assignedCount}</span>
                 <span><span className={`site-status ${site.completed ? "site-status-complete" : ""}`}>{site.completed ? "Выполнена" : "В плане"}</span></span>
-                <span className="site-task-id" title={site.taskId}>{site.taskId.slice(0, 8)}…</span>
               </div>
             ))}
             <div className="sites-pagination">
@@ -1727,7 +1773,7 @@ function AvrSitesPage({ avrSites, loadState, error, paused }: { avrSites: AvrSit
           </>
         )}
       </div>
-      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Обновление списка при открытии страницы · кэш API 5 минут</span></footer>
+      <footer className="page-footer"><span>YouGile Operations Portal <span className="footer-version">{PORTAL_VERSION}</span></span><span>Обновление списка при открытии страницы · кэш API 2 минуты</span></footer>
     </section>
   );
 }

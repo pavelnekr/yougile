@@ -157,7 +157,7 @@ export type AvrSitesList = { columns: AvrColumnSites[]; items: PlannedSite[]; to
 // токену (см. plannedSitesCache), и по полному списку столбцов: как только
 // администратор поменял ID, прежний результат по старым колонкам становится
 // невалидным и не отдаётся.
-const avrSitesDurationMs = 5 * 60_000;
+const avrSitesDurationMs = 2 * 60_000;
 const avrSitesCache = new Map<string, CacheEntry<AvrSitesList>>();
 
 export async function getAvrSites(
