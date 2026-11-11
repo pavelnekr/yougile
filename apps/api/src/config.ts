@@ -16,6 +16,8 @@ const envSchema = z.object({
   NETBOX_API_URL: z.string().url().default("http://localhost:8000"),
   NETBOX_API_TOKEN: z.string().trim().default(""),
   NETBOX_API_TOKEN_TYPE: z.enum(["Bearer", "Token"]).default("Bearer"),
+  // Ключ подписи короткоживущих токенов встроенных дашбордов Metabase.
+  METABASE_SECRET_KEY: z.string().trim().default(""),
   YOUGILE_TOKEN_ENCRYPTION_KEY: z.string().regex(/^(?:[a-fA-F0-9]{64})?$/, "YOUGILE_TOKEN_ENCRYPTION_KEY must be 64 hexadecimal characters").default(""),
   // Значение по умолчанию — нейтральный пример: реальный ID колонки живёт в .env
   // (не коммитится) или в «Конфигурация портала» (таблица AppSetting). Чужой ID

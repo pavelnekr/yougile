@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { Prisma, type PortalWorkspace, type PrismaClient } from "@prisma/client";
+import { createHmac } from "node:crypto";
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { config } from "../../config.js";
+import { decryptMetabaseSecret } from "../../integrations/yougile/token-crypto.js";
 import { requireWorkspaceAccess } from "../auth/service.js";
 import { getDapsDatabase } from "../daps/database.js";
 
@@ -40,6 +42,26 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
   const readAccess = requireWorkspaceAccess("LTP" as PortalWorkspace);
   const writeAccess = requireWorkspaceAccess("LTP" as PortalWorkspace, true);
   const database = () => getDapsDatabase(prisma);
+
+  app.get("/api/ltp/metabase-token", { preHandler: readAccess }, async (_request, reply) => {
+    const setting = await prisma.appSetting.findUnique({ where: { key: "portal-config:ltp-metabase" } });
+    const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
+      ? setting.value as Record<string, unknown> : {};
+    const encryptedToken = typeof value.encryptedToken === "string" ? value.encryptedToken : "";
+    const metabaseSecret = encryptedToken ? decryptMetabaseSecret(encryptedToken) : config.METABASE_SECRET_KEY;
+    if (!metabaseSecret) return reply.code(503).send({ error: "Metabase не настроен в конфигурации портала." });
+    const base64url = (value: string) => Buffer.from(value).toString("base64url");
+    const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const payload = base64url(JSON.stringify({
+      resource: { dashboard: 72 },
+      params: {},
+      exp: Math.floor(Date.now() / 1000) + 10 * 60
+    }));
+    const unsignedToken = `${header}.${payload}`;
+    const signature = createHmac("sha256", metabaseSecret).update(unsignedToken).digest("base64url");
+    reply.header("Cache-Control", "no-store");
+    return { token: `${unsignedToken}.${signature}` };
+  });
 
   app.get<{ Querystring: { q?: string } }>("/api/ltp/blocks-log/resources", { preHandler: readAccess }, async (request, reply) => {
     const query = z.string().trim().min(3).max(120).safeParse(request.query.q);

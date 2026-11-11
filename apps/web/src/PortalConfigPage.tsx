@@ -6,7 +6,7 @@ import { PORTAL_VERSION } from "./version";
 
 type PortalColumn = { id: string; name: string };
 type LoadState = "loading" | "ready" | "error";
-type TabKey = "filter" | "avr" | "mail" | "workcheck" | "daps" | "netbox";
+type TabKey = "filter" | "avr" | "mail" | "workcheck" | "daps" | "netbox" | "ltp";
 
 // Состояние проверки ID столбца в YouGile. «none» — проверка ещё не запускалась
 // (пустой ID), «invalid» — фронтовая проверка формата, остальное — ответ API.
@@ -214,6 +214,13 @@ export default function PortalConfigPage({
   const [netboxError, setNetboxError] = useState("");
   const [netboxNotice, setNetboxNotice] = useState("");
 
+  const [ltpToken, setLtpToken] = useState("");
+  const [ltpTokenConfigured, setLtpTokenConfigured] = useState(false);
+  const [ltpLoading, setLtpLoading] = useState(true);
+  const [ltpSaving, setLtpSaving] = useState(false);
+  const [ltpError, setLtpError] = useState("");
+  const [ltpNotice, setLtpNotice] = useState("");
+
   const [savingPlan, setSavingPlan] = useState(false);
   const [savingAvr, setSavingAvr] = useState(false);
   const [savingMail, setSavingMail] = useState(false);
@@ -409,6 +416,28 @@ export default function PortalConfigPage({
     return () => controller.abort();
   }, [loadNetbox]);
 
+  const loadLtp = useCallback(async (signal?: AbortSignal) => {
+    setLtpLoading(true);
+    setLtpError("");
+    try {
+      const response = await apiFetch("/api/portal-config/ltp", { signal });
+      const data = await response.json() as { tokenConfigured?: boolean; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить настройки 1ЛТП.");
+      setLtpTokenConfigured(Boolean(data.tokenConfigured));
+    } catch (reason) {
+      if (signal?.aborted) return;
+      setLtpError(errorMessage(reason));
+    } finally {
+      if (!signal?.aborted) setLtpLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadLtp(controller.signal);
+    return () => controller.abort();
+  }, [loadLtp]);
+
   const planChanged = plan.id !== savedPlan.id || plan.name !== savedPlan.name;
   const avrChanged = JSON.stringify(avr) !== JSON.stringify(savedAvr);
   const mailChanged = JSON.stringify(mailRecipients) !== JSON.stringify(savedMailRecipients);
@@ -420,6 +449,7 @@ export default function PortalConfigPage({
   const windowChanged = windowHours !== savedWindowHours;
   const dapsSchemaChanged = dapsSourceSchema.trim() !== savedDapsSourceSchema || dapsAggregateSchema.trim() !== savedDapsAggregateSchema;
   const netboxChanged = netboxUrl.trim() !== savedNetboxUrl || netboxTokenType !== savedNetboxTokenType || netboxToken.trim().length > 0 || JSON.stringify(netboxBypassRoles) !== JSON.stringify(savedNetboxBypassRoles);
+  const ltpChanged = ltpToken.trim().length > 0;
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -433,6 +463,8 @@ export default function PortalConfigPage({
     setDapsDatabaseNotice("");
     setNetboxError("");
     setNetboxNotice("");
+    setLtpError("");
+    setLtpNotice("");
   };
 
   const saveNetbox = async () => {
@@ -458,6 +490,29 @@ export default function PortalConfigPage({
       setNetboxError(errorMessage(reason));
     } finally {
       setNetboxSaving(false);
+    }
+  };
+
+  const saveLtp = async () => {
+    if (ltpSaving || !ltpToken.trim()) return;
+    setLtpSaving(true);
+    setLtpError("");
+    setLtpNotice("");
+    try {
+      const response = await apiFetch("/api/portal-config/ltp", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: ltpToken.trim() })
+      });
+      const data = await response.json() as { configured?: boolean; error?: string };
+      if (!response.ok || !data.configured) throw new Error(data.error ?? "Не удалось сохранить ключ Metabase.");
+      setLtpToken("");
+      setLtpTokenConfigured(true);
+      setLtpNotice("Ключ Metabase сохранён.");
+    } catch (reason) {
+      setLtpError(errorMessage(reason));
+    } finally {
+      setLtpSaving(false);
     }
   };
 
@@ -855,6 +910,20 @@ export default function PortalConfigPage({
                 onClick={() => switchTab("netbox")}
               >
                 NetBox
+              </button>
+            </div>
+            <div className="portal-config-tab-group" role="tablist" aria-label="1ЛТП">
+              <span className="portal-config-tab-group-label" role="presentation">1ЛТП</span>
+              <button
+                id="portal-config-tab-ltp"
+                type="button"
+                role="tab"
+                aria-selected={tab === "ltp"}
+                aria-controls="portal-config-panel-ltp"
+                className={`portal-config-tab ${tab === "ltp" ? "portal-config-tab-active" : ""}`}
+                onClick={() => switchTab("ltp")}
+              >
+                Metabase
               </button>
             </div>
           </div>
@@ -1480,6 +1549,52 @@ export default function PortalConfigPage({
               <button className="btn-primary" disabled={netboxSaving || netboxLoading || !netboxChanged} onClick={() => void saveNetbox()}>
                 {netboxSaving ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
                 {netboxSaving ? "Проверяем и сохраняем…" : "Проверить и сохранить"}
+              </button>
+            </div>
+          </div>
+
+          <div
+            className="portal-config-section"
+            id="portal-config-panel-ltp"
+            role="tabpanel"
+            aria-labelledby="portal-config-tab-ltp"
+            hidden={tab !== "ltp"}
+          >
+            <div className="portal-config-section-heading">
+              <div>
+                <h2>Дашборды Metabase</h2>
+                <p>Ключ подписи нужен API для выпуска короткоживущего токена встроенного дашборда. Он хранится зашифрованным и не возвращается в браузер.</p>
+              </div>
+              <span className="portal-config-save-state">{ltpTokenConfigured ? "Ключ настроен" : "Ключ не настроен"}</span>
+            </div>
+            {ltpLoading ? (
+              <div className="portal-config-loading"><LoaderCircle size={16} className="template-spinner" /> Загружаем настройки 1ЛТП…</div>
+            ) : ltpError && !ltpTokenConfigured ? (
+              <div className="portal-config-feedback portal-config-feedback-error" role="alert">{ltpError}<button className="text-button" onClick={() => void loadLtp()}>Повторить</button></div>
+            ) : (
+              <>
+                <div className="portal-config-fields">
+                  <label className="field-label" htmlFor="portal-config-ltp-metabase-token"><span>Секретный ключ Metabase</span>
+                    <input
+                      id="portal-config-ltp-metabase-token"
+                      type="password"
+                      autoComplete="new-password"
+                      value={ltpToken}
+                      disabled={ltpSaving}
+                      placeholder={ltpTokenConfigured ? "Сохранённый ключ скрыт; введите новый, чтобы заменить" : "Вставьте секретный ключ Metabase"}
+                      onChange={(event) => { setLtpToken(event.target.value); setLtpError(""); setLtpNotice(""); }}
+                    />
+                  </label>
+                </div>
+                <div className="portal-config-note"><Info size={14} /><span>Используйте секретный ключ из настроек embedding Metabase. API подписывает JWT для дашборда и передаёт токен браузеру; сам секрет остаётся на сервере.</span></div>
+              </>
+            )}
+            {ltpError && ltpTokenConfigured && <div className="portal-config-feedback portal-config-feedback-error" role="alert">{ltpError}</div>}
+            {ltpNotice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{ltpNotice}</div>}
+            <div className="portal-config-actions">
+              <button className="btn-primary" disabled={ltpSaving || ltpLoading || !ltpChanged} onClick={() => void saveLtp()}>
+                {ltpSaving ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
+                {ltpSaving ? "Сохраняем…" : "Сохранить ключ"}
               </button>
             </div>
           </div>

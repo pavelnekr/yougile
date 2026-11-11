@@ -7,7 +7,7 @@ import { invalidateAvrSitesCache, invalidateSitesCache } from "../sites/service.
 import { siteSnapshotAdminKey, refreshSiteSnapshots } from "../sites/snapshot.js";
 import { annotateLog } from "../logs/service.js";
 import { avrColumnsSchema, planColumnSchema } from "./schema.js";
-import { decryptDapsDatabaseUrl, decryptNetboxApiToken, encryptDapsDatabaseUrl, encryptNetboxApiToken, encryptPortalColumnId } from "../../integrations/yougile/token-crypto.js";
+import { decryptDapsDatabaseUrl, decryptNetboxApiToken, encryptDapsDatabaseUrl, encryptNetboxApiToken, encryptMetabaseSecret, encryptPortalColumnId } from "../../integrations/yougile/token-crypto.js";
 import {
   defaultDapsAggregateSchema,
   defaultDapsSourceSchema,
@@ -42,6 +42,30 @@ import {
 export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: PrismaClient) {
   const adminOnly = requireRole(PortalRole.ADMIN);
   const postgresSchema = z.string().trim().min(1).max(63).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Имя схемы: латинские буквы, цифры и _; первый символ — буква или _.");
+
+  app.get("/api/portal-config/ltp", { preHandler: adminOnly }, async () => {
+    const setting = await prisma.appSetting.findUnique({ where: { key: "portal-config:ltp-metabase" } });
+    const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
+      ? setting.value as Record<string, unknown> : {};
+    return { tokenConfigured: (typeof value.encryptedToken === "string" && value.encryptedToken.length > 0) || Boolean(config.METABASE_SECRET_KEY) };
+  });
+
+  app.put("/api/portal-config/ltp", { preHandler: adminOnly }, async (request, reply) => {
+    const parsed = z.object({ token: z.string().trim().min(1, "Укажите ключ Metabase.").max(2000) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте ключ Metabase." });
+    try {
+      await prisma.appSetting.upsert({
+        where: { key: "portal-config:ltp-metabase" },
+        create: { key: "portal-config:ltp-metabase", value: { encryptedToken: encryptMetabaseSecret(parsed.data.token) } },
+        update: { value: { encryptedToken: encryptMetabaseSecret(parsed.data.token) } }
+      });
+      app.log.info({ actor: request.sessionUser?.login }, "Metabase embed secret updated");
+      return { configured: true };
+    } catch (error) {
+      app.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save Metabase embed secret");
+      return reply.code(500).send({ error: "Не удалось сохранить ключ Metabase. Проверьте ключ шифрования портала." });
+    }
+  });
 
   app.get("/api/portal-config/netbox", { preHandler: adminOnly }, async () => {
     const setting = await prisma.appSetting.findUnique({ where: { key: netboxSettingKey } });

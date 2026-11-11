@@ -87,6 +87,14 @@ export function decryptNetboxApiToken(value: string) {
   return decryptWithAad(value, "netbox-api-token:v1", "NetBox API token");
 }
 
+export function encryptMetabaseSecret(value: string) {
+  return encryptWithAad(value, "metabase-embed-secret:v1");
+}
+
+export function decryptMetabaseSecret(value: string) {
+  return decryptWithAad(value, "metabase-embed-secret:v1", "Metabase embed secret");
+}
+
 export function encryptOperatorContacts(value: string) {
   return encryptWithAad(value, "coordination-operator-contacts:v1");
 }

@@ -140,7 +140,11 @@ button { color: inherit; }
 .ltp-empty-card { min-height: 150px; cursor: default; }
 .ltp-blocks-page .section-hero .text-button { margin-left: auto; }
 .ltp-resources-page .section-hero .text-button { margin-left: auto; }
-.ltp-blocks-form { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)) auto; align-items: end; gap: 12px; padding: 16px; }
+.ltp-metabase-page .section-hero .text-button { margin-left: auto; }
+.ltp-metabase-frame { min-height: 70vh; overflow: hidden; border: 1px solid #edf0f4; border-radius: 8px; background: #fff; }
+.ltp-metabase-frame metabase-dashboard { display: block; width: 100%; min-height: 70vh; }
+.ltp-metabase-loading { padding: 24px; color: #8791a1; font-size: 12px; }
+.ltp-blocks-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 12px; padding: 16px; }
 .ltp-resources-form { grid-template-columns: minmax(0, 1fr) auto; }
 .ltp-resources-intro { grid-column: 1 / -1; margin: 0 0 2px; color: #68758a; font-size: 11px; line-height: 1.55; }
 .ltp-resources-form > .field-label { min-width: 0; }
