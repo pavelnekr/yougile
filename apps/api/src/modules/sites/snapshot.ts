@@ -32,7 +32,12 @@ const avrDataSchema = z.object({
   columns: z.array(z.object({ id: z.string(), name: z.string(), sites: z.array(siteSchema) })),
   items: z.array(siteSchema),
   total: z.number(),
-  engineerAssignments: z.array(z.object({ name: z.string(), siteCount: z.number() })).default([])
+  engineerAssignments: z.array(z.object({
+    userId: z.string(),
+    name: z.string(),
+    siteCount: z.number(),
+    sites: z.array(z.object({ siteNumber: z.string(), title: z.string(), source: z.string(), columnName: z.string().nullable() })).default([])
+  })).default([])
 });
 const avrSnapshotSchema = z.object({
   version: z.literal(1),

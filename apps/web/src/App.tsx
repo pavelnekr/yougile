@@ -115,7 +115,7 @@ type AvrSitesList = {
   columns: { id: string; name: string; count: number }[];
   items: AvrSite[];
   total: number;
-  engineerAssignments: { name: string; siteCount: number }[];
+  engineerAssignments: { userId: string; name: string; siteCount: number; sites: { siteNumber: string; title: string; source: string; columnName: string | null }[] }[];
 };
 
 // adminOnly — пункт показывается только роли ADMIN. Проверка роли есть и в API
@@ -1371,6 +1371,7 @@ function Overview({
 }) {
   const [workTypeStatistics, setWorkTypeStatistics] = useState<WorkTypeStatistic | null>(null);
   const [workTypeStatisticsError, setWorkTypeStatisticsError] = useState("");
+  const [selectedEngineer, setSelectedEngineer] = useState<AvrSitesList["engineerAssignments"][number] | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1447,9 +1448,21 @@ function Overview({
             : !avrSites?.engineerAssignments.length ? <div className="sites-message">Нет инженеров с назначенными площадками.</div>
               : <div className="engineer-assignments-list">
                 <div className="engineer-assignments-row engineer-assignments-header"><span>ФИО</span><span>Количество площадок</span></div>
-                {avrSites.engineerAssignments.map((engineer, index) => <div className="engineer-assignments-row" key={`${engineer.name}-${index}`}><span>{engineer.name}</span><strong>{engineer.siteCount.toLocaleString("ru-RU")}</strong></div>)}
+                {avrSites.engineerAssignments.map((engineer) => <div className="engineer-assignments-row" key={engineer.userId}><span>{engineer.name}</span><button className="engineer-sites-count" type="button" onClick={() => setSelectedEngineer(engineer)} aria-label={`Показать площадки инженера ${engineer.name}`}>{engineer.siteCount.toLocaleString("ru-RU")}</button></div>)}
               </div>}
       </section>
+
+      {selectedEngineer && <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="engineer-sites-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedEngineer(null); }}>
+        <div className="modal-dialog engineer-sites-dialog">
+          <div className="modal-heading"><div><h2 id="engineer-sites-title">Назначенные площадки</h2><p>{selectedEngineer.name} · {countRu(selectedEngineer.siteCount, siteForms)}</p></div><button className="text-button" type="button" onClick={() => setSelectedEngineer(null)}>Закрыть</button></div>
+          <div className="engineer-sites-list">
+            {selectedEngineer.sites.map((site, index) => <div className="engineer-sites-row" key={`${site.source}-${site.columnName ?? ""}-${site.siteNumber}-${site.title}-${index}`}>
+              <span className="site-number">{site.siteNumber || "—"}</span>
+              <span className="engineer-site-title" title={site.title}>{site.title}<small>{site.source}{site.columnName ? ` · ${site.columnName}` : ""}</small></span>
+            </div>)}
+          </div>
+        </div>
+      </div>}
 
       <section className="section-heading">
         <div><h2>Что хотите сделать?</h2><p>Выберите операцию — сначала покажем план изменений.</p></div>

@@ -324,7 +324,15 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 .engineer-assignments-list { max-height: 190px; overflow-y: auto; overscroll-behavior-y: auto; }
 .engineer-assignments-row { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 16px; padding: 10px 8px; border-top: 1px solid #f0f2f6; color: #596477; font-size: 11px; }
 .engineer-assignments-row strong { color: #3d4658; font-variant-numeric: tabular-nums; text-align: right; }
+.engineer-sites-count { justify-self: end; padding: 2px 5px; border: 0; border-radius: 4px; color: #3d5fc7; background: transparent; font: 600 11px "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; cursor: pointer; }
+.engineer-sites-count:hover, .engineer-sites-count:focus-visible { outline: 0; background: #eef1ff; }
 .engineer-assignments-header { color: #929aaa; font-size: 9px; }
+.engineer-sites-dialog { width: min(620px, 100%); }
+.engineer-sites-dialog .modal-heading > .text-button { margin-left: auto; flex: 0 0 auto; }
+.engineer-sites-list { max-height: min(60vh, 520px); overflow-y: auto; overscroll-behavior-y: contain; border-top: 1px solid #eff1f5; }
+.engineer-sites-row { display: grid; grid-template-columns: 65px minmax(0, 1fr); align-items: center; gap: 12px; min-height: 46px; padding: 7px 4px; border-bottom: 1px solid #f0f2f6; }
+.engineer-site-title { min-width: 0; overflow: hidden; color: #596477; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.engineer-site-title small { display: block; margin-top: 3px; color: #929aaa; font-size: 8px; }
 .stat-card { min-height: 122px; padding: 15px 16px 13px; border: 1px solid #eaedf3; border-radius: 9px; background: #fff; box-shadow: 0 2px 5px #26365905; }
 .stat-card-button { display: flex; width: 100%; flex-direction: column; align-items: stretch; padding-top: 11px; color: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur-ui) var(--ease-out), box-shadow var(--dur-ui) var(--ease-out), transform var(--dur-press) var(--ease-out); }
 .stat-top { display: flex; align-items: center; justify-content: center; gap: 9px; color: #778193; font-size: 10px; font-weight: 500; }
