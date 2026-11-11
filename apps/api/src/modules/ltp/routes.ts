@@ -107,7 +107,9 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
       if (invalidRow >= 0) return reply.code(400).send({ error: `Заполните ресурс и SNI во всех строках (ошибка около строки ${invalidRow + 2}).` });
       const db = await database();
       await db.$transaction(async (tx) => {
-        await tx.$executeRaw`DELETE FROM ltp_1.resources`;
+        // Полная замена справочника должна сбрасывать и sequence ID,
+        // чтобы новая загрузка начиналась с первого значения.
+        await tx.$executeRaw`TRUNCATE TABLE ltp_1.resources RESTART IDENTITY`;
         for (let offset = 0; offset < entries.length; offset += 500) {
           const batch = entries.slice(offset, offset + 500);
           const values = Prisma.join(batch.map((entry) => Prisma.sql`(${entry.resource}, ${entry.sni})`));
