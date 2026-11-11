@@ -47,19 +47,40 @@ export async function registerPortalConfigRoutes(app: FastifyInstance, prisma: P
     const setting = await prisma.appSetting.findUnique({ where: { key: "portal-config:ltp-metabase" } });
     const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
       ? setting.value as Record<string, unknown> : {};
-    return { tokenConfigured: (typeof value.encryptedToken === "string" && value.encryptedToken.length > 0) || Boolean(config.METABASE_SECRET_KEY) };
+    return {
+      tokenConfigured: (typeof value.encryptedToken === "string" && value.encryptedToken.length > 0) || Boolean(config.METABASE_SECRET_KEY),
+      instanceUrl: typeof value.instanceUrl === "string" ? value.instanceUrl : config.METABASE_INSTANCE_URL,
+      dashboardId: typeof value.dashboardId === "number" && Number.isInteger(value.dashboardId) && value.dashboardId > 0
+        ? value.dashboardId : config.METABASE_DASHBOARD_ID
+    };
   });
 
   app.put("/api/portal-config/ltp", { preHandler: adminOnly }, async (request, reply) => {
-    const parsed = z.object({ token: z.string().trim().min(1, "Укажите ключ Metabase.").max(2000) }).safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте ключ Metabase." });
+    const parsed = z.object({
+      instanceUrl: z.string().trim().url().max(1000),
+      dashboardId: z.number().int().positive().max(1_000_000),
+      token: z.string().trim().max(2000).optional()
+    }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте настройки Metabase." });
+    const instanceUrl = new URL(parsed.data.instanceUrl);
+    if ((instanceUrl.protocol !== "http:" && instanceUrl.protocol !== "https:") || instanceUrl.username || instanceUrl.password) {
+      return reply.code(400).send({ error: "Укажите HTTP(S)-адрес Metabase без логина и пароля." });
+    }
+    const currentSetting = await prisma.appSetting.findUnique({ where: { key: "portal-config:ltp-metabase" } });
+    const currentValue = currentSetting?.value && typeof currentSetting.value === "object" && !Array.isArray(currentSetting.value)
+      ? currentSetting.value as Record<string, unknown> : {};
+    const currentEncryptedToken = typeof currentValue.encryptedToken === "string" ? currentValue.encryptedToken : "";
+    if (!parsed.data.token && !currentEncryptedToken && !config.METABASE_SECRET_KEY) {
+      return reply.code(400).send({ error: "Укажите секретный ключ Metabase." });
+    }
     try {
+      const encryptedToken = parsed.data.token ? encryptMetabaseSecret(parsed.data.token) : currentEncryptedToken;
       await prisma.appSetting.upsert({
         where: { key: "portal-config:ltp-metabase" },
-        create: { key: "portal-config:ltp-metabase", value: { encryptedToken: encryptMetabaseSecret(parsed.data.token) } },
-        update: { value: { encryptedToken: encryptMetabaseSecret(parsed.data.token) } }
+        create: { key: "portal-config:ltp-metabase", value: { instanceUrl: instanceUrl.origin, dashboardId: parsed.data.dashboardId, encryptedToken: encryptedToken || null } },
+        update: { value: { instanceUrl: instanceUrl.origin, dashboardId: parsed.data.dashboardId, encryptedToken: encryptedToken || null } }
       });
-      app.log.info({ actor: request.sessionUser?.login }, "Metabase embed secret updated");
+      app.log.info({ actor: request.sessionUser?.login, dashboardId: parsed.data.dashboardId }, "Metabase embed settings updated");
       return { configured: true };
     } catch (error) {
       app.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save Metabase embed secret");

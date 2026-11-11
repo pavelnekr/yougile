@@ -141,8 +141,8 @@ button { color: inherit; }
 .ltp-blocks-page .section-hero .text-button { margin-left: auto; }
 .ltp-resources-page .section-hero .text-button { margin-left: auto; }
 .ltp-metabase-page .section-hero .text-button { margin-left: auto; }
-.ltp-metabase-frame { min-height: 70vh; overflow: hidden; border: 1px solid #edf0f4; border-radius: 8px; background: #fff; }
-.ltp-metabase-frame metabase-dashboard { display: block; width: 100%; min-height: 70vh; }
+.ltp-metabase-frame { box-sizing: border-box; width: 100%; min-width: 0; height: max(600px, calc(100vh - 230px)); height: max(600px, calc(100dvh - 230px)); border: 1px solid #edf0f4; border-radius: 8px; background: #fff; }
+.ltp-metabase-frame metabase-dashboard { display: block; width: 100%; max-width: 100%; height: 100%; min-height: 600px; }
 .ltp-metabase-loading { padding: 24px; color: #8791a1; font-size: 12px; }
 .ltp-blocks-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 12px; padding: 16px; }
 .ltp-resources-form { grid-template-columns: minmax(0, 1fr) auto; }

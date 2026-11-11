@@ -50,17 +50,20 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
     const encryptedToken = typeof value.encryptedToken === "string" ? value.encryptedToken : "";
     const metabaseSecret = encryptedToken ? decryptMetabaseSecret(encryptedToken) : config.METABASE_SECRET_KEY;
     if (!metabaseSecret) return reply.code(503).send({ error: "Metabase не настроен в конфигурации портала." });
+    const instanceUrl = typeof value.instanceUrl === "string" ? value.instanceUrl : config.METABASE_INSTANCE_URL;
+    const dashboardId = typeof value.dashboardId === "number" && Number.isInteger(value.dashboardId) && value.dashboardId > 0
+      ? value.dashboardId : config.METABASE_DASHBOARD_ID;
     const base64url = (value: string) => Buffer.from(value).toString("base64url");
     const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
     const payload = base64url(JSON.stringify({
-      resource: { dashboard: 72 },
+      resource: { dashboard: dashboardId },
       params: {},
       exp: Math.floor(Date.now() / 1000) + 10 * 60
     }));
     const unsignedToken = `${header}.${payload}`;
     const signature = createHmac("sha256", metabaseSecret).update(unsignedToken).digest("base64url");
     reply.header("Cache-Control", "no-store");
-    return { token: `${unsignedToken}.${signature}` };
+    return { token: `${unsignedToken}.${signature}`, instanceUrl };
   });
 
   app.get<{ Querystring: { q?: string } }>("/api/ltp/blocks-log/resources", { preHandler: readAccess }, async (request, reply) => {

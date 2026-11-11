@@ -14,13 +14,13 @@ declare global {
 
 let embedScriptPromise: Promise<void> | null = null;
 
-function loadMetabaseEmbed() {
+function loadMetabaseEmbed(instanceUrl: string) {
   if (window.customElements.get("metabase-dashboard")) return Promise.resolve();
   if (!embedScriptPromise) {
-    window.metabaseConfig = { theme: { preset: "light" }, isGuest: true, instanceUrl: "https://metabase.dcoa.ru" };
+    window.metabaseConfig = { theme: { preset: "light" }, isGuest: true, instanceUrl };
     embedScriptPromise = new Promise<void>((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = "https://metabase.dcoa.ru/app/embed.js";
+      script.src = `${instanceUrl.replace(/\/$/, "")}/app/embed.js`;
       script.defer = true;
       script.onload = () => resolve();
       script.onerror = () => {
@@ -42,9 +42,10 @@ export default function MetabaseDashboardPage({ onBack }: { onBack: () => void }
     const refreshToken = async () => {
       try {
         const response = await apiFetch("/api/ltp/metabase-token");
-        const data = await response.json() as { token?: string; error?: string };
-        if (!response.ok || !data.token) throw new Error(data.error ?? "Не удалось получить токен дашборда.");
-        await loadMetabaseEmbed();
+        const data = await response.json() as { token?: string; instanceUrl?: string; error?: string };
+        if (!response.ok || !data.token || !data.instanceUrl) throw new Error(data.error ?? "Не удалось получить настройки дашборда.");
+        window.metabaseConfig = { theme: { preset: "light" }, isGuest: true, instanceUrl: data.instanceUrl };
+        await loadMetabaseEmbed(data.instanceUrl);
         if (active) { setToken(data.token); setError(""); }
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "Не удалось открыть дашборд.");

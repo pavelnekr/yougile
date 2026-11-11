@@ -216,6 +216,10 @@ export default function PortalConfigPage({
 
   const [ltpToken, setLtpToken] = useState("");
   const [ltpTokenConfigured, setLtpTokenConfigured] = useState(false);
+  const [ltpInstanceUrl, setLtpInstanceUrl] = useState("");
+  const [savedLtpInstanceUrl, setSavedLtpInstanceUrl] = useState("");
+  const [ltpDashboardId, setLtpDashboardId] = useState("72");
+  const [savedLtpDashboardId, setSavedLtpDashboardId] = useState(72);
   const [ltpLoading, setLtpLoading] = useState(true);
   const [ltpSaving, setLtpSaving] = useState(false);
   const [ltpError, setLtpError] = useState("");
@@ -418,9 +422,13 @@ export default function PortalConfigPage({
     setLtpError("");
     try {
       const response = await apiFetch("/api/portal-config/ltp", { signal });
-      const data = await response.json() as { tokenConfigured?: boolean; error?: string };
+      const data = await response.json() as { tokenConfigured?: boolean; instanceUrl?: string; dashboardId?: number; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить настройки 1ЛТП.");
       setLtpTokenConfigured(Boolean(data.tokenConfigured));
+      const instanceUrl = data.instanceUrl ?? "https://metabase.dcoa.ru";
+      const dashboardId = Number(data.dashboardId) || 72;
+      setLtpInstanceUrl(instanceUrl); setSavedLtpInstanceUrl(instanceUrl);
+      setLtpDashboardId(String(dashboardId)); setSavedLtpDashboardId(dashboardId);
     } catch (reason) {
       if (signal?.aborted) return;
       setLtpError(errorMessage(reason));
@@ -446,7 +454,7 @@ export default function PortalConfigPage({
   const windowChanged = windowHours !== savedWindowHours;
   const dapsSchemaChanged = dapsSourceSchema.trim() !== savedDapsSourceSchema || dapsAggregateSchema.trim() !== savedDapsAggregateSchema;
   const netboxChanged = netboxUrl.trim() !== savedNetboxUrl || netboxTokenType !== savedNetboxTokenType || netboxToken.trim().length > 0 || JSON.stringify(netboxBypassRoles) !== JSON.stringify(savedNetboxBypassRoles);
-  const ltpChanged = ltpToken.trim().length > 0;
+  const ltpChanged = ltpInstanceUrl.trim() !== savedLtpInstanceUrl || Number(ltpDashboardId) !== savedLtpDashboardId || ltpToken.trim().length > 0;
 
   const switchTab = (nextTab: TabKey) => {
     setTab(nextTab);
@@ -499,10 +507,16 @@ export default function PortalConfigPage({
       const response = await apiFetch("/api/portal-config/ltp", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: ltpToken.trim() })
+        body: JSON.stringify({
+          instanceUrl: ltpInstanceUrl.trim(),
+          dashboardId: Number(ltpDashboardId),
+          ...(ltpToken.trim() ? { token: ltpToken.trim() } : {})
+        })
       });
       const data = await response.json() as { configured?: boolean; error?: string };
       if (!response.ok || !data.configured) throw new Error(data.error ?? "Не удалось сохранить ключ Metabase.");
+      setSavedLtpInstanceUrl(ltpInstanceUrl.trim());
+      setSavedLtpDashboardId(Number(ltpDashboardId));
       setLtpToken("");
       setLtpTokenConfigured(true);
       setLtpNotice("Ключ Metabase сохранён.");
@@ -1571,6 +1585,28 @@ export default function PortalConfigPage({
             ) : (
               <>
                 <div className="portal-config-fields">
+                  <label className="field-label" htmlFor="portal-config-ltp-metabase-url"><span>Адрес Metabase</span>
+                    <input
+                      id="portal-config-ltp-metabase-url"
+                      type="url"
+                      value={ltpInstanceUrl}
+                      disabled={ltpSaving}
+                      placeholder="http://localhost:3001"
+                      onChange={(event) => { setLtpInstanceUrl(event.target.value); setLtpError(""); setLtpNotice(""); }}
+                    />
+                  </label>
+                  <label className="field-label" htmlFor="portal-config-ltp-metabase-dashboard"><span>ID дашборда</span>
+                    <input
+                      id="portal-config-ltp-metabase-dashboard"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={ltpDashboardId}
+                      disabled={ltpSaving}
+                      placeholder="2"
+                      onChange={(event) => { setLtpDashboardId(event.target.value); setLtpError(""); setLtpNotice(""); }}
+                    />
+                  </label>
                   <label className="field-label" htmlFor="portal-config-ltp-metabase-token"><span>Секретный ключ Metabase</span>
                     <input
                       id="portal-config-ltp-metabase-token"
