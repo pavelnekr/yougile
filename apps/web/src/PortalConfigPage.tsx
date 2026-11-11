@@ -243,11 +243,8 @@ export default function PortalConfigPage({
       setSavedAvr(data.avr ?? []);
       setAvrStatuses((data.avr ?? []).map(() => ({ state: "none", message: "" })));
       setLoadState("ready");
-      // Сразу проверяем сохранённые ID — статус виден ещё до редактирования.
+      // Проверяем столбец плана; ID АВР проверяются только при сохранении списка.
       if (data.plan?.id.trim()) void runColumnCheck("plan", data.plan.id);
-      (data.avr ?? []).forEach((column, index) => {
-        if (column.id.trim()) void runColumnCheck(index, column.id);
-      });
     } catch (reason) {
       if (signal?.aborted) return;
       setLoadError(errorMessage(reason));
