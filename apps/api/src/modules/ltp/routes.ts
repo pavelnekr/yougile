@@ -60,6 +60,49 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
     }
   });
 
+  app.get<{ Querystring: { date?: string } }>("/api/ltp/shift-report", { preHandler: readAccess }, async (request, reply) => {
+    const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    }).safeParse(request.query.date);
+    if (!date.success) return reply.code(400).send({ error: "Укажите корректную дату." });
+
+    try {
+      const db = await database();
+      const rows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT shift_num, fio, tap_all, tap_influence, tap_control,
+          szr_all, szr_compl, szr_not_compl, asbi_all, asbi_p1, asbi_p2,
+          asbi_drop_traffic_all, asbi_drop_traffic_compl, asbi_not_compl_p1_p2,
+          naumen_long_tt, events, politics, bz, errors
+        FROM ltp_1.shift_report
+        WHERE date = ${new Date(`${date.data}T00:00:00.000Z`)}
+        LIMIT 1
+      `);
+      const row = rows[0];
+      if (!row) return { found: false };
+      const numeric = (value: unknown) => {
+        const parsed = Number(value ?? 0);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      return {
+        found: true,
+        shiftNumber: String(row.shift_num ?? "1"),
+        supervisor: String(row.fio ?? ""),
+        metrics: {
+          tapAll: numeric(row.tap_all), tapInfluence: numeric(row.tap_influence), tapControl: numeric(row.tap_control),
+          szrAll: numeric(row.szr_all), szrCompl: numeric(row.szr_compl), szrNotCompl: numeric(row.szr_not_compl),
+          asbiAll: numeric(row.asbi_all), asbiP1: numeric(row.asbi_p1), asbiP2: numeric(row.asbi_p2),
+          asbiDropTrafficAll: numeric(row.asbi_drop_traffic_all), asbiDropTrafficCompl: numeric(row.asbi_drop_traffic_compl),
+          asbiNotComplP1P2: numeric(row.asbi_not_compl_p1_p2), naumenLongTt: numeric(row.naumen_long_tt),
+          events: numeric(row.events), politics: numeric(row.politics), bz: numeric(row.bz), errors: numeric(row.errors)
+        }
+      };
+    } catch (error) {
+      request.log.error({ err: error }, "Could not load LTP shift report");
+      return reply.code(503).send({ error: "Не удалось загрузить сводку из PostgreSQL DAPS." });
+    }
+  });
+
   app.post<{ Body: unknown }>("/api/ltp/shift-report", { preHandler: writeAccess }, async (request, reply) => {
     const count = z.number().int().min(0).max(1_000_000);
     const parsed = z.object({

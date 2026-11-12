@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Activity, AlertTriangle, ArrowLeft, BellRing, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Headset, LoaderCircle, RadioTower, Save, ShieldCheck, Star, type LucideIcon } from "lucide-react";
 import { apiFetch } from "./apiClient.js";
 
@@ -73,8 +73,10 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const [supervisorsLoading, setSupervisorsLoading] = useState(true);
   const [metrics, setMetrics] = useState<ShiftMetrics>(initialMetrics);
   const [saving, setSaving] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const previousDate = useRef(date);
   const activeSections = summarySections.filter((section) => section.fields.some(({ key }) => metrics[key] > 0)).length;
 
   useEffect(() => {
@@ -91,6 +93,39 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
       .finally(() => { if (!controller.signal.aborted) setSupervisorsLoading(false); });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (previousDate.current === date) return;
+    previousDate.current = date;
+    const controller = new AbortController();
+    setMetrics(initialMetrics);
+    setShiftNumber("1");
+    setSupervisor("");
+    setError("");
+    setNotice("");
+    if (!date || date >= localDateValue()) {
+      setReportLoading(false);
+      return () => controller.abort();
+    }
+
+    setReportLoading(true);
+    void apiFetch(`/api/ltp/shift-report?date=${encodeURIComponent(date)}`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json() as { found?: boolean; shiftNumber?: string; supervisor?: string; metrics?: ShiftMetrics; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить сводку за выбранную дату.");
+        if (data.found && data.metrics) {
+          setMetrics({ ...initialMetrics, ...data.metrics });
+          setShiftNumber(["1", "2", "3", "4"].includes(data.shiftNumber ?? "") ? data.shiftNumber! : "1");
+          setSupervisor(data.supervisor ?? "");
+          setNotice("Загружена сохранённая сводка за эту дату.");
+        } else {
+          setNotice("За эту дату сохранённой сводки нет. Заполните показатели.");
+        }
+      })
+      .catch((cause: unknown) => { if (!controller.signal.aborted) setError(errorMessage(cause)); })
+      .finally(() => { if (!controller.signal.aborted) setReportLoading(false); });
+    return () => controller.abort();
+  }, [date]);
 
   const updateMetric = (key: keyof ShiftMetrics, value: string) => {
     const parsed = value === "" ? 0 : Number(value);
@@ -155,12 +190,12 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
         <fieldset className="ltp-shift-number-field">
           <legend className="field-label">Смена</legend>
           <div className="ltp-shift-number-options">{["1", "2", "3", "4"].map((value) => <label key={value} className={shiftNumber === value ? "is-selected" : ""}>
-            <input type="radio" name="ltp-shift-number" value={value} checked={shiftNumber === value} disabled={saving} onChange={() => { setShiftNumber(value); setError(""); setNotice(""); }} />
+            <input type="radio" name="ltp-shift-number" value={value} checked={shiftNumber === value} disabled={saving || reportLoading} onChange={() => { setShiftNumber(value); setError(""); setNotice(""); }} />
             <span>{value}</span>
           </label>)}</div>
         </fieldset>
         <label className="field-label" htmlFor="ltp-shift-supervisor">Старший смены
-          <select id="ltp-shift-supervisor" value={supervisor} disabled={saving || supervisorsLoading} onChange={(event) => { setSupervisor(event.target.value); setError(""); setNotice(""); }}>
+          <select id="ltp-shift-supervisor" value={supervisor} disabled={saving || reportLoading || supervisorsLoading} onChange={(event) => { setSupervisor(event.target.value); setError(""); setNotice(""); }}>
             <option value="">{supervisorsLoading ? "Загружаем список…" : supervisors.length ? "Выберите сотрудника" : "Список не загружен"}</option>
             {supervisors.map((name) => <option value={name} key={name}>{name}</option>)}
           </select>
@@ -185,7 +220,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
         <div className="ltp-shift-metric-grid">
           {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
             {field.label}
-            <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving} onChange={(event) => updateMetric(field.key, event.target.value)} />
+            <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading} onChange={(event) => updateMetric(field.key, event.target.value)} />
           </label>)}
         </div>
       </section>;
@@ -193,13 +228,14 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     </div>
 
     <div className="portal-config-note ltp-shift-note"><CalendarDays size={14} /><span>По правилам текущего журнала запись привязана к дате. Повторное сохранение за ту же дату обновит существующую строку.</span></div>
+    {reportLoading && <div className="portal-config-note ltp-shift-note" role="status"><LoaderCircle size={14} className="template-spinner" /> Загружаем сводку за выбранную дату…</div>}
     {!canEdit && <div className="portal-config-note ltp-shift-note">Для сохранения сводки нужны права оператора.</div>}
     {error && <div className="assignment-error" role="alert">{error}</div>}
     {notice && <div className="portal-config-feedback portal-config-feedback-success" role="status"><CheckCircle2 size={15} />{notice}</div>}
     <div className="portal-config-actions ltp-shift-actions">
-      <button className="btn-primary" disabled={!canEdit || saving || supervisorsLoading || !date || !supervisor} onClick={() => void save()}>
-        {saving ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
-        {saving ? "Сохраняем…" : "Сохранить сводку"}
+      <button className="btn-primary" disabled={!canEdit || saving || reportLoading || supervisorsLoading || !date || !supervisor} onClick={() => void save()}>
+        {saving || reportLoading ? <LoaderCircle size={15} className="template-spinner" /> : <Save size={15} />}
+        {saving ? "Сохраняем…" : reportLoading ? "Загружаем…" : "Сохранить сводку"}
       </button>
     </div>
   </section>;
