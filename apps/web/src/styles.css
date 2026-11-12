@@ -205,6 +205,7 @@ button { color: inherit; }
 .ltp-shift-summary-card.is-single-metric .ltp-shift-metric-grid > .field-label { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .ltp-shift-summary-card.is-single-metric .ltp-shift-metric-grid input { width: 92px; height: 48px; color: #3f54b5; background: #f7f8ff; font-size: 20px; font-weight: 700; text-align: center; }
 .ltp-shift-errors-card { grid-column: 1 / -1; padding: 13px; }
+.ltp-shift-asbi-card { grid-column: 1 / -1; }
 .ltp-shift-error-entries { display: grid; gap: 8px; }
 .ltp-shift-error-entry { min-width: 0; padding: 10px; border: 1px solid #edf0f5; border-radius: 10px; background: #fbfcfe; }
 .ltp-shift-error-entry-heading { display: flex; min-height: 26px; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -214,10 +215,26 @@ button { color: inherit; }
 .ltp-shift-error-entry-state { margin-left: auto; padding: 3px 6px; border-radius: 99px; color: #8993a3; background: #f0f2f6; font-size: 7px; white-space: nowrap; }
 .ltp-shift-error-entry-state.is-filled { color: #34785a; background: #eaf6ef; }
 .ltp-shift-error-entry-meta { display: grid; grid-template-columns: minmax(130px, .7fr) minmax(180px, 1.2fr) minmax(120px, .55fr); gap: 8px; margin-bottom: 8px; }
-.ltp-shift-error-entry-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ltp-shift-error-entry-details { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ltp-shift-tap-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 0 0 12px; padding: 10px; border: 1px solid #eef1f8; border-radius: 9px; background: #fafbff; }
+.ltp-shift-tap-summary .field-label { display: grid; min-width: 0; gap: 4px; color: #737e92; font-size: 8px; }
+.ltp-shift-tap-summary input { box-sizing: border-box; width: 100%; min-width: 0; height: 32px; padding: 5px 8px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 9px; font-variant-numeric: tabular-nums; }
+.ltp-shift-naumen-summary { grid-template-columns: minmax(0, 180px); }
+.ltp-shift-tap-entry-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ltp-shift-tap-entry-details { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ltp-shift-szr-entry-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ltp-shift-szr-entry-details { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ltp-shift-szr-entry-details > :last-child { grid-column: span 2; }
+.ltp-shift-asbi-entry-meta { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ltp-shift-asbi-entry-details { grid-template-columns: minmax(0, 1fr); }
+.ltp-shift-naumen-entry-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ltp-shift-naumen-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ltp-shift-naumen-entry-details > :last-child { grid-column: 1 / -1; }
+.ltp-shift-important-event-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ltp-shift-error-entry .field-label { display: grid; min-width: 0; gap: 4px; color: #737e92; font-size: 8px; }
 .ltp-shift-error-entry input, .ltp-shift-error-entry textarea, .ltp-shift-error-entry select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 9px; line-height: 1.4; }
 .ltp-shift-error-entry textarea { min-height: 62px; resize: vertical; }
+.ltp-shift-szr-entry input, .ltp-shift-szr-entry textarea, .ltp-shift-szr-entry select { height: 38px; min-height: 38px; padding: 6px 8px; }
 .ltp-shift-error-entry input:focus, .ltp-shift-error-entry textarea:focus, .ltp-shift-error-entry select:focus { outline: 2px solid #dce4fb; border-color: #9aa9ed; }
 .ltp-shift-remove-row { display: grid; width: 26px; height: 26px; flex: 0 0 auto; place-items: center; border: 1px solid #f0dfe2; border-radius: 7px; color: #b45b65; background: #fff8f8; cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease; }
 .ltp-shift-remove-row:hover:not(:disabled) { border-color: #ebc7cb; background: #fff0f1; }
@@ -825,6 +842,15 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .ltp-shift-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ltp-shift-error-entry-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ltp-shift-error-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-tap-entry-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-tap-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-szr-entry-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-szr-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-szr-entry-details > :last-child { grid-column: span 2; }
+  .ltp-shift-asbi-entry-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-naumen-entry-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ltp-shift-naumen-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-tap-summary { gap: 7px; padding: 8px; }
   .ltp-shift-errors-footer { align-items: flex-start; flex-direction: column; gap: 8px; }
   .ltp-shift-overview { grid-template-columns: minmax(0, 1fr) auto; gap: 13px; padding: 13px; }
   .ltp-shift-overview-progress { grid-column: 1 / -1; }
@@ -1445,7 +1471,9 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
 @media (max-width: 520px) {
   .admin-users-panel { padding: 12px; }
   .modal-dialog { padding: 14px; }
-  .ltp-shift-error-entry-meta, .ltp-shift-error-entry-details { grid-template-columns: minmax(0, 1fr); }
+  .ltp-shift-error-entry-meta, .ltp-shift-error-entry-details, .ltp-shift-tap-entry-meta, .ltp-shift-tap-entry-details, .ltp-shift-szr-entry-meta, .ltp-shift-szr-entry-details, .ltp-shift-asbi-entry-meta, .ltp-shift-naumen-entry-meta, .ltp-shift-naumen-entry-details { grid-template-columns: minmax(0, 1fr); }
+  .ltp-shift-szr-entry-details > :last-child { grid-column: 1 / -1; }
+  .ltp-shift-tap-summary { grid-template-columns: minmax(0, 1fr); }
   .ltp-shift-error-entry { padding: 10px; }
   .ltp-shift-error-entry-heading { gap: 6px; }
   .ltp-shift-error-entry-title { font-size: 9px; }

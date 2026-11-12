@@ -35,6 +35,57 @@ type ErrorEntry = {
   touched: boolean;
 };
 
+type TapEntry = {
+  id: number;
+  eventDate: string;
+  area: string;
+  device: string;
+  alert: string;
+  tt: string;
+  control: string;
+  actions: string;
+};
+
+type SzrEntry = {
+  id: number;
+  alertTime: string;
+  resource: string;
+  notifyTime: string;
+  notification: string;
+  managementCall: string;
+  processTime: string;
+  reason: string;
+};
+
+type AsbiEntry = {
+  id: number;
+  tt: string;
+  priority: string;
+  description: string;
+  status: string;
+  responsibleUnit: string;
+};
+
+type NaumenEntry = {
+  id: number;
+  tt: string;
+  responsible: string;
+  timeInWork: string;
+  reason: string;
+  lastAction: string;
+  nextAction: string;
+};
+
+type ImportantEventEntry = {
+  id: number;
+  eventTime: string;
+  eventName: string;
+  whatHappened: string;
+  todoControl: string;
+  deadline: string;
+  ttLink: string;
+};
+
 let nextErrorEntryId = 1;
 function createErrorEntry(): ErrorEntry {
   return { id: nextErrorEntryId++, tt: "", type: "", situation: "", question: "", solution: "", inBz: "Нет", action: "", saved: false, touched: false };
@@ -42,6 +93,51 @@ function createErrorEntry(): ErrorEntry {
 
 function isFilledErrorEntry(entry: ErrorEntry) {
   return [entry.tt, entry.type, entry.situation, entry.question, entry.solution, entry.action].some((item) => item.trim()) || (entry.saved && !entry.touched) || (entry.touched && entry.inBz === "Да");
+}
+
+let nextTapEntryId = 1;
+function createTapEntry(): TapEntry {
+  return { id: nextTapEntryId++, eventDate: "", area: "", device: "", alert: "", tt: "", control: "", actions: "" };
+}
+
+function isFilledTapEntry(entry: TapEntry) {
+  return [entry.eventDate, entry.area, entry.device, entry.alert, entry.tt, entry.control, entry.actions].some((item) => item.trim());
+}
+
+let nextSzrEntryId = 1;
+function createSzrEntry(): SzrEntry {
+  return { id: nextSzrEntryId++, alertTime: "", resource: "", notifyTime: "", notification: "Да", managementCall: "Да", processTime: "", reason: "" };
+}
+
+function isFilledSzrEntry(entry: SzrEntry) {
+  return [entry.alertTime, entry.resource, entry.notifyTime, entry.processTime, entry.reason].some((item) => item.trim()) || entry.notification === "Нет" || entry.managementCall === "Нет";
+}
+
+let nextAsbiEntryId = 1;
+function createAsbiEntry(): AsbiEntry {
+  return { id: nextAsbiEntryId++, tt: "", priority: "", description: "", status: "", responsibleUnit: "" };
+}
+
+function isFilledAsbiEntry(entry: AsbiEntry) {
+  return [entry.tt, entry.priority, entry.description, entry.status, entry.responsibleUnit].some((item) => item.trim());
+}
+
+let nextNaumenEntryId = 1;
+function createNaumenEntry(): NaumenEntry {
+  return { id: nextNaumenEntryId++, tt: "", responsible: "", timeInWork: "", reason: "", lastAction: "", nextAction: "" };
+}
+
+function isFilledNaumenEntry(entry: NaumenEntry) {
+  return [entry.tt, entry.responsible, entry.timeInWork, entry.reason, entry.lastAction, entry.nextAction].some((item) => item.trim());
+}
+
+let nextImportantEventId = 1;
+function createImportantEvent(): ImportantEventEntry {
+  return { id: nextImportantEventId++, eventTime: "", eventName: "", whatHappened: "", todoControl: "", deadline: "", ttLink: "" };
+}
+
+function isFilledImportantEvent(entry: ImportantEventEntry) {
+  return [entry.eventTime, entry.eventName, entry.whatHappened, entry.todoControl, entry.deadline, entry.ttLink].some((item) => item.trim());
 }
 
 const summarySections: { title: string; icon: LucideIcon; tone: string; fields: { key: keyof ShiftMetrics; label: string }[] }[] = [
@@ -95,11 +191,21 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const [supervisorsLoading, setSupervisorsLoading] = useState(true);
   const [metrics, setMetrics] = useState<ShiftMetrics>(initialMetrics);
   const [errorEntries, setErrorEntries] = useState<ErrorEntry[]>([createErrorEntry()]);
+  const [tapEntries, setTapEntries] = useState<TapEntry[]>([createTapEntry()]);
+  const [szrEntries, setSzrEntries] = useState<SzrEntry[]>([createSzrEntry()]);
+  const [asbiEntries, setAsbiEntries] = useState<AsbiEntry[]>([createAsbiEntry()]);
+  const [naumenEntries, setNaumenEntries] = useState<NaumenEntry[]>([createNaumenEntry()]);
+  const [importantEvents, setImportantEvents] = useState<ImportantEventEntry[]>([createImportantEvent()]);
   const [saving, setSaving] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const activeSections = summarySections.filter((section) => section.fields.some(({ key }) => metrics[key] > 0)).length;
+  const activeSections = summarySections.filter((section) => section.fields.some(({ key }) => metrics[key] > 0)
+    || section.fields[0]?.key === "tapAll" && tapEntries.some(isFilledTapEntry)
+    || section.fields[0]?.key === "szrAll" && szrEntries.some(isFilledSzrEntry)
+    || section.fields[0]?.key === "asbiAll" && asbiEntries.some(isFilledAsbiEntry)
+    || section.fields[0]?.key === "naumenLongTt" && naumenEntries.some(isFilledNaumenEntry)
+    || section.fields[0]?.key === "events" && importantEvents.some(isFilledImportantEvent)).length;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -120,6 +226,11 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     const controller = new AbortController();
     setMetrics(initialMetrics);
     setErrorEntries([createErrorEntry()]);
+    setTapEntries([createTapEntry()]);
+    setSzrEntries([createSzrEntry()]);
+    setAsbiEntries([createAsbiEntry()]);
+    setNaumenEntries([createNaumenEntry()]);
+    setImportantEvents([createImportantEvent()]);
     setShiftNumber("1");
     setSupervisor("");
     setError("");
@@ -132,13 +243,33 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     setReportLoading(true);
     void apiFetch(`/api/ltp/shift-report?date=${encodeURIComponent(date)}`, { signal: controller.signal })
       .then(async (response) => {
-        const data = await response.json() as { found?: boolean; shiftNumber?: string; supervisor?: string; metrics?: ShiftMetrics; errorRows?: Omit<ErrorEntry, "id" | "touched" | "saved">[]; error?: string };
+        const data = await response.json() as { found?: boolean; shiftNumber?: string; supervisor?: string; metrics?: ShiftMetrics; errorRows?: Omit<ErrorEntry, "id" | "touched" | "saved">[]; tapRows?: Omit<TapEntry, "id">[]; szrRows?: Omit<SzrEntry, "id">[]; asbiRows?: Omit<AsbiEntry, "id">[]; naumenRows?: Omit<NaumenEntry, "id">[]; importantEventRows?: Omit<ImportantEventEntry, "id">[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить сводку за выбранную дату.");
         if (data.found && data.metrics) {
-          setMetrics({ ...initialMetrics, ...data.metrics });
+          setMetrics({
+            ...initialMetrics,
+            ...data.metrics,
+            naumenLongTt: data.naumenRows?.length || data.metrics.naumenLongTt,
+            events: data.importantEventRows?.length || data.metrics.events
+          });
           setErrorEntries(data.errorRows?.length
             ? data.errorRows.map((entry) => ({ ...createErrorEntry(), ...entry, saved: true }))
             : [createErrorEntry()]);
+          setTapEntries(data.tapRows?.length
+            ? data.tapRows.map((entry) => ({ ...createTapEntry(), ...entry }))
+            : [createTapEntry()]);
+          setSzrEntries(data.szrRows?.length
+            ? data.szrRows.map((entry) => ({ ...createSzrEntry(), ...entry }))
+            : [createSzrEntry()]);
+          setAsbiEntries(data.asbiRows?.length
+            ? data.asbiRows.map((entry) => ({ ...createAsbiEntry(), ...entry }))
+            : [createAsbiEntry()]);
+          setNaumenEntries(data.naumenRows?.length
+            ? data.naumenRows.map((entry) => ({ ...createNaumenEntry(), ...entry }))
+            : [createNaumenEntry()]);
+          setImportantEvents(data.importantEventRows?.length
+            ? data.importantEventRows.map((entry) => ({ ...createImportantEvent(), ...entry }))
+            : [createImportantEvent()]);
           setShiftNumber(["1", "2", "3", "4"].includes(data.shiftNumber ?? "") ? data.shiftNumber! : "1");
           setSupervisor(data.supervisor ?? "");
           setNotice("Загружена сохранённая сводка за эту дату.");
@@ -178,6 +309,93 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
 
   const addErrorEntry = () => setErrorEntries((current) => [...current, createErrorEntry()]);
 
+  const updateTapEntry = (id: number, key: keyof Omit<TapEntry, "id">, value: string) => {
+    setTapEntries((current) => current.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry));
+    setError("");
+    setNotice("");
+  };
+
+  const removeTapEntry = (id: number) => {
+    setTapEntries((current) => {
+      const updated = current.filter((entry) => entry.id !== id);
+      return updated.length ? updated : [createTapEntry()];
+    });
+    setError("");
+    setNotice("");
+  };
+
+  const addTapEntry = () => setTapEntries((current) => [...current, createTapEntry()]);
+
+  const updateSzrEntry = (id: number, key: keyof Omit<SzrEntry, "id">, value: string) => {
+    setSzrEntries((current) => current.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry));
+    setError("");
+    setNotice("");
+  };
+
+  const removeSzrEntry = (id: number) => {
+    setSzrEntries((current) => {
+      const updated = current.filter((entry) => entry.id !== id);
+      return updated.length ? updated : [createSzrEntry()];
+    });
+    setError("");
+    setNotice("");
+  };
+
+  const addSzrEntry = () => setSzrEntries((current) => [...current, createSzrEntry()]);
+
+  const updateAsbiEntry = (id: number, key: keyof Omit<AsbiEntry, "id">, value: string) => {
+    setAsbiEntries((current) => current.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry));
+    setError("");
+    setNotice("");
+  };
+
+  const removeAsbiEntry = (id: number) => {
+    setAsbiEntries((current) => {
+      const updated = current.filter((entry) => entry.id !== id);
+      return updated.length ? updated : [createAsbiEntry()];
+    });
+    setError("");
+    setNotice("");
+  };
+
+  const addAsbiEntry = () => setAsbiEntries((current) => [...current, createAsbiEntry()]);
+
+  const updateNaumenEntry = (id: number, key: keyof Omit<NaumenEntry, "id">, value: string) => {
+    const updated = naumenEntries.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry);
+    setNaumenEntries(updated);
+    setMetrics((current) => ({ ...current, naumenLongTt: updated.filter(isFilledNaumenEntry).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const removeNaumenEntry = (id: number) => {
+    const updated = naumenEntries.filter((entry) => entry.id !== id);
+    setNaumenEntries(updated.length ? updated : [createNaumenEntry()]);
+    setMetrics((current) => ({ ...current, naumenLongTt: updated.filter(isFilledNaumenEntry).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const addNaumenEntry = () => setNaumenEntries((current) => [...current, createNaumenEntry()]);
+
+  const updateImportantEvent = (id: number, key: keyof Omit<ImportantEventEntry, "id">, value: string) => {
+    const updated = importantEvents.map((event) => event.id === id ? { ...event, [key]: value } : event);
+    setImportantEvents(updated);
+    setMetrics((current) => ({ ...current, events: updated.filter(isFilledImportantEvent).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const removeImportantEvent = (id: number) => {
+    const updated = importantEvents.filter((event) => event.id !== id);
+    setImportantEvents(updated.length ? updated : [createImportantEvent()]);
+    setMetrics((current) => ({ ...current, events: updated.filter(isFilledImportantEvent).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const addImportantEvent = () => setImportantEvents((current) => [...current, createImportantEvent()]);
+
   const save = async () => {
     if (!canEdit || saving) return;
     setSaving(true);
@@ -194,7 +412,12 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
           ...metrics,
           errorRows: errorEntries
             .filter(isFilledErrorEntry)
-            .map(({ tt, type, situation, question, solution, inBz, action }) => ({ tt, type, situation, question, solution, inBz, action }))
+            .map(({ tt, type, situation, question, solution, inBz, action }) => ({ tt, type, situation, question, solution, inBz, action })),
+          tapRows: tapEntries.filter(isFilledTapEntry).map(({ eventDate, area, device, alert, tt, control, actions }) => ({ eventDate, area, device, alert, tt, control, actions })),
+          szrRows: szrEntries.filter(isFilledSzrEntry).map(({ alertTime, resource, notifyTime, notification, managementCall, processTime, reason }) => ({ alertTime, resource, notifyTime, notification, managementCall, processTime, reason })),
+          asbiRows: asbiEntries.filter(isFilledAsbiEntry).map(({ tt, priority, description, status, responsibleUnit }) => ({ tt, priority, description, status, responsibleUnit })),
+          naumenRows: naumenEntries.filter(isFilledNaumenEntry).map(({ tt, responsible, timeInWork, reason, lastAction, nextAction }) => ({ tt, responsible, timeInWork, reason, lastAction, nextAction })),
+          importantEventRows: importantEvents.filter(isFilledImportantEvent).map(({ eventTime, eventName, whatHappened, todoControl, deadline, ttLink }) => ({ eventTime, eventName, whatHappened, todoControl, deadline, ttLink }))
         })
       });
       const data = await response.json() as { saved?: boolean; error?: string };
@@ -261,6 +484,207 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     <div className="ltp-shift-summary-grid">
       {summarySections.map((section, index) => {
         const SectionIcon = section.icon;
+        if (section.fields[0]?.key === "events") {
+          const filledImportantEvents = importantEvents.filter(isFilledImportantEvent).length;
+          const hasData = filledImportantEvents > 0 || metrics.events > 0;
+          return <section className={`panel ltp-shift-summary-card ltp-shift-important-events-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{filledImportantEvents} событий</span>
+            </div>
+            <div className="ltp-shift-tap-summary ltp-shift-naumen-summary">
+              {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
+                {field.label}
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled />
+              </label>)}
+            </div>
+            <div className="ltp-shift-error-entries">
+              {importantEvents.map((event, eventIndex) => <article className="ltp-shift-error-entry ltp-shift-important-event" key={event.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(eventIndex + 1).padStart(2, "0")}</span><strong>Важное событие</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledImportantEvent(event) ? "is-filled" : ""}`}>{isFilledImportantEvent(event) ? "Заполнено" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить событие ${eventIndex + 1}`} disabled={saving || reportLoading} onClick={() => removeImportantEvent(event.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta ltp-shift-important-event-meta">
+                  <label className="field-label">Время<input value={event.eventTime} disabled={saving || reportLoading} onChange={(change) => updateImportantEvent(event.id, "eventTime", change.target.value)} /></label>
+                  <label className="field-label">Событие<input value={event.eventName} disabled={saving || reportLoading} onChange={(change) => updateImportantEvent(event.id, "eventName", change.target.value)} /></label>
+                  <label className="field-label">Когда / до какого времени<input value={event.deadline} disabled={saving || reportLoading} onChange={(change) => updateImportantEvent(event.id, "deadline", change.target.value)} /></label>
+                  <label className="field-label">№ ТТ / ссылка<input value={event.ttLink} disabled={saving || reportLoading} onChange={(change) => updateImportantEvent(event.id, "ttLink", change.target.value)} /></label>
+                </div>
+                <div className="ltp-shift-error-entry-details ltp-shift-important-event-details">
+                  <label className="field-label">Что произошло<textarea value={event.whatHappened} disabled={saving || reportLoading} onChange={(change) => updateImportantEvent(event.id, "whatHappened", change.target.value)} /></label>
+                  <label className="field-label">Что требуется<textarea value={event.todoControl} disabled={saving || reportLoading} onChange={(change) => updateImportantEvent(event.id, "todoControl", change.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addImportantEvent}><Plus size={14} /> Добавить событие</button>
+              <span>События сохраняются в ltp_1.events_5 и привязываются к выбранной дате смены.</span>
+            </div>
+          </section>;
+        }
+        if (section.fields[0]?.key === "naumenLongTt") {
+          const filledNaumenEntries = naumenEntries.filter(isFilledNaumenEntry).length;
+          const hasData = filledNaumenEntries > 0 || metrics.naumenLongTt > 0;
+          return <section className={`panel ltp-shift-summary-card ltp-shift-naumen-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{filledNaumenEntries} {filledNaumenEntries === 1 ? "обращение" : "обращений"}</span>
+            </div>
+            <div className="ltp-shift-tap-summary ltp-shift-naumen-summary">
+              {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
+                {field.label}
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled />
+              </label>)}
+            </div>
+            <div className="ltp-shift-error-entries">
+              {naumenEntries.map((entry, entryIndex) => <article className="ltp-shift-error-entry ltp-shift-naumen-entry" key={entry.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(entryIndex + 1).padStart(2, "0")}</span><strong>Длительное обращение</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledNaumenEntry(entry) ? "is-filled" : ""}`}>{isFilledNaumenEntry(entry) ? "Заполнено" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить обращение ${entryIndex + 1}`} disabled={saving || reportLoading} onClick={() => removeNaumenEntry(entry.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta ltp-shift-naumen-entry-meta">
+                  <label className="field-label">№ ТТ<input value={entry.tt} disabled={saving || reportLoading} onChange={(event) => updateNaumenEntry(entry.id, "tt", event.target.value)} /></label>
+                  <label className="field-label">Ответственный<input value={entry.responsible} disabled={saving || reportLoading} onChange={(event) => updateNaumenEntry(entry.id, "responsible", event.target.value)} /></label>
+                  <label className="field-label">Время в работе<input value={entry.timeInWork} disabled={saving || reportLoading} onChange={(event) => updateNaumenEntry(entry.id, "timeInWork", event.target.value)} /></label>
+                </div>
+                <div className="ltp-shift-error-entry-details ltp-shift-naumen-entry-details">
+                  <label className="field-label">Причина<textarea value={entry.reason} disabled={saving || reportLoading} onChange={(event) => updateNaumenEntry(entry.id, "reason", event.target.value)} /></label>
+                  <label className="field-label">Последнее действие<textarea value={entry.lastAction} disabled={saving || reportLoading} onChange={(event) => updateNaumenEntry(entry.id, "lastAction", event.target.value)} /></label>
+                  <label className="field-label">Следующее действие<textarea value={entry.nextAction} disabled={saving || reportLoading} onChange={(event) => updateNaumenEntry(entry.id, "nextAction", event.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addNaumenEntry}><Plus size={14} /> Добавить обращение</button>
+              <span>Обращения сохраняются в ltp_1.naumen_4 и привязываются к выбранной дате смены.</span>
+            </div>
+          </section>;
+        }
+        if (section.fields[0]?.key === "asbiAll") {
+          const filledAsbiEntries = asbiEntries.filter(isFilledAsbiEntry).length;
+          const hasData = filledAsbiEntries > 0 || section.fields.some(({ key }) => metrics[key] > 0);
+          return <section className={`panel ltp-shift-summary-card ltp-shift-asbi-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{filledAsbiEntries} записей</span>
+            </div>
+            <div className="ltp-shift-tap-summary">
+              {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
+                {field.label}
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading} onChange={(event) => updateMetric(field.key, event.target.value)} />
+              </label>)}
+            </div>
+            <div className="ltp-shift-error-entries">
+              {asbiEntries.map((entry, entryIndex) => <article className="ltp-shift-error-entry ltp-shift-asbi-entry" key={entry.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(entryIndex + 1).padStart(2, "0")}</span><strong>Незакрытая ТТ P1–P2</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledAsbiEntry(entry) ? "is-filled" : ""}`}>{isFilledAsbiEntry(entry) ? "Заполнена" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить ТТ ${entryIndex + 1}`} disabled={saving || reportLoading} onClick={() => removeAsbiEntry(entry.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta ltp-shift-asbi-entry-meta">
+                  <label className="field-label">№ ТТ<input value={entry.tt} disabled={saving || reportLoading} onChange={(event) => updateAsbiEntry(entry.id, "tt", event.target.value)} /></label>
+                  <label className="field-label">Приоритет<input value={entry.priority} disabled={saving || reportLoading} onChange={(event) => updateAsbiEntry(entry.id, "priority", event.target.value)} /></label>
+                  <label className="field-label">Текущий статус<input value={entry.status} disabled={saving || reportLoading} onChange={(event) => updateAsbiEntry(entry.id, "status", event.target.value)} /></label>
+                  <label className="field-label">Ответственный / подразделение<input value={entry.responsibleUnit} disabled={saving || reportLoading} onChange={(event) => updateAsbiEntry(entry.id, "responsibleUnit", event.target.value)} /></label>
+                </div>
+                <div className="ltp-shift-error-entry-details ltp-shift-asbi-entry-details">
+                  <label className="field-label">Краткое описание<textarea value={entry.description} disabled={saving || reportLoading} onChange={(event) => updateAsbiEntry(entry.id, "description", event.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addAsbiEntry}><Plus size={14} /> Добавить ТТ</button>
+              <span>Записи сохраняются в ltp_1.asbi_3 и привязываются к выбранной дате смены.</span>
+            </div>
+          </section>;
+        }
+        if (section.fields[0]?.key === "szrAll") {
+          const filledSzrEntries = szrEntries.filter(isFilledSzrEntry).length;
+          const hasData = filledSzrEntries > 0 || section.fields.some(({ key }) => metrics[key] > 0);
+          return <section className={`panel ltp-shift-summary-card ltp-shift-szr-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{filledSzrEntries} {filledSzrEntries === 1 ? "событие" : "событий"}</span>
+            </div>
+            <div className="ltp-shift-tap-summary">
+              {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
+                {field.label}
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading} onChange={(event) => updateMetric(field.key, event.target.value)} />
+              </label>)}
+            </div>
+            <div className="ltp-shift-error-entries">
+              {szrEntries.map((entry, entryIndex) => <article className="ltp-shift-error-entry ltp-shift-szr-entry" key={entry.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(entryIndex + 1).padStart(2, "0")}</span><strong>Неотработанное событие</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledSzrEntry(entry) ? "is-filled" : ""}`}>{isFilledSzrEntry(entry) ? "Заполнено" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить событие ${entryIndex + 1}`} disabled={saving || reportLoading} onClick={() => removeSzrEntry(entry.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta ltp-shift-szr-entry-meta">
+                  <label className="field-label">Время алерта<input value={entry.alertTime} disabled={saving || reportLoading} onChange={(event) => updateSzrEntry(entry.id, "alertTime", event.target.value)} /></label>
+                  <label className="field-label">Ресурс<input value={entry.resource} disabled={saving || reportLoading} onChange={(event) => updateSzrEntry(entry.id, "resource", event.target.value)} /></label>
+                  <label className="field-label">Время оповещения<input type="time" value={entry.notifyTime} disabled={saving || reportLoading} onChange={(event) => updateSzrEntry(entry.id, "notifyTime", event.target.value)} /></label>
+                  <label className="field-label">Оповещение<select value={entry.notification} disabled={saving || reportLoading} onChange={(event) => updateSzrEntry(entry.id, "notification", event.target.value)}><option>Да</option><option>Нет</option></select></label>
+                </div>
+                <div className="ltp-shift-error-entry-details ltp-shift-szr-entry-details">
+                  <label className="field-label">Дозвон руководству<select value={entry.managementCall} disabled={saving || reportLoading} onChange={(event) => updateSzrEntry(entry.id, "managementCall", event.target.value)}><option>Да</option><option>Нет</option></select></label>
+                  <label className="field-label">Время обработки<input type="time" value={entry.processTime} disabled={saving || reportLoading} onChange={(event) => updateSzrEntry(entry.id, "processTime", event.target.value)} /></label>
+                  <label className="field-label">Причина<textarea value={entry.reason} disabled={saving || reportLoading} onChange={(event) => updateSzrEntry(entry.id, "reason", event.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addSzrEntry}><Plus size={14} /> Добавить событие</button>
+              <span>События сохраняются в ltp_1.szr_2 и привязываются к выбранной дате смены.</span>
+            </div>
+          </section>;
+        }
+        if (section.fields[0]?.key === "tapAll") {
+          const filledTapEntries = tapEntries.filter(isFilledTapEntry).length;
+          const hasData = filledTapEntries > 0 || section.fields.some(({ key }) => metrics[key] > 0);
+          return <section className={`panel ltp-shift-summary-card ltp-shift-tap-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{filledTapEntries} {filledTapEntries === 1 ? "событие" : "событий"}</span>
+            </div>
+            <div className="ltp-shift-tap-summary">
+              {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
+                {field.label}
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading} onChange={(event) => updateMetric(field.key, event.target.value)} />
+              </label>)}
+            </div>
+            <div className="ltp-shift-tap-entries">
+              {tapEntries.map((entry, entryIndex) => <article className="ltp-shift-error-entry ltp-shift-tap-entry" key={entry.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(entryIndex + 1).padStart(2, "0")}</span><strong>Событие из журнала ТАП</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledTapEntry(entry) ? "is-filled" : ""}`}>{isFilledTapEntry(entry) ? "Заполнено" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить событие ${entryIndex + 1}`} disabled={saving || reportLoading} onClick={() => removeTapEntry(entry.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta ltp-shift-tap-entry-meta">
+                  <label className="field-label">Дата возникновения<input type="date" value={entry.eventDate} disabled={saving || reportLoading} onChange={(event) => updateTapEntry(entry.id, "eventDate", event.target.value)} /></label>
+                  <label className="field-label">Площадка<input value={entry.area} disabled={saving || reportLoading} onChange={(event) => updateTapEntry(entry.id, "area", event.target.value)} /></label>
+                  <label className="field-label">Устройство<input value={entry.device} disabled={saving || reportLoading} onChange={(event) => updateTapEntry(entry.id, "device", event.target.value)} /></label>
+                  <label className="field-label">№ ТТ<input value={entry.tt} disabled={saving || reportLoading} onChange={(event) => updateTapEntry(entry.id, "tt", event.target.value)} /></label>
+                </div>
+                <div className="ltp-shift-error-entry-details ltp-shift-tap-entry-details">
+                  <label className="field-label">Алерт<textarea value={entry.alert} disabled={saving || reportLoading} onChange={(event) => updateTapEntry(entry.id, "alert", event.target.value)} /></label>
+                  <label className="field-label">Что требует контроля<textarea value={entry.control} disabled={saving || reportLoading} onChange={(event) => updateTapEntry(entry.id, "control", event.target.value)} /></label>
+                  <label className="field-label">Действия следующей смены<textarea value={entry.actions} disabled={saving || reportLoading} onChange={(event) => updateTapEntry(entry.id, "actions", event.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addTapEntry}><Plus size={14} /> Добавить событие</button>
+              <span>События сохраняются в ltp_1.tap_1 и привязываются к выбранной дате смены.</span>
+            </div>
+          </section>;
+        }
         if (section.fields[0]?.key === "errors") {
           const hasData = metrics.errors > 0;
           return <section className={`panel ltp-shift-summary-card ltp-shift-errors-card ${hasData ? "has-data" : ""}`} key={section.title}>
@@ -291,7 +715,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
             </div>
             <div className="ltp-shift-errors-footer">
               <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addErrorEntry}><Plus size={14} /> Добавить запись</button>
-              <span>Заполненные строки сохраняются в ltp_1.errors и привязываются к выбранной дате.</span>
+              <span>Заполненные строки сохраняются в ltp_1.errors_8 и привязываются к выбранной дате.</span>
             </div>
           </section>;
         }

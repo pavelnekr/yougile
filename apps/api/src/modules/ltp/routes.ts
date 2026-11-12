@@ -80,12 +80,43 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
       `);
       const errorRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
         SELECT tt, type, situation, error, correct_solution, is_in_bz, action
-        FROM ltp_1.errors
+        FROM ltp_1.errors_8
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
+      const tapRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT TO_CHAR(event_date, 'YYYY-MM-DD') AS event_date, area, device, alert, tt, control, actions
+        FROM ltp_1.tap_1
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
+      const szrRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT alert_time, resource, TO_CHAR(notification_time, 'HH24:MI') AS notification_time,
+          notification, management_call, TO_CHAR(processing_time, 'HH24:MI') AS processing_time, reason
+        FROM ltp_1.szr_2
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
+      const asbiRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT tt, priority, description, status, responsible_unit
+        FROM ltp_1.asbi_3
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
+      const naumenRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT tt, responsible, time_in_work, reason, last_action, next_action
+        FROM ltp_1.naumen_4
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
+      const importantEventRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT event_time, event_name, what_happened, todo_control, deadline, tt_link
+        FROM ltp_1.events_5
         WHERE date = ${date.data}::date
         ORDER BY id
       `);
       const row = rows[0];
-      if (!row && !errorRows.length) return { found: false };
+      if (!row && !errorRows.length && !tapRows.length && !szrRows.length && !asbiRows.length && !naumenRows.length && !importantEventRows.length) return { found: false };
       const numeric = (value: unknown) => {
         const parsed = Number(value ?? 0);
         return Number.isFinite(parsed) ? parsed : 0;
@@ -95,12 +126,12 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
         shiftNumber: String(row?.shift_num ?? "1"),
         supervisor: String(row?.fio ?? ""),
         metrics: {
-          tapAll: numeric(row?.tap_all), tapInfluence: numeric(row?.tap_influence), tapControl: numeric(row?.tap_control),
-          szrAll: numeric(row?.szr_all), szrCompl: numeric(row?.szr_compl), szrNotCompl: numeric(row?.szr_not_compl),
-          asbiAll: numeric(row?.asbi_all), asbiP1: numeric(row?.asbi_p1), asbiP2: numeric(row?.asbi_p2),
+          tapAll: row ? numeric(row.tap_all) : tapRows.length, tapInfluence: numeric(row?.tap_influence), tapControl: numeric(row?.tap_control),
+          szrAll: numeric(row?.szr_all), szrCompl: numeric(row?.szr_compl), szrNotCompl: row ? numeric(row.szr_not_compl) : szrRows.length,
+          asbiAll: row ? numeric(row.asbi_all) : asbiRows.length, asbiP1: numeric(row?.asbi_p1), asbiP2: numeric(row?.asbi_p2),
           asbiDropTrafficAll: numeric(row?.asbi_drop_traffic_all), asbiDropTrafficCompl: numeric(row?.asbi_drop_traffic_compl),
-          asbiNotComplP1P2: numeric(row?.asbi_not_compl_p1_p2), naumenLongTt: numeric(row?.naumen_long_tt),
-          events: numeric(row?.events), politics: numeric(row?.politics), bz: numeric(row?.bz), errors: errorRows.length || numeric(row?.errors)
+          asbiNotComplP1P2: row ? numeric(row.asbi_not_compl_p1_p2) : asbiRows.length, naumenLongTt: row ? numeric(row.naumen_long_tt) : naumenRows.length,
+          events: row ? numeric(row.events) : importantEventRows.length, politics: numeric(row?.politics), bz: numeric(row?.bz), errors: errorRows.length || numeric(row?.errors)
         },
         errorRows: errorRows.map((entry) => ({
           tt: String(entry.tt ?? ""),
@@ -110,6 +141,47 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
           solution: String(entry.correct_solution ?? ""),
           inBz: String(entry.is_in_bz ?? "Нет"),
           action: String(entry.action ?? "")
+        })),
+        tapRows: tapRows.map((entry) => ({
+          eventDate: String(entry.event_date ?? ""),
+          area: String(entry.area ?? ""),
+          device: String(entry.device ?? ""),
+          alert: String(entry.alert ?? ""),
+          tt: String(entry.tt ?? ""),
+          control: String(entry.control ?? ""),
+          actions: String(entry.actions ?? "")
+        })),
+        szrRows: szrRows.map((entry) => ({
+          alertTime: String(entry.alert_time ?? ""),
+          resource: String(entry.resource ?? ""),
+          notifyTime: String(entry.notification_time ?? ""),
+          notification: String(entry.notification ?? "Да"),
+          managementCall: String(entry.management_call ?? "Да"),
+          processTime: String(entry.processing_time ?? ""),
+          reason: String(entry.reason ?? "")
+        })),
+        asbiRows: asbiRows.map((entry) => ({
+          tt: String(entry.tt ?? ""),
+          priority: String(entry.priority ?? ""),
+          description: String(entry.description ?? ""),
+          status: String(entry.status ?? ""),
+          responsibleUnit: String(entry.responsible_unit ?? "")
+        })),
+        naumenRows: naumenRows.map((entry) => ({
+          tt: String(entry.tt ?? ""),
+          responsible: String(entry.responsible ?? ""),
+          timeInWork: String(entry.time_in_work ?? ""),
+          reason: String(entry.reason ?? ""),
+          lastAction: String(entry.last_action ?? ""),
+          nextAction: String(entry.next_action ?? "")
+        })),
+        importantEventRows: importantEventRows.map((entry) => ({
+          eventTime: String(entry.event_time ?? ""),
+          eventName: String(entry.event_name ?? ""),
+          whatHappened: String(entry.what_happened ?? ""),
+          todoControl: String(entry.todo_control ?? ""),
+          deadline: String(entry.deadline ?? ""),
+          ttLink: String(entry.tt_link ?? "")
         }))
       };
     } catch (error) {
@@ -152,6 +224,52 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
         solution: z.string().max(10000),
         inBz: z.enum(["Да", "Нет"]),
         action: z.string().max(10000)
+      })).max(500).default([]),
+      tapRows: z.array(z.object({
+        eventDate: z.string().max(10).refine((value) => {
+          if (!value) return true;
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+          const parsed = new Date(`${value}T00:00:00.000Z`);
+          return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+        }),
+        area: z.string().trim().max(55),
+        device: z.string().trim().max(55),
+        alert: z.string().max(10000),
+        tt: z.string().trim().max(55),
+        control: z.string().max(10000),
+        actions: z.string().max(10000)
+      })).max(500).default([]),
+      szrRows: z.array(z.object({
+        alertTime: z.string().max(55),
+        resource: z.string().trim().max(255),
+        notifyTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).or(z.literal("")),
+        notification: z.enum(["Да", "Нет"]),
+        managementCall: z.enum(["Да", "Нет"]),
+        processTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).or(z.literal("")),
+        reason: z.string().max(10000)
+      })).max(500).default([]),
+      asbiRows: z.array(z.object({
+        tt: z.string().trim().max(55),
+        priority: z.string().trim().max(55),
+        description: z.string().max(10000),
+        status: z.string().max(10000),
+        responsibleUnit: z.string().max(10000)
+      })).max(500).default([]),
+      naumenRows: z.array(z.object({
+        tt: z.string().trim().max(55),
+        responsible: z.string().trim().max(255),
+        timeInWork: z.string().max(55),
+        reason: z.string().max(10000),
+        lastAction: z.string().max(10000),
+        nextAction: z.string().max(10000)
+      })).max(500).default([]),
+      importantEventRows: z.array(z.object({
+        eventTime: z.string().max(55),
+        eventName: z.string().trim().max(255),
+        whatHappened: z.string().max(10000),
+        todoControl: z.string().max(10000),
+        deadline: z.string().max(255),
+        ttLink: z.string().max(10000)
       })).max(500).default([])
     }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные передачи смены." });
@@ -199,15 +317,15 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
             errors = EXCLUDED.errors
         `);
 
-        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.errors WHERE date = ${data.date}::date`);
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.errors_8 WHERE date = ${data.date}::date`);
         if (data.errorRows.length) {
           const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
-            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.errors
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.errors_8
           `);
           let nextId = idRows[0]?.next_id ?? 1n;
           for (const row of data.errorRows) {
             await tx.$executeRaw(Prisma.sql`
-              INSERT INTO ltp_1.errors (id, date, tt, type, situation, error, correct_solution, is_in_bz, action)
+              INSERT INTO ltp_1.errors_8 (id, date, tt, type, situation, error, correct_solution, is_in_bz, action)
               VALUES (
                 ${nextId}, ${data.date}::date, ${row.tt || null}, ${row.type || null},
                 ${row.situation || null}, ${row.question || null}, ${row.solution || null},
@@ -217,11 +335,103 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
             nextId += 1n;
           }
         }
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.tap_1 WHERE date = ${data.date}::date`);
+        if (data.tapRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.tap_1
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const row of data.tapRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.tap_1 (id, date, event_date, area, device, alert, tt, control, actions)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${row.eventDate || null}::date,
+                ${row.area || null}, ${row.device || null}, ${row.alert || null}, ${row.tt || null},
+                ${row.control || null}, ${row.actions || null}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.szr_2 WHERE date = ${data.date}::date`);
+        if (data.szrRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.szr_2
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const row of data.szrRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.szr_2 (id, date, alert_time, resource, notification_time, notification, management_call, processing_time, reason)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${row.alertTime || null}, ${row.resource || null},
+                ${row.notifyTime || null}::time, ${row.notification}, ${row.managementCall},
+                ${row.processTime || null}::time, ${row.reason || null}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.asbi_3 WHERE date = ${data.date}::date`);
+        if (data.asbiRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.asbi_3
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const row of data.asbiRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.asbi_3 (id, date, tt, priority, description, status, responsible_unit)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${row.tt || null}, ${row.priority || null},
+                ${row.description || null}, ${row.status || null}, ${row.responsibleUnit || null}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.naumen_4 WHERE date = ${data.date}::date`);
+        if (data.naumenRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.naumen_4
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const row of data.naumenRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.naumen_4 (id, date, tt, responsible, time_in_work, reason, last_action, next_action)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${row.tt || null}, ${row.responsible || null},
+                ${row.timeInWork || null}, ${row.reason || null}, ${row.lastAction || null}, ${row.nextAction || null}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.events_5 WHERE date = ${data.date}::date`);
+        if (data.importantEventRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.events_5
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const event of data.importantEventRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.events_5 (id, date, event_time, event_name, what_happened, todo_control, deadline, tt_link)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${event.eventTime || null}, ${event.eventName || null},
+                ${event.whatHappened || null}, ${event.todoControl || null}, ${event.deadline || null}, ${event.ttLink || null}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
       });
       return { saved: true };
     } catch (error) {
       request.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save LTP shift report");
-      return reply.code(503).send({ error: "Не удалось сохранить передачу смены. Проверьте подключение DAPS и таблицы ltp_1.shift_report и ltp_1.errors." });
+      return reply.code(503).send({ error: "Не удалось сохранить передачу смены. Проверьте подключение DAPS и доступ к таблицам разделов." });
     }
   });
 
