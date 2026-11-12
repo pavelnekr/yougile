@@ -15,6 +15,7 @@ import {
   Clock3,
   CheckCircle2,
   Columns3,
+  ClipboardList,
   FileSpreadsheet,
   History,
   LayoutDashboard,
@@ -59,6 +60,7 @@ import PortalConfigPage from "./PortalConfigPage.js";
 import LtpBlocksLogPage from "./LtpBlocksLogPage.js";
 import LtpResourcesPage from "./LtpResourcesPage.js";
 import MetabaseDashboardPage from "./MetabaseDashboardPage.js";
+import LtpShiftReportPage from "./LtpShiftReportPage.js";
 import { syncSectionUrl, useSectionUrl, type Section } from "./router.js";
 import LoginPage, { type PortalUser } from "./LoginPage.js";
 import { apiFetch, onSessionExpired } from "./apiClient.js";
@@ -141,6 +143,7 @@ const workspaceBySection: Partial<Record<Section, string>> = {
   "Журнал блокировок 1ЛТП": "LTP",
   "Справочник ресурсов 1ЛТП": "LTP",
   "Дашборды Metabase": "LTP",
+  "Передача смены 1ЛТП": "LTP",
   "Ежедневный отчет по KPI": "DAPS",
   "Netbox": "DAPS",
   "Генератор Площадок": "DAPS",
@@ -439,6 +442,7 @@ function App() {
     "Журнал блокировок 1ЛТП": "1ЛТП",
     "Справочник ресурсов 1ЛТП": "1ЛТП",
     "Дашборды Metabase": "1ЛТП",
+    "Передача смены 1ЛТП": "1ЛТП",
     "Согласование АВР": "Согласование/Оповещение",
     "Настройки согласования": "Согласование/Оповещение",
     "Ежедневный отчет по KPI": "DAPS",
@@ -572,13 +576,15 @@ function App() {
           ) : activeSection === "DAPS" ? (
             <DapsLandingPage onNavigate={chooseSection} />
           ) : activeSection === "1ЛТП" ? (
-            <LtpLandingPage onOpenLog={() => chooseSection("Журнал блокировок 1ЛТП")} onOpenResources={() => chooseSection("Справочник ресурсов 1ЛТП")} onOpenMetabase={() => chooseSection("Дашборды Metabase")} />
+            <LtpLandingPage onOpenLog={() => chooseSection("Журнал блокировок 1ЛТП")} onOpenResources={() => chooseSection("Справочник ресурсов 1ЛТП")} onOpenMetabase={() => chooseSection("Дашборды Metabase")} onOpenShiftReport={() => chooseSection("Передача смены 1ЛТП")} />
           ) : activeSection === "Журнал блокировок 1ЛТП" ? (
             <LtpBlocksLogPage onBack={() => chooseSection("1ЛТП")} canEdit={sessionUser.role !== "VIEWER"} />
           ) : activeSection === "Справочник ресурсов 1ЛТП" ? (
             <LtpResourcesPage onBack={() => chooseSection("1ЛТП")} canEdit={sessionUser.role !== "VIEWER"} />
           ) : activeSection === "Дашборды Metabase" ? (
             <MetabaseDashboardPage onBack={() => chooseSection("1ЛТП")} />
+          ) : activeSection === "Передача смены 1ЛТП" ? (
+            <LtpShiftReportPage onBack={() => chooseSection("1ЛТП")} canEdit={sessionUser.role !== "VIEWER"} />
           ) : activeSection === "Ежедневный отчет по KPI" ? (
             <DapsDailyKpiPage canEdit={sessionUser.role !== "VIEWER"} onBack={() => chooseSection("DAPS")} />
           ) : activeSection === "Netbox" ? (
@@ -748,7 +754,7 @@ function ProfilePage({ user, onBack, onUserUpdated }: { user: PortalUser; onBack
   );
 }
 
-function LtpLandingPage({ onOpenLog, onOpenResources, onOpenMetabase }: { onOpenLog: () => void; onOpenResources: () => void; onOpenMetabase: () => void }) {
+function LtpLandingPage({ onOpenLog, onOpenResources, onOpenMetabase, onOpenShiftReport }: { onOpenLog: () => void; onOpenResources: () => void; onOpenMetabase: () => void; onOpenShiftReport: () => void }) {
   return (
     <section className="section-view">
       <div className="eyebrow"><span className="eyebrow-line" /> 1ЛТП</div>
@@ -762,6 +768,12 @@ function LtpLandingPage({ onOpenLog, onOpenResources, onOpenMetabase }: { onOpen
           <h3>Журнал блокировок 1ЛТП</h3>
           <p>Поиск ресурса, обработка CSV и аналитика блокировок.</p>
           <span className="action-link">Открыть журнал <ArrowRight size={15} /></span>
+        </button>
+        <button type="button" className="action-card" onClick={onOpenShiftReport}>
+          <div className="action-card-top"><span className="action-icon green"><ClipboardList size={19} /></span></div>
+          <h3>Передача смены</h3>
+          <p>Сводный отчёт по ключевым показателям и событиям смены.</p>
+          <span className="action-link">Открыть отчёт <ArrowRight size={15} /></span>
         </button>
       </section>
       <section className="section-heading">
@@ -2131,7 +2143,7 @@ export function AssignmentPage({
   );
 }
 
-function SectionPage({ section, health }: { section: Exclude<Section, "Личный кабинет" | "Управление работами в YouGile" | "DAPS" | "1ЛТП" | "Журнал блокировок 1ЛТП" | "Справочник ресурсов 1ЛТП" | "Дашборды Metabase" | "Netbox" | "Генератор Площадок" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
+function SectionPage({ section, health }: { section: Exclude<Section, "Личный кабинет" | "Управление работами в YouGile" | "DAPS" | "1ЛТП" | "Журнал блокировок 1ЛТП" | "Справочник ресурсов 1ЛТП" | "Дашборды Metabase" | "Передача смены 1ЛТП" | "Netbox" | "Генератор Площадок" | "Ежедневный отчет по KPI" | "Согласование/Оповещение" | "Согласование АВР" | "Настройки согласования" | "Планирование Работ" | "Площадки" | "Площадки АВР" | "Массовое назначение инженеров" | "Точечное назначение инженера" | "Снять инженеров" | "Написать комментарий" | "Проверить работы" | "История" | "Настройки" | "Учётные записи" | "Логирование" | "Конфигурация портала">; health: Health }) {
   const content = {
     "Снять инженеров": {
       icon: UsersRound,

@@ -43,6 +43,97 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
   const writeAccess = requireWorkspaceAccess("LTP" as PortalWorkspace, true);
   const database = () => getDapsDatabase(prisma);
 
+  app.get("/api/ltp/shift-report/supervisors", { preHandler: readAccess }, async (request, reply) => {
+    try {
+      const db = await database();
+      const rows = await db.$queryRaw<{ name: string }[]>(Prisma.sql`
+        SELECT DISTINCT supervising_department AS name
+        FROM public."Team Mapping"
+        WHERE position = 'Старший_смены'
+          AND NULLIF(BTRIM(supervising_department), '') IS NOT NULL
+        ORDER BY name
+      `);
+      return { supervisors: rows.map((row) => row.name) };
+    } catch (error) {
+      request.log.error({ err: error }, "Could not load LTP shift supervisors");
+      return reply.code(503).send({ error: "Не удалось загрузить список старших смены из PostgreSQL DAPS." });
+    }
+  });
+
+  app.post<{ Body: unknown }>("/api/ltp/shift-report", { preHandler: writeAccess }, async (request, reply) => {
+    const count = z.number().int().min(0).max(1_000_000);
+    const parsed = z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+        const parsed = new Date(`${value}T00:00:00.000Z`);
+        return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+      }, "Укажите корректную дату смены."),
+      shiftNumber: z.enum(["1", "2", "3", "4"]),
+      supervisor: z.string().trim().min(1).max(200),
+      tapAll: count,
+      tapInfluence: count,
+      tapControl: count,
+      szrAll: count,
+      szrCompl: count,
+      szrNotCompl: count,
+      asbiAll: count,
+      asbiP1: count,
+      asbiP2: count,
+      asbiDropTrafficAll: count,
+      asbiDropTrafficCompl: count,
+      asbiNotComplP1P2: count,
+      naumenLongTt: count,
+      events: count,
+      politics: count,
+      bz: count,
+      errors: count
+    }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные передачи смены." });
+
+    const data = parsed.data;
+    try {
+      const db = await database();
+      await db.$executeRaw(Prisma.sql`
+        INSERT INTO ltp_1.shift_report (
+          date, shift_num, fio, tap_all, tap_influence, tap_control,
+          szr_all, szr_compl, szr_not_compl, asbi_all, asbi_p1, asbi_p2,
+          asbi_drop_traffic_all, asbi_drop_traffic_compl, asbi_not_compl_p1_p2,
+          naumen_long_tt, events, politics, bz, errors
+        ) VALUES (
+          ${new Date(`${data.date}T00:00:00.000Z`)}, ${data.shiftNumber}, ${data.supervisor},
+          ${data.tapAll}, ${data.tapInfluence}, ${data.tapControl},
+          ${data.szrAll}, ${data.szrCompl}, ${data.szrNotCompl},
+          ${data.asbiAll}, ${data.asbiP1}, ${data.asbiP2},
+          ${data.asbiDropTrafficAll}, ${data.asbiDropTrafficCompl}, ${data.asbiNotComplP1P2},
+          ${data.naumenLongTt}, ${String(data.events)}, ${String(data.politics)}, ${String(data.bz)}, ${String(data.errors)}
+        )
+        ON CONFLICT (date) DO UPDATE SET
+          shift_num = EXCLUDED.shift_num,
+          fio = EXCLUDED.fio,
+          tap_all = EXCLUDED.tap_all,
+          tap_influence = EXCLUDED.tap_influence,
+          tap_control = EXCLUDED.tap_control,
+          szr_all = EXCLUDED.szr_all,
+          szr_compl = EXCLUDED.szr_compl,
+          szr_not_compl = EXCLUDED.szr_not_compl,
+          asbi_all = EXCLUDED.asbi_all,
+          asbi_p1 = EXCLUDED.asbi_p1,
+          asbi_p2 = EXCLUDED.asbi_p2,
+          asbi_drop_traffic_all = EXCLUDED.asbi_drop_traffic_all,
+          asbi_drop_traffic_compl = EXCLUDED.asbi_drop_traffic_compl,
+          asbi_not_compl_p1_p2 = EXCLUDED.asbi_not_compl_p1_p2,
+          naumen_long_tt = EXCLUDED.naumen_long_tt,
+          events = EXCLUDED.events,
+          politics = EXCLUDED.politics,
+          bz = EXCLUDED.bz,
+          errors = EXCLUDED.errors
+      `);
+      return { saved: true };
+    } catch (error) {
+      request.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save LTP shift report summary");
+      return reply.code(503).send({ error: "Не удалось сохранить сводку. Проверьте подключение DAPS и таблицу ltp_1.shift_report." });
+    }
+  });
+
   app.get("/api/ltp/metabase-token", { preHandler: readAccess }, async (_request, reply) => {
     const setting = await prisma.appSetting.findUnique({ where: { key: "portal-config:ltp-metabase" } });
     const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)

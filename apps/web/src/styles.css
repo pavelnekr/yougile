@@ -144,6 +144,28 @@ button { color: inherit; }
 .ltp-metabase-frame { box-sizing: border-box; width: 100%; min-width: 0; height: max(600px, calc(100vh - 230px)); height: max(600px, calc(100dvh - 230px)); border: 1px solid #edf0f4; border-radius: 8px; background: #fff; }
 .ltp-metabase-frame metabase-dashboard { display: block; width: 100%; max-width: 100%; height: 100%; min-height: 600px; }
 .ltp-metabase-loading { padding: 24px; color: #8791a1; font-size: 12px; }
+.ltp-shift-page .section-hero .text-button { margin-left: auto; }
+.ltp-shift-panel { padding: 18px; }
+.ltp-shift-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 17px; color: #657187; }
+.ltp-shift-panel-heading h2 { margin: 0 0 4px; color: #354056; font: 700 15px "Segoe UI", sans-serif; }
+.ltp-shift-panel-heading p { margin: 0; color: #929aaa; font-size: 10px; }
+.ltp-shift-meta-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, .75fr) minmax(0, 1fr); align-items: end; gap: 14px; }
+.ltp-shift-meta-grid > .field-label, .ltp-shift-metric-grid > .field-label { display: grid; min-width: 0; gap: 6px; color: #737e92; font-size: 10px; }
+.ltp-shift-meta-grid input[type="date"], .ltp-shift-meta-grid select, .ltp-shift-metric-grid input { box-sizing: border-box; width: 100%; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid #e2e7ef; border-radius: 7px; color: #354056; background: #fff; font: inherit; font-size: 11px; }
+.ltp-shift-number-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+.ltp-shift-number-field legend { margin-bottom: 6px; padding: 0; color: #737e92; font-size: 10px; }
+.ltp-shift-number-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.ltp-shift-number-options label { display: grid; min-height: 38px; place-items: center; border: 1px solid #e2e7ef; border-radius: 7px; color: #637087; background: #fff; cursor: pointer; font-size: 12px; font-weight: 650; }
+.ltp-shift-number-options label.is-selected { border-color: #8495e9; color: #4258c7; background: #f0f3ff; }
+.ltp-shift-number-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.ltp-shift-summary-heading { margin-top: 24px; }
+.ltp-shift-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ltp-shift-summary-card { min-width: 0; padding: 15px; }
+.ltp-shift-summary-card h3 { margin: 0 0 14px; color: #354056; font: 700 12px "Segoe UI", sans-serif; }
+.ltp-shift-metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ltp-shift-metric-grid input { font-variant-numeric: tabular-nums; }
+.ltp-shift-note { margin-top: 13px; }
+.ltp-shift-actions { justify-content: flex-end; }
 .ltp-blocks-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 12px; padding: 16px; }
 .ltp-resources-form { grid-template-columns: minmax(0, 1fr) auto; }
 .ltp-resources-intro { grid-column: 1 / -1; margin: 0 0 2px; color: #68758a; font-size: 11px; line-height: 1.55; }
@@ -737,6 +759,8 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .daps-daily-controls { align-items: stretch; flex-direction: column; }
   .site-generator-upload-form { grid-template-columns: 1fr; }
   .ltp-blocks-form { grid-template-columns: 1fr; }
+  .ltp-shift-meta-grid, .ltp-shift-summary-grid { grid-template-columns: 1fr; }
+  .ltp-shift-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ltp-blocks-results-heading { align-items: flex-start; }
   .ltp-blocks-summary-row { grid-template-columns: 1fr auto; }
   .ltp-blocks-summary-row .text-button { grid-column: 1 / -1; justify-self: start; }

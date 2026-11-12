@@ -17,6 +17,7 @@ export type Section =
   | "Журнал блокировок 1ЛТП"
   | "Справочник ресурсов 1ЛТП"
   | "Дашборды Metabase"
+  | "Передача смены 1ЛТП"
   | "Ежедневный отчет по KPI"
   | "Netbox"
   | "Генератор Площадок"
@@ -46,6 +47,7 @@ export const sectionSlugs: Record<Section, string> = {
   "Журнал блокировок 1ЛТП": "1ltp/blocks-log",
   "Справочник ресурсов 1ЛТП": "1ltp/resources",
   "Дашборды Metabase": "1ltp/metabase",
+  "Передача смены 1ЛТП": "1ltp/shift-report",
   "Ежедневный отчет по KPI": "daps/daily-kpi",
   "Netbox": "daps/netbox",
   "Генератор Площадок": "daps/site-generator",
