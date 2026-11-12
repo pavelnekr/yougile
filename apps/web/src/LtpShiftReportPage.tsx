@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, CalendarDays, CheckCircle2, ClipboardList, LoaderCircle, Save } from "lucide-react";
+import { Activity, AlertTriangle, ArrowLeft, BellRing, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Headset, LoaderCircle, RadioTower, Save, ShieldCheck, Star, type LucideIcon } from "lucide-react";
 import { apiFetch } from "./apiClient.js";
 
 type ShiftMetrics = {
@@ -22,18 +22,18 @@ type ShiftMetrics = {
   errors: number;
 };
 
-const summarySections: { title: string; fields: { key: keyof ShiftMetrics; label: string }[] }[] = [
-  { title: "1. Контроль аварийных событий по ТАП", fields: [
+const summarySections: { title: string; icon: LucideIcon; tone: string; fields: { key: keyof ShiftMetrics; label: string }[] }[] = [
+  { title: "Контроль аварийных событий по ТАП", icon: RadioTower, tone: "blue", fields: [
     { key: "tapAll", label: "Всего событий" },
     { key: "tapInfluence", label: "С влиянием на трафик" },
     { key: "tapControl", label: "Контрольные события" }
   ] },
-  { title: "2. Мониторинг СЗР", fields: [
+  { title: "Мониторинг СЗР", icon: BellRing, tone: "amber", fields: [
     { key: "szrAll", label: "Всего событий" },
     { key: "szrCompl", label: "Уведомления" },
     { key: "szrNotCompl", label: "Не обработано" }
   ] },
-  { title: "3. Регистрация в АСБИ", fields: [
+  { title: "Регистрация в АСБИ", icon: Activity, tone: "green", fields: [
     { key: "asbiAll", label: "Всего событий" },
     { key: "asbiP1", label: "Приоритет P1" },
     { key: "asbiP2", label: "Приоритет P2" },
@@ -41,11 +41,11 @@ const summarySections: { title: string; fields: { key: keyof ShiftMetrics; label
     { key: "asbiDropTrafficCompl", label: "Зарегистрировано падений трафика" },
     { key: "asbiNotComplP1P2", label: "Незарегистрировано P1/P2" }
   ] },
-  { title: "4. Длительные обращения Naumen", fields: [{ key: "naumenLongTt", label: "Количество обращений" }] },
-  { title: "5. Важные события", fields: [{ key: "events", label: "Количество событий" }] },
-  { title: "6. Политики", fields: [{ key: "politics", label: "Количество политик" }] },
-  { title: "7. База знаний", fields: [{ key: "bz", label: "Количество записей" }] },
-  { title: "8. Вопросы и ошибки", fields: [{ key: "errors", label: "Количество вопросов и ошибок" }] }
+  { title: "Длительные обращения Naumen", icon: Headset, tone: "violet", fields: [{ key: "naumenLongTt", label: "Количество обращений" }] },
+  { title: "Важные события", icon: Star, tone: "rose", fields: [{ key: "events", label: "Количество событий" }] },
+  { title: "Политики", icon: ShieldCheck, tone: "teal", fields: [{ key: "politics", label: "Количество политик" }] },
+  { title: "База знаний", icon: BookOpen, tone: "indigo", fields: [{ key: "bz", label: "Количество записей" }] },
+  { title: "Вопросы и ошибки", icon: AlertTriangle, tone: "orange", fields: [{ key: "errors", label: "Количество вопросов и ошибок" }] }
 ];
 
 const initialMetrics: ShiftMetrics = {
@@ -75,6 +75,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const activeSections = summarySections.filter((section) => section.fields.some(({ key }) => metrics[key] > 0)).length;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -127,6 +128,21 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
       <button type="button" className="text-button" onClick={onBack}><ArrowLeft size={15} /> Назад</button>
     </div>
 
+    <div className="ltp-shift-overview panel">
+      <div className="ltp-shift-overview-copy">
+        <span className="ltp-shift-overview-icon"><ClipboardList size={19} /></span>
+        <div><strong>Показатели смены</strong><span>Сводка по восьми направлениям работы 1ЛТП</span></div>
+      </div>
+      <div className="ltp-shift-overview-progress" role="img" aria-label={`${activeSections} из 8 направлений содержат ненулевые показатели`}>
+        <div className="ltp-shift-overview-segments">{summarySections.map((section, index) => {
+          const hasData = section.fields.some(({ key }) => metrics[key] > 0);
+          return <span key={section.title} className={hasData ? `is-active tone-${section.tone}` : ""} title={`${index + 1}. ${section.title}`} />;
+        })}</div>
+        <small><strong>{activeSections}</strong> из 8 направлений с показателями</small>
+      </div>
+      <div className="ltp-shift-overview-count"><strong>08</strong><span>направлений</span></div>
+    </div>
+
     <div className="panel ltp-shift-panel">
       <div className="ltp-shift-panel-heading">
         <div><h2>Параметры текущей смены</h2><p>Укажите дату, номер смены и старшего смены.</p></div>
@@ -156,15 +172,24 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
       <div><h2>Сводка за смену</h2><p>Показатели сохраняются в журнал передачи смены 1ЛТП.</p></div>
     </section>
     <div className="ltp-shift-summary-grid">
-      {summarySections.map((section) => <section className="panel ltp-shift-summary-card" key={section.title}>
-        <h3>{section.title}</h3>
+      {summarySections.map((section, index) => {
+        const SectionIcon = section.icon;
+        const singleField = section.fields.length === 1;
+        const hasData = section.fields.some(({ key }) => metrics[key] > 0);
+        return <section className={`panel ltp-shift-summary-card ${singleField ? "is-single-metric" : ""} ${hasData ? "has-data" : ""}`} key={section.title}>
+        <div className="ltp-shift-card-heading">
+          <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+          <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+          <span className="ltp-shift-card-count">{section.fields.length} {section.fields.length === 1 ? "показатель" : section.fields.length < 5 ? "показателя" : "показателей"}</span>
+        </div>
         <div className="ltp-shift-metric-grid">
           {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
             {field.label}
             <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving} onChange={(event) => updateMetric(field.key, event.target.value)} />
           </label>)}
         </div>
-      </section>)}
+      </section>;
+      })}
     </div>
 
     <div className="portal-config-note ltp-shift-note"><CalendarDays size={14} /><span>По правилам текущего журнала запись привязана к дате. Повторное сохранение за ту же дату обновит существующую строку.</span></div>

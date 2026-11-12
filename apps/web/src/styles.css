@@ -145,6 +145,29 @@ button { color: inherit; }
 .ltp-metabase-frame metabase-dashboard { display: block; width: 100%; max-width: 100%; height: 100%; min-height: 600px; }
 .ltp-metabase-loading { padding: 24px; color: #8791a1; font-size: 12px; }
 .ltp-shift-page .section-hero .text-button { margin-left: auto; }
+.ltp-shift-overview { display: grid; grid-template-columns: minmax(230px, 1fr) minmax(220px, 1.1fr) auto; align-items: center; gap: 22px; margin: -8px 0 17px; padding: 15px 18px; border-color: #e8ecf5; background: linear-gradient(105deg, #fff 0%, #fbfcff 62%, #f5f7ff 100%); }
+.ltp-shift-overview-copy { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.ltp-shift-overview-icon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid #e1e7ff; border-radius: 12px; color: #5369d2; background: #f0f3ff; }
+.ltp-shift-overview-copy > div { display: grid; gap: 4px; }
+.ltp-shift-overview-copy strong { color: #354056; font-size: 12px; }
+.ltp-shift-overview-copy span:not(.ltp-shift-overview-icon) { color: #929aaa; font-size: 9px; line-height: 1.4; }
+.ltp-shift-overview-progress { display: grid; gap: 7px; }
+.ltp-shift-overview-segments { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+.ltp-shift-overview-segments span { height: 7px; border-radius: 99px; background: #e9edf4; transition: background-color 180ms ease, transform 180ms ease; }
+.ltp-shift-overview-segments span.is-active { background: #6579dd; }
+.ltp-shift-overview-segments span.is-active.tone-blue { background: #5d78dc; }
+.ltp-shift-overview-segments span.is-active.tone-amber { background: #dfa947; }
+.ltp-shift-overview-segments span.is-active.tone-green { background: #4b9e7a; }
+.ltp-shift-overview-segments span.is-active.tone-violet { background: #8a69bf; }
+.ltp-shift-overview-segments span.is-active.tone-rose { background: #cc6c80; }
+.ltp-shift-overview-segments span.is-active.tone-teal { background: #3b9b9a; }
+.ltp-shift-overview-segments span.is-active.tone-indigo { background: #626fbd; }
+.ltp-shift-overview-segments span.is-active.tone-orange { background: #d4874c; }
+.ltp-shift-overview-progress small { color: #8a94a7; font-size: 9px; }
+.ltp-shift-overview-progress small strong { color: #5369d2; font-size: 10px; }
+.ltp-shift-overview-count { display: grid; min-width: 58px; justify-items: center; padding-left: 18px; border-left: 1px solid #e6eaf2; }
+.ltp-shift-overview-count strong { color: #3b4fbb; font: 750 22px "Segoe UI", sans-serif; letter-spacing: -.7px; }
+.ltp-shift-overview-count span { color: #929aaa; font-size: 8px; }
 .ltp-shift-panel { padding: 18px; }
 .ltp-shift-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 17px; color: #657187; }
 .ltp-shift-panel-heading h2 { margin: 0 0 4px; color: #354056; font: 700 15px "Segoe UI", sans-serif; }
@@ -160,10 +183,27 @@ button { color: inherit; }
 .ltp-shift-number-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .ltp-shift-summary-heading { margin-top: 24px; }
 .ltp-shift-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.ltp-shift-summary-card { min-width: 0; padding: 15px; }
-.ltp-shift-summary-card h3 { margin: 0 0 14px; color: #354056; font: 700 12px "Segoe UI", sans-serif; }
+.ltp-shift-summary-card { min-width: 0; padding: 15px; border-color: #e9edf4; transition: border-color 180ms ease, box-shadow 180ms ease; }
+.ltp-shift-summary-card.has-data { border-color: #dce4fb; box-shadow: 0 3px 11px #4d66c20a; }
+.ltp-shift-card-heading { display: flex; min-height: 34px; align-items: center; gap: 10px; margin-bottom: 14px; }
+.ltp-shift-card-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 10px; }
+.ltp-shift-card-icon.tone-blue { color: #4d68c7; background: #edf2ff; }
+.ltp-shift-card-icon.tone-amber { color: #a9781d; background: #fff6e4; }
+.ltp-shift-card-icon.tone-green { color: #37825e; background: #eaf7ef; }
+.ltp-shift-card-icon.tone-violet { color: #7853a8; background: #f3edfa; }
+.ltp-shift-card-icon.tone-rose { color: #b45670; background: #fff0f3; }
+.ltp-shift-card-icon.tone-teal { color: #27817d; background: #e8f7f6; }
+.ltp-shift-card-icon.tone-indigo { color: #5260a7; background: #eef0fb; }
+.ltp-shift-card-icon.tone-orange { color: #b96e34; background: #fff2e8; }
+.ltp-shift-card-title { display: grid; min-width: 0; gap: 3px; }
+.ltp-shift-card-title small { color: #9ba4b2; font-size: 7px; font-weight: 700; letter-spacing: .8px; }
+.ltp-shift-summary-card h3 { margin: 0; color: #354056; font: 700 12px "Segoe UI", sans-serif; line-height: 1.35; }
+.ltp-shift-card-count { margin-left: auto; color: #98a1af; font-size: 8px; white-space: nowrap; }
 .ltp-shift-metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .ltp-shift-metric-grid input { font-variant-numeric: tabular-nums; }
+.ltp-shift-summary-card.is-single-metric .ltp-shift-metric-grid { grid-template-columns: minmax(0, 1fr); }
+.ltp-shift-summary-card.is-single-metric .ltp-shift-metric-grid > .field-label { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.ltp-shift-summary-card.is-single-metric .ltp-shift-metric-grid input { width: 92px; height: 48px; color: #3f54b5; background: #f7f8ff; font-size: 20px; font-weight: 700; text-align: center; }
 .ltp-shift-note { margin-top: 13px; }
 .ltp-shift-actions { justify-content: flex-end; }
 .ltp-blocks-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 12px; padding: 16px; }
@@ -761,6 +801,9 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .ltp-blocks-form { grid-template-columns: 1fr; }
   .ltp-shift-meta-grid, .ltp-shift-summary-grid { grid-template-columns: 1fr; }
   .ltp-shift-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ltp-shift-overview { grid-template-columns: minmax(0, 1fr) auto; gap: 13px; padding: 13px; }
+  .ltp-shift-overview-progress { grid-column: 1 / -1; }
+  .ltp-shift-overview-count { grid-column: 2; grid-row: 1; }
   .ltp-blocks-results-heading { align-items: flex-start; }
   .ltp-blocks-summary-row { grid-template-columns: 1fr auto; }
   .ltp-blocks-summary-row .text-button { grid-column: 1 / -1; justify-self: start; }
