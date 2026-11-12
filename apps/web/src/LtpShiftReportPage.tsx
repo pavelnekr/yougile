@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Activity, AlertTriangle, ArrowLeft, BellRing, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Headset, LoaderCircle, RadioTower, Save, ShieldCheck, Star, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, ArrowLeft, BellRing, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Headset, LoaderCircle, Plus, RadioTower, Save, ShieldCheck, Star, Trash2, type LucideIcon } from "lucide-react";
 import { apiFetch } from "./apiClient.js";
 
 type ShiftMetrics = {
@@ -21,6 +21,28 @@ type ShiftMetrics = {
   bz: number;
   errors: number;
 };
+
+type ErrorEntry = {
+  id: number;
+  tt: string;
+  type: string;
+  situation: string;
+  question: string;
+  solution: string;
+  inBz: string;
+  action: string;
+  saved: boolean;
+  touched: boolean;
+};
+
+let nextErrorEntryId = 1;
+function createErrorEntry(): ErrorEntry {
+  return { id: nextErrorEntryId++, tt: "", type: "", situation: "", question: "", solution: "", inBz: "Нет", action: "", saved: false, touched: false };
+}
+
+function isFilledErrorEntry(entry: ErrorEntry) {
+  return [entry.tt, entry.type, entry.situation, entry.question, entry.solution, entry.action].some((item) => item.trim()) || (entry.saved && !entry.touched) || (entry.touched && entry.inBz === "Да");
+}
 
 const summarySections: { title: string; icon: LucideIcon; tone: string; fields: { key: keyof ShiftMetrics; label: string }[] }[] = [
   { title: "Контроль аварийных событий по ТАП", icon: RadioTower, tone: "blue", fields: [
@@ -72,6 +94,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const [supervisors, setSupervisors] = useState<string[]>([]);
   const [supervisorsLoading, setSupervisorsLoading] = useState(true);
   const [metrics, setMetrics] = useState<ShiftMetrics>(initialMetrics);
+  const [errorEntries, setErrorEntries] = useState<ErrorEntry[]>([createErrorEntry()]);
   const [saving, setSaving] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [error, setError] = useState("");
@@ -99,6 +122,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     previousDate.current = date;
     const controller = new AbortController();
     setMetrics(initialMetrics);
+    setErrorEntries([createErrorEntry()]);
     setShiftNumber("1");
     setSupervisor("");
     setError("");
@@ -111,10 +135,13 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     setReportLoading(true);
     void apiFetch(`/api/ltp/shift-report?date=${encodeURIComponent(date)}`, { signal: controller.signal })
       .then(async (response) => {
-        const data = await response.json() as { found?: boolean; shiftNumber?: string; supervisor?: string; metrics?: ShiftMetrics; error?: string };
+        const data = await response.json() as { found?: boolean; shiftNumber?: string; supervisor?: string; metrics?: ShiftMetrics; errorRows?: Omit<ErrorEntry, "id" | "touched" | "saved">[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить сводку за выбранную дату.");
         if (data.found && data.metrics) {
           setMetrics({ ...initialMetrics, ...data.metrics });
+          setErrorEntries(data.errorRows?.length
+            ? data.errorRows.map((entry) => ({ ...createErrorEntry(), ...entry, saved: true }))
+            : [createErrorEntry()]);
           setShiftNumber(["1", "2", "3", "4"].includes(data.shiftNumber ?? "") ? data.shiftNumber! : "1");
           setSupervisor(data.supervisor ?? "");
           setNotice("Загружена сохранённая сводка за эту дату.");
@@ -134,6 +161,26 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     setNotice("");
   };
 
+  const updateErrorEntry = (id: number, key: keyof Omit<ErrorEntry, "id" | "touched">, value: string) => {
+    const updated = errorEntries.map((entry) => entry.id === id ? { ...entry, [key]: value, touched: true } : entry);
+    setErrorEntries(updated);
+    const count = updated.filter(isFilledErrorEntry).length;
+    setMetrics((current) => ({ ...current, errors: count }));
+    setError("");
+    setNotice("");
+  };
+
+  const removeErrorEntry = (id: number) => {
+    const updated = errorEntries.filter((entry) => entry.id !== id);
+    const count = updated.filter(isFilledErrorEntry).length;
+    setErrorEntries(updated.length ? updated : [createErrorEntry()]);
+    setMetrics((current) => ({ ...current, errors: count }));
+    setError("");
+    setNotice("");
+  };
+
+  const addErrorEntry = () => setErrorEntries((current) => [...current, createErrorEntry()]);
+
   const save = async () => {
     if (!canEdit || saving) return;
     setSaving(true);
@@ -143,7 +190,15 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
       const response = await apiFetch("/api/ltp/shift-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, shiftNumber, supervisor, ...metrics })
+        body: JSON.stringify({
+          date,
+          shiftNumber,
+          supervisor,
+          ...metrics,
+          errorRows: errorEntries
+            .filter(isFilledErrorEntry)
+            .map(({ tt, type, situation, question, solution, inBz, action }) => ({ tt, type, situation, question, solution, inBz, action }))
+        })
       });
       const data = await response.json() as { saved?: boolean; error?: string };
       if (!response.ok || !data.saved) throw new Error(data.error ?? "Не удалось сохранить сводку передачи смены.");
@@ -209,6 +264,40 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     <div className="ltp-shift-summary-grid">
       {summarySections.map((section, index) => {
         const SectionIcon = section.icon;
+        if (section.fields[0]?.key === "errors") {
+          const hasData = metrics.errors > 0;
+          return <section className={`panel ltp-shift-summary-card ltp-shift-errors-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{metrics.errors} {metrics.errors === 1 ? "запись" : "записей"}</span>
+            </div>
+            <div className="ltp-shift-error-entries">
+              {errorEntries.map((entry, entryIndex) => <article className="ltp-shift-error-entry" key={entry.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(entryIndex + 1).padStart(2, "0")}</span><strong>Запись о вопросе или ошибке</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledErrorEntry(entry) ? "is-filled" : ""}`}>{isFilledErrorEntry(entry) ? "Заполнена" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить запись ${entryIndex + 1}`} disabled={saving || reportLoading} onClick={() => removeErrorEntry(entry.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta">
+                  <label className="field-label">№ ТТ<input value={entry.tt} disabled={saving || reportLoading} onChange={(event) => updateErrorEntry(entry.id, "tt", event.target.value)} /></label>
+                  <label className="field-label">Тип<input value={entry.type} disabled={saving || reportLoading} onChange={(event) => updateErrorEntry(entry.id, "type", event.target.value)} /></label>
+                  <label className="field-label">Есть в БЗ<select value={entry.inBz} disabled={saving || reportLoading} onChange={(event) => updateErrorEntry(entry.id, "inBz", event.target.value)}><option>Да</option><option>Нет</option></select></label>
+                </div>
+                <div className="ltp-shift-error-entry-details">
+                  <label className="field-label">Ситуация<textarea value={entry.situation} disabled={saving || reportLoading} onChange={(event) => updateErrorEntry(entry.id, "situation", event.target.value)} /></label>
+                  <label className="field-label">Вопрос / ошибка<textarea value={entry.question} disabled={saving || reportLoading} onChange={(event) => updateErrorEntry(entry.id, "question", event.target.value)} /></label>
+                  <label className="field-label">Правильное решение<textarea value={entry.solution} disabled={saving || reportLoading} onChange={(event) => updateErrorEntry(entry.id, "solution", event.target.value)} /></label>
+                  <label className="field-label">Действие<textarea value={entry.action} disabled={saving || reportLoading} onChange={(event) => updateErrorEntry(entry.id, "action", event.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addErrorEntry}><Plus size={14} /> Добавить запись</button>
+              <span>Заполненные строки сохраняются в ltp_1.errors и привязываются к выбранной дате.</span>
+            </div>
+          </section>;
+        }
         const singleField = section.fields.length === 1;
         const hasData = section.fields.some(({ key }) => metrics[key] > 0);
         return <section className={`panel ltp-shift-summary-card ${singleField ? "is-single-metric" : ""} ${hasData ? "has-data" : ""}`} key={section.title}>

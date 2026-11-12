@@ -75,27 +75,42 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
           asbi_drop_traffic_all, asbi_drop_traffic_compl, asbi_not_compl_p1_p2,
           naumen_long_tt, events, politics, bz, errors
         FROM ltp_1.shift_report
-        WHERE date = ${new Date(`${date.data}T00:00:00.000Z`)}
+        WHERE date::date = ${date.data}::date
         LIMIT 1
       `);
+      const errorRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT tt, type, situation, error, correct_solution, is_in_bz, action
+        FROM ltp_1.errors
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
       const row = rows[0];
-      if (!row) return { found: false };
+      if (!row && !errorRows.length) return { found: false };
       const numeric = (value: unknown) => {
         const parsed = Number(value ?? 0);
         return Number.isFinite(parsed) ? parsed : 0;
       };
       return {
         found: true,
-        shiftNumber: String(row.shift_num ?? "1"),
-        supervisor: String(row.fio ?? ""),
+        shiftNumber: String(row?.shift_num ?? "1"),
+        supervisor: String(row?.fio ?? ""),
         metrics: {
-          tapAll: numeric(row.tap_all), tapInfluence: numeric(row.tap_influence), tapControl: numeric(row.tap_control),
-          szrAll: numeric(row.szr_all), szrCompl: numeric(row.szr_compl), szrNotCompl: numeric(row.szr_not_compl),
-          asbiAll: numeric(row.asbi_all), asbiP1: numeric(row.asbi_p1), asbiP2: numeric(row.asbi_p2),
-          asbiDropTrafficAll: numeric(row.asbi_drop_traffic_all), asbiDropTrafficCompl: numeric(row.asbi_drop_traffic_compl),
-          asbiNotComplP1P2: numeric(row.asbi_not_compl_p1_p2), naumenLongTt: numeric(row.naumen_long_tt),
-          events: numeric(row.events), politics: numeric(row.politics), bz: numeric(row.bz), errors: numeric(row.errors)
-        }
+          tapAll: numeric(row?.tap_all), tapInfluence: numeric(row?.tap_influence), tapControl: numeric(row?.tap_control),
+          szrAll: numeric(row?.szr_all), szrCompl: numeric(row?.szr_compl), szrNotCompl: numeric(row?.szr_not_compl),
+          asbiAll: numeric(row?.asbi_all), asbiP1: numeric(row?.asbi_p1), asbiP2: numeric(row?.asbi_p2),
+          asbiDropTrafficAll: numeric(row?.asbi_drop_traffic_all), asbiDropTrafficCompl: numeric(row?.asbi_drop_traffic_compl),
+          asbiNotComplP1P2: numeric(row?.asbi_not_compl_p1_p2), naumenLongTt: numeric(row?.naumen_long_tt),
+          events: numeric(row?.events), politics: numeric(row?.politics), bz: numeric(row?.bz), errors: errorRows.length || numeric(row?.errors)
+        },
+        errorRows: errorRows.map((entry) => ({
+          tt: String(entry.tt ?? ""),
+          type: String(entry.type ?? ""),
+          situation: String(entry.situation ?? ""),
+          question: String(entry.error ?? ""),
+          solution: String(entry.correct_solution ?? ""),
+          inBz: String(entry.is_in_bz ?? "Нет"),
+          action: String(entry.action ?? "")
+        }))
       };
     } catch (error) {
       request.log.error({ err: error }, "Could not load LTP shift report");
@@ -128,28 +143,41 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
       events: count,
       politics: count,
       bz: count,
-      errors: count
+      errors: count,
+      errorRows: z.array(z.object({
+        tt: z.string().trim().max(55),
+        type: z.string().trim().max(150),
+        situation: z.string().max(10000),
+        question: z.string().max(10000),
+        solution: z.string().max(10000),
+        inBz: z.enum(["Да", "Нет"]),
+        action: z.string().max(10000)
+      })).max(500).default([])
     }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные передачи смены." });
 
     const data = parsed.data;
     try {
       const db = await database();
-      await db.$executeRaw(Prisma.sql`
-        INSERT INTO ltp_1.shift_report (
+      await db.$transaction(async (tx) => {
+        // The destination table has no ID default or sequence, so serialize
+        // portal writes while assigning explicit IDs.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(832114750, 1)`;
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO ltp_1.shift_report (
           date, shift_num, fio, tap_all, tap_influence, tap_control,
           szr_all, szr_compl, szr_not_compl, asbi_all, asbi_p1, asbi_p2,
           asbi_drop_traffic_all, asbi_drop_traffic_compl, asbi_not_compl_p1_p2,
           naumen_long_tt, events, politics, bz, errors
-        ) VALUES (
-          ${new Date(`${data.date}T00:00:00.000Z`)}, ${data.shiftNumber}, ${data.supervisor},
+          ) VALUES (
+          ${data.date}::date, ${data.shiftNumber}, ${data.supervisor},
           ${data.tapAll}, ${data.tapInfluence}, ${data.tapControl},
           ${data.szrAll}, ${data.szrCompl}, ${data.szrNotCompl},
           ${data.asbiAll}, ${data.asbiP1}, ${data.asbiP2},
           ${data.asbiDropTrafficAll}, ${data.asbiDropTrafficCompl}, ${data.asbiNotComplP1P2},
-          ${data.naumenLongTt}, ${String(data.events)}, ${String(data.politics)}, ${String(data.bz)}, ${String(data.errors)}
-        )
-        ON CONFLICT (date) DO UPDATE SET
+          ${data.naumenLongTt}, ${String(data.events)}, ${String(data.politics)}, ${String(data.bz)}, ${String(data.errorRows.length || data.errors)}
+          )
+          ON CONFLICT (date) DO UPDATE SET
           shift_num = EXCLUDED.shift_num,
           fio = EXCLUDED.fio,
           tap_all = EXCLUDED.tap_all,
@@ -168,12 +196,32 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
           events = EXCLUDED.events,
           politics = EXCLUDED.politics,
           bz = EXCLUDED.bz,
-          errors = EXCLUDED.errors
-      `);
+            errors = EXCLUDED.errors
+        `);
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.errors WHERE date = ${data.date}::date`);
+        if (data.errorRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.errors
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const row of data.errorRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.errors (id, date, tt, type, situation, error, correct_solution, is_in_bz, action)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${row.tt || null}, ${row.type || null},
+                ${row.situation || null}, ${row.question || null}, ${row.solution || null},
+                ${row.inBz}, ${row.action || null}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
+      });
       return { saved: true };
     } catch (error) {
-      request.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save LTP shift report summary");
-      return reply.code(503).send({ error: "Не удалось сохранить сводку. Проверьте подключение DAPS и таблицу ltp_1.shift_report." });
+      request.log.error({ err: error, actor: request.sessionUser?.login }, "Could not save LTP shift report");
+      return reply.code(503).send({ error: "Не удалось сохранить передачу смены. Проверьте подключение DAPS и таблицы ltp_1.shift_report и ltp_1.errors." });
     }
   });
 
