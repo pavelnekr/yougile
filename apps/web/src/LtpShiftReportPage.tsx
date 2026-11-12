@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Activity, AlertTriangle, ArrowLeft, BellRing, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Headset, LoaderCircle, Plus, RadioTower, Save, ShieldCheck, Star, Trash2, type LucideIcon } from "lucide-react";
 import { apiFetch } from "./apiClient.js";
 
@@ -99,7 +99,6 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const [reportLoading, setReportLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const previousDate = useRef(date);
   const activeSections = summarySections.filter((section) => section.fields.some(({ key }) => metrics[key] > 0)).length;
 
   useEffect(() => {
@@ -110,7 +109,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить старших смены.");
         const values = data.supervisors ?? [];
         setSupervisors(values);
-        if (values.length === 1) setSupervisor(values[0]!);
+        if (values.length === 1) setSupervisor((current) => current || values[0]!);
       })
       .catch((cause: unknown) => { if (!controller.signal.aborted) setError(errorMessage(cause)); })
       .finally(() => { if (!controller.signal.aborted) setSupervisorsLoading(false); });
@@ -118,8 +117,6 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   }, []);
 
   useEffect(() => {
-    if (previousDate.current === date) return;
-    previousDate.current = date;
     const controller = new AbortController();
     setMetrics(initialMetrics);
     setErrorEntries([createErrorEntry()]);
@@ -127,7 +124,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     setSupervisor("");
     setError("");
     setNotice("");
-    if (!date || date >= localDateValue()) {
+    if (!date) {
       setReportLoading(false);
       return () => controller.abort();
     }

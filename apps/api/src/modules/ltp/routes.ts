@@ -162,7 +162,7 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
       await db.$transaction(async (tx) => {
         // The destination table has no ID default or sequence, so serialize
         // portal writes while assigning explicit IDs.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(832114750, 1)`;
+        await tx.$executeRaw`DO $lock$ BEGIN PERFORM pg_advisory_xact_lock(832114750, 1); END $lock$`;
         await tx.$executeRaw(Prisma.sql`
           INSERT INTO ltp_1.shift_report (
           date, shift_num, fio, tap_all, tap_influence, tap_control,
