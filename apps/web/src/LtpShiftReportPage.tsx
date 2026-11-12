@@ -532,42 +532,40 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     </div>
 
     <div className="ltp-shift-overview panel">
-      <div className="ltp-shift-overview-copy">
-        <span className="ltp-shift-overview-icon"><ClipboardList size={19} /></span>
-        <div><strong>Показатели смены</strong><span>Сводка по восьми направлениям работы 1ЛТП</span></div>
+      <div className="ltp-shift-overview-top">
+        <div className="ltp-shift-overview-copy">
+          <span className="ltp-shift-overview-icon"><ClipboardList size={19} /></span>
+          <div><strong>Показатели смены</strong><span>Сводка по восьми направлениям работы 1ЛТП</span></div>
+        </div>
+        <div className="ltp-shift-overview-progress" role="img" aria-label={`${activeSections} из 8 направлений содержат ненулевые показатели`}>
+          <div className="ltp-shift-overview-segments">{summarySections.map((section, index) => {
+            const hasData = section.fields.some(({ key }) => metrics[key] > 0);
+            return <span key={section.title} className={hasData ? `is-active tone-${section.tone}` : ""} title={`${index + 1}. ${section.title}`} />;
+          })}</div>
+          <small><strong>{activeSections}</strong> из 8 направлений с показателями</small>
+        </div>
+        <div className="ltp-shift-overview-count"><strong>08</strong><span>направлений</span></div>
       </div>
-      <div className="ltp-shift-overview-progress" role="img" aria-label={`${activeSections} из 8 направлений содержат ненулевые показатели`}>
-        <div className="ltp-shift-overview-segments">{summarySections.map((section, index) => {
-          const hasData = section.fields.some(({ key }) => metrics[key] > 0);
-          return <span key={section.title} className={hasData ? `is-active tone-${section.tone}` : ""} title={`${index + 1}. ${section.title}`} />;
-        })}</div>
-        <small><strong>{activeSections}</strong> из 8 направлений с показателями</small>
-      </div>
-      <div className="ltp-shift-overview-count"><strong>08</strong><span>направлений</span></div>
-    </div>
-
-    <div className="panel ltp-shift-panel">
-      <div className="ltp-shift-panel-heading">
-        <div><h2>Параметры текущей смены</h2><p>Укажите дату, номер смены и старшего смены.</p></div>
-        <CalendarDays size={18} />
-      </div>
-      <div className="ltp-shift-meta-grid">
-        <label className="field-label" htmlFor="ltp-shift-date">Дата начала смены
-          <input id="ltp-shift-date" type="date" value={date} disabled={saving} onChange={(event) => { setDate(event.target.value); setError(""); setNotice(""); }} />
-        </label>
-        <fieldset className="ltp-shift-number-field">
-          <legend className="field-label">Смена</legend>
-          <div className="ltp-shift-number-options">{["1", "2", "3", "4"].map((value) => <label key={value} className={shiftNumber === value ? "is-selected" : ""}>
-            <input type="radio" name="ltp-shift-number" value={value} checked={shiftNumber === value} disabled={saving || reportLoading} onChange={() => { setShiftNumber(value); setError(""); setNotice(""); }} />
-            <span>{value}</span>
-          </label>)}</div>
-        </fieldset>
-        <label className="field-label" htmlFor="ltp-shift-supervisor">Старший смены
-          <select id="ltp-shift-supervisor" value={supervisor} disabled={saving || reportLoading || supervisorsLoading} onChange={(event) => { setSupervisor(event.target.value); setError(""); setNotice(""); }}>
-            <option value="">{supervisorsLoading ? "Загружаем список…" : supervisors.length ? "Выберите сотрудника" : "Список не загружен"}</option>
-            {supervisors.map((name) => <option value={name} key={name}>{name}</option>)}
-          </select>
-        </label>
+      <div className="ltp-shift-overview-meta">
+        <div className="ltp-shift-overview-meta-heading"><CalendarDays size={15} /><strong>Параметры текущей смены</strong><span>Дата, номер смены и старший смены</span></div>
+        <div className="ltp-shift-meta-grid">
+          <label className="field-label" htmlFor="ltp-shift-date">Дата начала смены
+            <input id="ltp-shift-date" type="date" value={date} disabled={saving} onChange={(event) => { setDate(event.target.value); setError(""); setNotice(""); }} />
+          </label>
+          <fieldset className="ltp-shift-number-field">
+            <legend className="field-label">Смена</legend>
+            <div className="ltp-shift-number-options">{["1", "2", "3", "4"].map((value) => <label key={value} className={shiftNumber === value ? "is-selected" : ""}>
+              <input type="radio" name="ltp-shift-number" value={value} checked={shiftNumber === value} disabled={saving || reportLoading} onChange={() => { setShiftNumber(value); setError(""); setNotice(""); }} />
+              <span>{value}</span>
+            </label>)}</div>
+          </fieldset>
+          <label className="field-label" htmlFor="ltp-shift-supervisor">Старший смены
+            <select id="ltp-shift-supervisor" value={supervisor} disabled={saving || reportLoading || supervisorsLoading} onChange={(event) => { setSupervisor(event.target.value); setError(""); setNotice(""); }}>
+              <option value="">{supervisorsLoading ? "Загружаем список…" : supervisors.length ? "Выберите сотрудника" : "Список не загружен"}</option>
+              {supervisors.map((name) => <option value={name} key={name}>{name}</option>)}
+            </select>
+          </label>
+        </div>
       </div>
     </div>
 
