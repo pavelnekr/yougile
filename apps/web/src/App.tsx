@@ -279,6 +279,12 @@ function App() {
   useEffect(() => {
     if (!sessionUser) { setOnlineUsers([]); return; }
     let cancelled = false;
+    let lastActivityAt = Date.now();
+    let lastHeartbeatAt = 0;
+    const inactivityLimitMs = 90_000;
+    const recordActivity = () => { lastActivityAt = Date.now(); };
+    const activityEvents: (keyof WindowEventMap)[] = ["pointerdown", "keydown", "input", "scroll", "touchstart"];
+    for (const eventName of activityEvents) window.addEventListener(eventName, recordActivity, { passive: true });
     const loadPresence = async () => {
       try {
         const response = await apiFetch("/api/presence");
@@ -287,9 +293,22 @@ function App() {
         if (!cancelled) setOnlineUsers(data.users ?? []);
       } catch { /* присутствие не должно прерывать работу портала */ }
     };
+    const sendHeartbeat = async () => {
+      const now = Date.now();
+      if (document.visibilityState !== "visible" || now - lastActivityAt > inactivityLimitMs || now - lastHeartbeatAt < 25_000) return;
+      lastHeartbeatAt = now;
+      try { await apiFetch("/api/presence/heartbeat", { method: "POST" }); } catch { /* присутствие необязательно */ }
+    };
     void loadPresence();
+    void sendHeartbeat();
     const timer = window.setInterval(() => void loadPresence(), 30_000);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    const heartbeatTimer = window.setInterval(() => void sendHeartbeat(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.clearInterval(heartbeatTimer);
+      for (const eventName of activityEvents) window.removeEventListener(eventName, recordActivity);
+    };
   }, [sessionUser?.id]);
 
   // Глобальная обработка 401: apiClient перехватывает любой отказ защищённого

@@ -171,13 +171,6 @@ export async function resolveSession(prisma: PrismaClient, request: FastifyReque
     return null;
   }
 
-  // lastSeenAt обновляем не чаще раза в минуту, чтобы не писать в базу на каждый запрос.
-  if (Date.now() - session.lastSeenAt.getTime() > 60_000) {
-    await prisma.portalSession
-      .update({ where: { id: session.id }, data: { lastSeenAt: new Date() } })
-      .catch(() => undefined);
-  }
-
   // Prisma relation is projected as compact workspace enum values for guards/UI.
   const { workspaceAccess, ...user } = session.user;
   return { ...session, user: { ...user, workspaces: workspaceAccess.map(({ workspace }) => workspace) } };

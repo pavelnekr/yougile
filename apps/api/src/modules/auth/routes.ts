@@ -113,6 +113,18 @@ export async function registerAuthRoutes(app: FastifyInstance, prisma: PrismaCli
     return { users };
   });
 
+  // Обновляем присутствие только по сигналу активности интерфейса, а не по
+  // обычным API-запросам и фоновым опросам открытой вкладки.
+  app.post("/api/presence/heartbeat", async (request, reply) => {
+    const session = await resolveSession(prisma, request);
+    if (!session || !request.sessionUser?.id) return reply.code(401).send({ error: "Требуется вход в портал." });
+    await prisma.portalSession.updateMany({
+      where: { id: session.id, userId: request.sessionUser.id, expiresAt: { gt: new Date() } },
+      data: { lastSeenAt: new Date() }
+    });
+    return reply.code(204).send();
+  });
+
   app.get<{ Params: { userId: string } }>("/api/presence/:userId/avatar", async (request, reply) => {
     const user = await prisma.portalUser.findUnique({ where: { id: request.params.userId }, select: { avatarData: true } });
     const match = user?.avatarData?.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/);
