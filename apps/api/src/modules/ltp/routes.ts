@@ -115,8 +115,20 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
         WHERE date = ${date.data}::date
         ORDER BY id
       `);
+      const politicsRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT time, scope, policy, basis, control
+        FROM ltp_1.politics_6
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
+      const bzRows = await db.$queryRaw<Record<string, unknown>[]>(Prisma.sql`
+        SELECT section, change_type, what_changed, attention
+        FROM ltp_1.bz_7
+        WHERE date = ${date.data}::date
+        ORDER BY id
+      `);
       const row = rows[0];
-      if (!row && !errorRows.length && !tapRows.length && !szrRows.length && !asbiRows.length && !naumenRows.length && !importantEventRows.length) return { found: false };
+      if (!row && !errorRows.length && !tapRows.length && !szrRows.length && !asbiRows.length && !naumenRows.length && !importantEventRows.length && !politicsRows.length && !bzRows.length) return { found: false };
       const numeric = (value: unknown) => {
         const parsed = Number(value ?? 0);
         return Number.isFinite(parsed) ? parsed : 0;
@@ -131,7 +143,7 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
           asbiAll: row ? numeric(row.asbi_all) : asbiRows.length, asbiP1: numeric(row?.asbi_p1), asbiP2: numeric(row?.asbi_p2),
           asbiDropTrafficAll: numeric(row?.asbi_drop_traffic_all), asbiDropTrafficCompl: numeric(row?.asbi_drop_traffic_compl),
           asbiNotComplP1P2: row ? numeric(row.asbi_not_compl_p1_p2) : asbiRows.length, naumenLongTt: row ? numeric(row.naumen_long_tt) : naumenRows.length,
-          events: row ? numeric(row.events) : importantEventRows.length, politics: numeric(row?.politics), bz: numeric(row?.bz), errors: errorRows.length || numeric(row?.errors)
+          events: row ? numeric(row.events) : importantEventRows.length, politics: row ? numeric(row.politics) : politicsRows.length, bz: row ? numeric(row.bz) : bzRows.length, errors: errorRows.length || numeric(row?.errors)
         },
         errorRows: errorRows.map((entry) => ({
           tt: String(entry.tt ?? ""),
@@ -182,6 +194,19 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
           todoControl: String(entry.todo_control ?? ""),
           deadline: String(entry.deadline ?? ""),
           ttLink: String(entry.tt_link ?? "")
+        })),
+        politicsRows: politicsRows.map((entry) => ({
+          time: String(entry.time ?? ""),
+          scope: String(entry.scope ?? ""),
+          policy: String(entry.policy ?? ""),
+          basis: String(entry.basis ?? ""),
+          control: String(entry.control ?? "Да")
+        })),
+        bzRows: bzRows.map((entry) => ({
+          section: String(entry.section ?? ""),
+          changeType: String(entry.change_type ?? "Новая"),
+          whatChanged: String(entry.what_changed ?? ""),
+          attention: String(entry.attention ?? "")
         }))
       };
     } catch (error) {
@@ -270,6 +295,19 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
         todoControl: z.string().max(10000),
         deadline: z.string().max(255),
         ttLink: z.string().max(10000)
+      })).max(500).default([]),
+      politicsRows: z.array(z.object({
+        time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).or(z.literal("")),
+        scope: z.string().trim().max(255),
+        policy: z.string().max(10000),
+        basis: z.string().max(10000),
+        control: z.enum(["Да", "Нет"])
+      })).max(500).default([]),
+      bzRows: z.array(z.object({
+        section: z.string().trim().max(255),
+        changeType: z.enum(["Новая", "Изменение", "Дополнение", "Исправление"]),
+        whatChanged: z.string().max(10000),
+        attention: z.string().max(10000)
       })).max(500).default([])
     }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте данные передачи смены." });
@@ -422,6 +460,42 @@ export async function registerLtpRoutes(app: FastifyInstance, prisma: PrismaClie
               VALUES (
                 ${nextId}, ${data.date}::date, ${event.eventTime || null}, ${event.eventName || null},
                 ${event.whatHappened || null}, ${event.todoControl || null}, ${event.deadline || null}, ${event.ttLink || null}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.politics_6 WHERE date = ${data.date}::date`);
+        if (data.politicsRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.politics_6
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const item of data.politicsRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.politics_6 (id, date, time, scope, policy, basis, control)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${item.time || null}, ${item.scope || null},
+                ${item.policy || null}, ${item.basis || null}, ${item.control}
+              )
+            `);
+            nextId += 1n;
+          }
+        }
+
+        await tx.$executeRaw(Prisma.sql`DELETE FROM ltp_1.bz_7 WHERE date = ${data.date}::date`);
+        if (data.bzRows.length) {
+          const idRows = await tx.$queryRaw<{ next_id: bigint }[]>(Prisma.sql`
+            SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM ltp_1.bz_7
+          `);
+          let nextId = idRows[0]?.next_id ?? 1n;
+          for (const item of data.bzRows) {
+            await tx.$executeRaw(Prisma.sql`
+              INSERT INTO ltp_1.bz_7 (id, date, section, change_type, what_changed, attention)
+              VALUES (
+                ${nextId}, ${data.date}::date, ${item.section || null}, ${item.changeType},
+                ${item.whatChanged || null}, ${item.attention || null}
               )
             `);
             nextId += 1n;

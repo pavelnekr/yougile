@@ -86,6 +86,23 @@ type ImportantEventEntry = {
   ttLink: string;
 };
 
+type PoliticsEntry = {
+  id: number;
+  time: string;
+  scope: string;
+  policy: string;
+  basis: string;
+  control: string;
+};
+
+type BzEntry = {
+  id: number;
+  section: string;
+  changeType: string;
+  whatChanged: string;
+  attention: string;
+};
+
 let nextErrorEntryId = 1;
 function createErrorEntry(): ErrorEntry {
   return { id: nextErrorEntryId++, tt: "", type: "", situation: "", question: "", solution: "", inBz: "Нет", action: "", saved: false, touched: false };
@@ -138,6 +155,24 @@ function createImportantEvent(): ImportantEventEntry {
 
 function isFilledImportantEvent(entry: ImportantEventEntry) {
   return [entry.eventTime, entry.eventName, entry.whatHappened, entry.todoControl, entry.deadline, entry.ttLink].some((item) => item.trim());
+}
+
+let nextPoliticsEntryId = 1;
+function createPoliticsEntry(): PoliticsEntry {
+  return { id: nextPoliticsEntryId++, time: "", scope: "", policy: "", basis: "", control: "Да" };
+}
+
+function isFilledPoliticsEntry(entry: PoliticsEntry) {
+  return [entry.time, entry.scope, entry.policy, entry.basis].some((item) => item.trim()) || entry.control === "Нет";
+}
+
+let nextBzEntryId = 1;
+function createBzEntry(): BzEntry {
+  return { id: nextBzEntryId++, section: "", changeType: "Новая", whatChanged: "", attention: "" };
+}
+
+function isFilledBzEntry(entry: BzEntry) {
+  return [entry.section, entry.whatChanged, entry.attention].some((item) => item.trim()) || entry.changeType !== "Новая";
 }
 
 const summarySections: { title: string; icon: LucideIcon; tone: string; fields: { key: keyof ShiftMetrics; label: string }[] }[] = [
@@ -196,6 +231,8 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const [asbiEntries, setAsbiEntries] = useState<AsbiEntry[]>([createAsbiEntry()]);
   const [naumenEntries, setNaumenEntries] = useState<NaumenEntry[]>([createNaumenEntry()]);
   const [importantEvents, setImportantEvents] = useState<ImportantEventEntry[]>([createImportantEvent()]);
+  const [politicsEntries, setPoliticsEntries] = useState<PoliticsEntry[]>([createPoliticsEntry()]);
+  const [bzEntries, setBzEntries] = useState<BzEntry[]>([createBzEntry()]);
   const [saving, setSaving] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
   const [error, setError] = useState("");
@@ -205,7 +242,9 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     || section.fields[0]?.key === "szrAll" && szrEntries.some(isFilledSzrEntry)
     || section.fields[0]?.key === "asbiAll" && asbiEntries.some(isFilledAsbiEntry)
     || section.fields[0]?.key === "naumenLongTt" && naumenEntries.some(isFilledNaumenEntry)
-    || section.fields[0]?.key === "events" && importantEvents.some(isFilledImportantEvent)).length;
+    || section.fields[0]?.key === "events" && importantEvents.some(isFilledImportantEvent)
+    || section.fields[0]?.key === "politics" && politicsEntries.some(isFilledPoliticsEntry)
+    || section.fields[0]?.key === "bz" && bzEntries.some(isFilledBzEntry)).length;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -231,6 +270,8 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     setAsbiEntries([createAsbiEntry()]);
     setNaumenEntries([createNaumenEntry()]);
     setImportantEvents([createImportantEvent()]);
+    setPoliticsEntries([createPoliticsEntry()]);
+    setBzEntries([createBzEntry()]);
     setShiftNumber("1");
     setSupervisor("");
     setError("");
@@ -243,14 +284,19 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     setReportLoading(true);
     void apiFetch(`/api/ltp/shift-report?date=${encodeURIComponent(date)}`, { signal: controller.signal })
       .then(async (response) => {
-        const data = await response.json() as { found?: boolean; shiftNumber?: string; supervisor?: string; metrics?: ShiftMetrics; errorRows?: Omit<ErrorEntry, "id" | "touched" | "saved">[]; tapRows?: Omit<TapEntry, "id">[]; szrRows?: Omit<SzrEntry, "id">[]; asbiRows?: Omit<AsbiEntry, "id">[]; naumenRows?: Omit<NaumenEntry, "id">[]; importantEventRows?: Omit<ImportantEventEntry, "id">[]; error?: string };
+        const data = await response.json() as { found?: boolean; shiftNumber?: string; supervisor?: string; metrics?: ShiftMetrics; errorRows?: Omit<ErrorEntry, "id" | "touched" | "saved">[]; tapRows?: Omit<TapEntry, "id">[]; szrRows?: Omit<SzrEntry, "id">[]; asbiRows?: Omit<AsbiEntry, "id">[]; naumenRows?: Omit<NaumenEntry, "id">[]; importantEventRows?: Omit<ImportantEventEntry, "id">[]; politicsRows?: Omit<PoliticsEntry, "id">[]; bzRows?: Omit<BzEntry, "id">[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить сводку за выбранную дату.");
         if (data.found && data.metrics) {
           setMetrics({
             ...initialMetrics,
             ...data.metrics,
+            tapAll: data.tapRows?.length || data.metrics.tapAll,
+            szrAll: data.szrRows?.length || data.metrics.szrAll,
+            asbiAll: data.asbiRows?.length || data.metrics.asbiAll,
             naumenLongTt: data.naumenRows?.length || data.metrics.naumenLongTt,
-            events: data.importantEventRows?.length || data.metrics.events
+            events: data.importantEventRows?.length || data.metrics.events,
+            politics: data.politicsRows?.length || data.metrics.politics,
+            bz: data.bzRows?.length || data.metrics.bz
           });
           setErrorEntries(data.errorRows?.length
             ? data.errorRows.map((entry) => ({ ...createErrorEntry(), ...entry, saved: true }))
@@ -270,6 +316,12 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
           setImportantEvents(data.importantEventRows?.length
             ? data.importantEventRows.map((entry) => ({ ...createImportantEvent(), ...entry }))
             : [createImportantEvent()]);
+          setPoliticsEntries(data.politicsRows?.length
+            ? data.politicsRows.map((entry) => ({ ...createPoliticsEntry(), ...entry }))
+            : [createPoliticsEntry()]);
+          setBzEntries(data.bzRows?.length
+            ? data.bzRows.map((entry) => ({ ...createBzEntry(), ...entry }))
+            : [createBzEntry()]);
           setShiftNumber(["1", "2", "3", "4"].includes(data.shiftNumber ?? "") ? data.shiftNumber! : "1");
           setSupervisor(data.supervisor ?? "");
           setNotice("Загружена сохранённая сводка за эту дату.");
@@ -310,16 +362,17 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const addErrorEntry = () => setErrorEntries((current) => [...current, createErrorEntry()]);
 
   const updateTapEntry = (id: number, key: keyof Omit<TapEntry, "id">, value: string) => {
-    setTapEntries((current) => current.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry));
+    const updated = tapEntries.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry);
+    setTapEntries(updated);
+    setMetrics((current) => ({ ...current, tapAll: updated.filter(isFilledTapEntry).length }));
     setError("");
     setNotice("");
   };
 
   const removeTapEntry = (id: number) => {
-    setTapEntries((current) => {
-      const updated = current.filter((entry) => entry.id !== id);
-      return updated.length ? updated : [createTapEntry()];
-    });
+    const updated = tapEntries.filter((entry) => entry.id !== id);
+    setTapEntries(updated.length ? updated : [createTapEntry()]);
+    setMetrics((current) => ({ ...current, tapAll: updated.filter(isFilledTapEntry).length }));
     setError("");
     setNotice("");
   };
@@ -327,16 +380,17 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const addTapEntry = () => setTapEntries((current) => [...current, createTapEntry()]);
 
   const updateSzrEntry = (id: number, key: keyof Omit<SzrEntry, "id">, value: string) => {
-    setSzrEntries((current) => current.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry));
+    const updated = szrEntries.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry);
+    setSzrEntries(updated);
+    setMetrics((current) => ({ ...current, szrAll: updated.filter(isFilledSzrEntry).length }));
     setError("");
     setNotice("");
   };
 
   const removeSzrEntry = (id: number) => {
-    setSzrEntries((current) => {
-      const updated = current.filter((entry) => entry.id !== id);
-      return updated.length ? updated : [createSzrEntry()];
-    });
+    const updated = szrEntries.filter((entry) => entry.id !== id);
+    setSzrEntries(updated.length ? updated : [createSzrEntry()]);
+    setMetrics((current) => ({ ...current, szrAll: updated.filter(isFilledSzrEntry).length }));
     setError("");
     setNotice("");
   };
@@ -344,16 +398,17 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
   const addSzrEntry = () => setSzrEntries((current) => [...current, createSzrEntry()]);
 
   const updateAsbiEntry = (id: number, key: keyof Omit<AsbiEntry, "id">, value: string) => {
-    setAsbiEntries((current) => current.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry));
+    const updated = asbiEntries.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry);
+    setAsbiEntries(updated);
+    setMetrics((current) => ({ ...current, asbiAll: updated.filter(isFilledAsbiEntry).length }));
     setError("");
     setNotice("");
   };
 
   const removeAsbiEntry = (id: number) => {
-    setAsbiEntries((current) => {
-      const updated = current.filter((entry) => entry.id !== id);
-      return updated.length ? updated : [createAsbiEntry()];
-    });
+    const updated = asbiEntries.filter((entry) => entry.id !== id);
+    setAsbiEntries(updated.length ? updated : [createAsbiEntry()]);
+    setMetrics((current) => ({ ...current, asbiAll: updated.filter(isFilledAsbiEntry).length }));
     setError("");
     setNotice("");
   };
@@ -396,6 +451,42 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
 
   const addImportantEvent = () => setImportantEvents((current) => [...current, createImportantEvent()]);
 
+  const updatePoliticsEntry = (id: number, key: keyof Omit<PoliticsEntry, "id">, value: string) => {
+    const updated = politicsEntries.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry);
+    setPoliticsEntries(updated);
+    setMetrics((current) => ({ ...current, politics: updated.filter(isFilledPoliticsEntry).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const removePoliticsEntry = (id: number) => {
+    const updated = politicsEntries.filter((entry) => entry.id !== id);
+    setPoliticsEntries(updated.length ? updated : [createPoliticsEntry()]);
+    setMetrics((current) => ({ ...current, politics: updated.filter(isFilledPoliticsEntry).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const addPoliticsEntry = () => setPoliticsEntries((current) => [...current, createPoliticsEntry()]);
+
+  const updateBzEntry = (id: number, key: keyof Omit<BzEntry, "id">, value: string) => {
+    const updated = bzEntries.map((entry) => entry.id === id ? { ...entry, [key]: value } : entry);
+    setBzEntries(updated);
+    setMetrics((current) => ({ ...current, bz: updated.filter(isFilledBzEntry).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const removeBzEntry = (id: number) => {
+    const updated = bzEntries.filter((entry) => entry.id !== id);
+    setBzEntries(updated.length ? updated : [createBzEntry()]);
+    setMetrics((current) => ({ ...current, bz: updated.filter(isFilledBzEntry).length }));
+    setError("");
+    setNotice("");
+  };
+
+  const addBzEntry = () => setBzEntries((current) => [...current, createBzEntry()]);
+
   const save = async () => {
     if (!canEdit || saving) return;
     setSaving(true);
@@ -417,7 +508,9 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
           szrRows: szrEntries.filter(isFilledSzrEntry).map(({ alertTime, resource, notifyTime, notification, managementCall, processTime, reason }) => ({ alertTime, resource, notifyTime, notification, managementCall, processTime, reason })),
           asbiRows: asbiEntries.filter(isFilledAsbiEntry).map(({ tt, priority, description, status, responsibleUnit }) => ({ tt, priority, description, status, responsibleUnit })),
           naumenRows: naumenEntries.filter(isFilledNaumenEntry).map(({ tt, responsible, timeInWork, reason, lastAction, nextAction }) => ({ tt, responsible, timeInWork, reason, lastAction, nextAction })),
-          importantEventRows: importantEvents.filter(isFilledImportantEvent).map(({ eventTime, eventName, whatHappened, todoControl, deadline, ttLink }) => ({ eventTime, eventName, whatHappened, todoControl, deadline, ttLink }))
+          importantEventRows: importantEvents.filter(isFilledImportantEvent).map(({ eventTime, eventName, whatHappened, todoControl, deadline, ttLink }) => ({ eventTime, eventName, whatHappened, todoControl, deadline, ttLink })),
+          politicsRows: politicsEntries.filter(isFilledPoliticsEntry).map(({ time, scope, policy, basis, control }) => ({ time, scope, policy, basis, control })),
+          bzRows: bzEntries.filter(isFilledBzEntry).map(({ section, changeType, whatChanged, attention }) => ({ section, changeType, whatChanged, attention }))
         })
       });
       const data = await response.json() as { saved?: boolean; error?: string };
@@ -484,6 +577,83 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
     <div className="ltp-shift-summary-grid">
       {summarySections.map((section, index) => {
         const SectionIcon = section.icon;
+        if (section.fields[0]?.key === "politics") {
+          const filledPoliticsEntries = politicsEntries.filter(isFilledPoliticsEntry).length;
+          const hasData = filledPoliticsEntries > 0 || metrics.politics > 0;
+          return <section className={`panel ltp-shift-summary-card ltp-shift-politics-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{filledPoliticsEntries} записей</span>
+            </div>
+            <div className="ltp-shift-tap-summary ltp-shift-naumen-summary">
+              {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
+                {field.label}
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled />
+              </label>)}
+            </div>
+            <div className="ltp-shift-error-entries">
+              {politicsEntries.map((entry, entryIndex) => <article className="ltp-shift-error-entry ltp-shift-politics-entry" key={entry.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(entryIndex + 1).padStart(2, "0")}</span><strong>Политика</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledPoliticsEntry(entry) ? "is-filled" : ""}`}>{isFilledPoliticsEntry(entry) ? "Заполнена" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить запись ${entryIndex + 1}`} disabled={saving || reportLoading} onClick={() => removePoliticsEntry(entry.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta ltp-shift-politics-entry-meta">
+                  <label className="field-label">Время<input type="time" value={entry.time} disabled={saving || reportLoading} onChange={(change) => updatePoliticsEntry(entry.id, "time", change.target.value)} /></label>
+                  <label className="field-label">Область<input value={entry.scope} disabled={saving || reportLoading} onChange={(change) => updatePoliticsEntry(entry.id, "scope", change.target.value)} /></label>
+                  <label className="field-label">Контроль<select value={entry.control} disabled={saving || reportLoading} onChange={(change) => updatePoliticsEntry(entry.id, "control", change.target.value)}><option>Да</option><option>Нет</option></select></label>
+                </div>
+                <div className="ltp-shift-error-entry-details ltp-shift-politics-entry-details">
+                  <label className="field-label">Политика<textarea value={entry.policy} disabled={saving || reportLoading} onChange={(change) => updatePoliticsEntry(entry.id, "policy", change.target.value)} /></label>
+                  <label className="field-label">Основание<textarea value={entry.basis} disabled={saving || reportLoading} onChange={(change) => updatePoliticsEntry(entry.id, "basis", change.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addPoliticsEntry}><Plus size={14} /> Добавить политику</button>
+              <span>Записи сохраняются в ltp_1.politics_6 и привязываются к выбранной дате смены.</span>
+            </div>
+          </section>;
+        }
+        if (section.fields[0]?.key === "bz") {
+          const filledBzEntries = bzEntries.filter(isFilledBzEntry).length;
+          const hasData = filledBzEntries > 0 || metrics.bz > 0;
+          return <section className={`panel ltp-shift-summary-card ltp-shift-bz-card ${hasData ? "has-data" : ""}`} key={section.title}>
+            <div className="ltp-shift-card-heading">
+              <span className={`ltp-shift-card-icon tone-${section.tone}`}><SectionIcon size={16} /></span>
+              <div className="ltp-shift-card-title"><small>НАПРАВЛЕНИЕ {String(index + 1).padStart(2, "0")}</small><h3>{section.title}</h3></div>
+              <span className="ltp-shift-card-count">{filledBzEntries} записей</span>
+            </div>
+            <div className="ltp-shift-tap-summary ltp-shift-naumen-summary">
+              {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
+                {field.label}
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled />
+              </label>)}
+            </div>
+            <div className="ltp-shift-error-entries">
+              {bzEntries.map((entry, entryIndex) => <article className="ltp-shift-error-entry ltp-shift-bz-entry" key={entry.id}>
+                <div className="ltp-shift-error-entry-heading">
+                  <div className="ltp-shift-error-entry-title"><span>{String(entryIndex + 1).padStart(2, "0")}</span><strong>Изменение базы знаний</strong></div>
+                  <span className={`ltp-shift-error-entry-state ${isFilledBzEntry(entry) ? "is-filled" : ""}`}>{isFilledBzEntry(entry) ? "Заполнено" : "Черновик"}</span>
+                  <button type="button" className="ltp-shift-remove-row" aria-label={`Удалить запись ${entryIndex + 1}`} disabled={saving || reportLoading} onClick={() => removeBzEntry(entry.id)}><Trash2 size={14} /></button>
+                </div>
+                <div className="ltp-shift-error-entry-meta ltp-shift-bz-entry-meta">
+                  <label className="field-label">Статья / раздел<input value={entry.section} disabled={saving || reportLoading} onChange={(event) => updateBzEntry(entry.id, "section", event.target.value)} /></label>
+                  <label className="field-label">Тип изменения<select value={entry.changeType} disabled={saving || reportLoading} onChange={(event) => updateBzEntry(entry.id, "changeType", event.target.value)}><option>Новая</option><option>Изменение</option><option>Дополнение</option><option>Исправление</option></select></label>
+                </div>
+                <div className="ltp-shift-error-entry-details ltp-shift-bz-entry-details">
+                  <label className="field-label">Что изменилось<textarea value={entry.whatChanged} disabled={saving || reportLoading} onChange={(event) => updateBzEntry(entry.id, "whatChanged", event.target.value)} /></label>
+                  <label className="field-label">На что обратить внимание<textarea value={entry.attention} disabled={saving || reportLoading} onChange={(event) => updateBzEntry(entry.id, "attention", event.target.value)} /></label>
+                </div>
+              </article>)}
+            </div>
+            <div className="ltp-shift-errors-footer">
+              <button type="button" className="ltp-shift-add-row" disabled={saving || reportLoading} onClick={addBzEntry}><Plus size={14} /> Добавить запись</button>
+              <span>Записи сохраняются в ltp_1.bz_7 и привязываются к выбранной дате смены.</span>
+            </div>
+          </section>;
+        }
         if (section.fields[0]?.key === "events") {
           const filledImportantEvents = importantEvents.filter(isFilledImportantEvent).length;
           const hasData = filledImportantEvents > 0 || metrics.events > 0;
@@ -576,7 +746,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
             <div className="ltp-shift-tap-summary">
               {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
                 {field.label}
-                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading} onChange={(event) => updateMetric(field.key, event.target.value)} />
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading || field.key === "asbiAll"} onChange={(event) => updateMetric(field.key, event.target.value)} />
               </label>)}
             </div>
             <div className="ltp-shift-error-entries">
@@ -615,7 +785,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
             <div className="ltp-shift-tap-summary">
               {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
                 {field.label}
-                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading} onChange={(event) => updateMetric(field.key, event.target.value)} />
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading || field.key === "szrAll"} onChange={(event) => updateMetric(field.key, event.target.value)} />
               </label>)}
             </div>
             <div className="ltp-shift-error-entries">
@@ -656,7 +826,7 @@ export default function LtpShiftReportPage({ onBack, canEdit }: { onBack: () => 
             <div className="ltp-shift-tap-summary">
               {section.fields.map((field) => <label className="field-label" key={field.key} htmlFor={`ltp-shift-${field.key}`}>
                 {field.label}
-                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading} onChange={(event) => updateMetric(field.key, event.target.value)} />
+                <input id={`ltp-shift-${field.key}`} type="number" min="0" step="1" value={metrics[field.key]} disabled={saving || reportLoading || field.key === "tapAll"} onChange={(event) => updateMetric(field.key, event.target.value)} />
               </label>)}
             </div>
             <div className="ltp-shift-tap-entries">

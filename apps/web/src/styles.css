@@ -206,6 +206,8 @@ button { color: inherit; }
 .ltp-shift-summary-card.is-single-metric .ltp-shift-metric-grid input { width: 92px; height: 48px; color: #3f54b5; background: #f7f8ff; font-size: 20px; font-weight: 700; text-align: center; }
 .ltp-shift-errors-card { grid-column: 1 / -1; padding: 13px; }
 .ltp-shift-asbi-card { grid-column: 1 / -1; }
+.ltp-shift-asbi-card .ltp-shift-tap-summary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ltp-shift-asbi-card .ltp-shift-tap-summary .field-label { grid-template-rows: 2.4em 32px; align-content: start; gap: 2px; line-height: 1.2; }
 .ltp-shift-error-entries { display: grid; gap: 8px; }
 .ltp-shift-error-entry { min-width: 0; padding: 10px; border: 1px solid #edf0f5; border-radius: 10px; background: #fbfcfe; }
 .ltp-shift-error-entry-heading { display: flex; min-height: 26px; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -231,6 +233,10 @@ button { color: inherit; }
 .ltp-shift-naumen-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ltp-shift-naumen-entry-details > :last-child { grid-column: 1 / -1; }
 .ltp-shift-important-event-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ltp-shift-politics-entry-meta { grid-template-columns: .7fr 1.4fr .7fr; }
+.ltp-shift-politics-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ltp-shift-bz-entry-meta { grid-template-columns: 1.4fr .8fr; }
+.ltp-shift-bz-entry-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ltp-shift-error-entry .field-label { display: grid; min-width: 0; gap: 4px; color: #737e92; font-size: 8px; }
 .ltp-shift-error-entry input, .ltp-shift-error-entry textarea, .ltp-shift-error-entry select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 32px; padding: 6px 8px; border: 1px solid #e2e7ef; border-radius: 6px; color: #354056; background: #fff; font: inherit; font-size: 9px; line-height: 1.4; }
 .ltp-shift-error-entry textarea { min-height: 62px; resize: vertical; }
@@ -1474,6 +1480,7 @@ h1 { margin: 10px 0 6px; font: 700 26px "Segoe UI", sans-serif; letter-spacing: 
   .ltp-shift-error-entry-meta, .ltp-shift-error-entry-details, .ltp-shift-tap-entry-meta, .ltp-shift-tap-entry-details, .ltp-shift-szr-entry-meta, .ltp-shift-szr-entry-details, .ltp-shift-asbi-entry-meta, .ltp-shift-naumen-entry-meta, .ltp-shift-naumen-entry-details { grid-template-columns: minmax(0, 1fr); }
   .ltp-shift-szr-entry-details > :last-child { grid-column: 1 / -1; }
   .ltp-shift-tap-summary { grid-template-columns: minmax(0, 1fr); }
+  .ltp-shift-asbi-card .ltp-shift-tap-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ltp-shift-error-entry { padding: 10px; }
   .ltp-shift-error-entry-heading { gap: 6px; }
   .ltp-shift-error-entry-title { font-size: 9px; }
