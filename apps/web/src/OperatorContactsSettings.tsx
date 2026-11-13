@@ -29,7 +29,6 @@ export default function OperatorContactsSettings() {
   const [status, setStatus] = useState<DirectoryStatus | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [filePassword, setFilePassword] = useState("");
-  const [password, setPassword] = useState("");
   const [rows, setRows] = useState<OperatorContactRow[] | null>(null);
   const [viewImportedAt, setViewImportedAt] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,21 +72,17 @@ export default function OperatorContactsSettings() {
   };
 
   const reveal = async () => {
-    if (!password || busy) return;
+    if (busy) return;
     setBusy(true); setError(""); setNotice(""); setRows(null);
     try {
-      const response = await apiFetch("/api/coordination/operator-contacts/view", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password })
-      });
+      const response = await apiFetch("/api/coordination/operator-contacts/view", { method: "POST" });
       const data = await response.json() as { rows?: OperatorContactRow[]; importedAt?: string; error?: string };
       if (!response.ok || !data.rows) throw new Error(data.error ?? "Не удалось открыть справочник.");
       setRows(data.rows);
       setViewImportedAt(data.importedAt ?? "");
       setNotice("Справочник расшифрован для просмотра.");
     } catch (reason) { setError(messageOf(reason)); }
-    finally { setPassword(""); setBusy(false); }
+    finally { setBusy(false); }
   };
 
   const clearDirectory = async () => {
@@ -131,11 +126,8 @@ export default function OperatorContactsSettings() {
     <section className="coordination-settings-subsection">
       <h2><Eye size={16} /> Просмотр данных</h2>
       {status?.canManage && <>
-        <p>Введите пароль своей учётной записи администратора. Пароль проверяется для этого запроса и не сохраняется.</p>
-        <label>Пароль учётной записи
-          <input type="password" autoComplete="current-password" value={password} maxLength={255} onChange={(event) => setPassword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void reveal(); }} />
-        </label>
-        <button type="button" className="outline-button" disabled={!password || !status?.configured || busy} onClick={() => void reveal()}>
+        <p>Откройте загруженный справочник, чтобы посмотреть данные и проверить адреса.</p>
+        <button type="button" className="outline-button" disabled={!status?.configured || busy} onClick={() => void reveal()}>
           {busy ? <LoaderCircle size={15} className="template-spinner" /> : <Eye size={15} />}{busy ? "Проверяем…" : "Расшифровать и показать"}
         </button>
       </>}

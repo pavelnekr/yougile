@@ -3,9 +3,9 @@ import { PortalRole, type PrismaClient } from "@prisma/client";
 import { config } from "../../config.js";
 import { YougileTokenEncryptionKeyError } from "../../integrations/yougile/token-crypto.js";
 import { operatorContactsViewRateLimit, previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
-import { requireRole, requireWorkspaceAccess, verifyPassword } from "../auth/service.js";
+import { requireRole, requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
-import { letterTemplateSchema, mailRecipientsSchema, operatorContactsViewSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
+import { letterTemplateSchema, mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
 import { clearOperatorContacts, extractSiteNumber, getOperatorContactsMetadata, loadOperatorContacts, OperatorContactsLookupError, parseOperatorContactsWorkbook, resolveOperatorRecipients, saveOperatorContacts } from "./operator-contacts.js";
 import {
   buildLetterFromDocx,
@@ -100,14 +100,14 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
 
   app.get("/api/coordination/operator-contacts/status", { preHandler: readAccess }, async (request, reply) => {
     try {
-      return { ...await getOperatorContactsMetadata(prisma), canManage: request.sessionUser?.role === PortalRole.ADMIN };
+      return { ...await getOperatorContactsMetadata(prisma), canManage: true };
     } catch (error) {
       app.log.error({ err: error }, "Could not read operator contacts metadata");
       return reply.code(500).send({ error: "Не удалось прочитать состояние справочника." });
     }
   });
 
-  app.delete("/api/coordination/operator-contacts", { preHandler: adminOnly }, async (request, reply) => {
+  app.delete("/api/coordination/operator-contacts", { preHandler: readAccess }, async (request, reply) => {
     try {
       const deleted = await clearOperatorContacts(prisma);
       app.log.warn({ actor: request.sessionUser?.login, deleted }, "Operator contacts directory cleared");
@@ -118,7 +118,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     }
   });
 
-  app.post("/api/coordination/operator-contacts/upload", { preHandler: adminOnly }, async (request, reply) => {
+  app.post("/api/coordination/operator-contacts/upload", { preHandler: readAccess }, async (request, reply) => {
     if (!request.isMultipart()) return reply.code(406).send({ error: "Загрузите XLSX-файл." });
     try {
       let buffer: Buffer | null = null;
@@ -164,16 +164,8 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     }
   });
 
-  app.post("/api/coordination/operator-contacts/view", { preHandler: [adminOnly, rateLimitPerUser(operatorContactsViewRateLimit)] }, async (request, reply) => {
-    const parsed = operatorContactsViewSchema.safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Введите пароль учётной записи." });
-    const userId = request.sessionUser?.id;
-    if (!userId) return reply.code(401).send({ error: "Требуется войти в портал заново." });
+  app.post("/api/coordination/operator-contacts/view", { preHandler: [readAccess, rateLimitPerUser(operatorContactsViewRateLimit)] }, async (request, reply) => {
     try {
-      const user = await prisma.portalUser.findUnique({ where: { id: userId }, select: { passwordHash: true } });
-      if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
-        return reply.code(403).send({ error: "Пароль учётной записи указан неверно." });
-      }
       const snapshot = await loadOperatorContacts(prisma);
       if (!snapshot) return reply.code(404).send({ error: "Справочник ещё не загружен." });
       app.log.warn({ actor: request.sessionUser?.login, rowCount: snapshot.rows.length }, "Operator contacts directory viewed");
