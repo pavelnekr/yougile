@@ -98,7 +98,7 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     return { recipients: parsed.data.recipients };
   });
 
-  app.get("/api/coordination/operator-contacts/status", { preHandler: readAccess }, async (request, reply) => {
+  app.get("/api/coordination/operator-contacts/status", { preHandler: readAccess }, async (_request, reply) => {
     try {
       return { ...await getOperatorContactsMetadata(prisma), canManage: true };
     } catch (error) {
