@@ -219,6 +219,8 @@ function describeThrown(error: Error): { short: string; detail: string } {
  */
 function shouldRecord(method: string, pathname: string, status: number, annotated: boolean): boolean {
   if (method === "OPTIONS") return false;
+  // Частый технический сигнал активности не является действием пользователя.
+  if (method === "POST" && pathname === "/api/presence/heartbeat") return false;
   if (annotated) return true;
   if (pathname.startsWith("/api/health")) return status >= 500;
   if (status === 401 && !pathname.startsWith("/api/auth/login")) return false;
