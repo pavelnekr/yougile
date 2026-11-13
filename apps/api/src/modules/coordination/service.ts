@@ -9,7 +9,27 @@ import type { PreviewFields, SendLetter } from "./schema.js";
 // Ключ настройки со списком получателей. Живёт в AppSetting, как и столбцы
 // «Конфигурации портала»: правка не требует миграции и применяется сразу.
 export const mailRecipientsSettingKey = "coordination:mail-recipients";
+export const coordinationCcRecipientsSettingKey = "coordination:avr-cc-recipients";
 export const letterTemplateSettingKey = "coordination:letter-template";
+
+export async function loadCoordinationCcRecipients(prisma: PrismaClient): Promise<string[]> {
+  try {
+    const setting = await prisma.appSetting.findUnique({ where: { key: coordinationCcRecipientsSettingKey } });
+    const value = setting?.value;
+    if (!Array.isArray(value)) return [];
+    return [...new Set(value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim()))].slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCoordinationCcRecipients(prisma: PrismaClient, recipients: string[]): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key: coordinationCcRecipientsSettingKey },
+    create: { key: coordinationCcRecipientsSettingKey, value: recipients },
+    update: { value: recipients }
+  });
+}
 
 export async function loadLetterTemplate(prisma: PrismaClient): Promise<LetterTemplate> {
   try {

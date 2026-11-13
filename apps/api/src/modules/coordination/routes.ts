@@ -5,15 +5,17 @@ import { YougileTokenEncryptionKeyError } from "../../integrations/yougile/token
 import { operatorContactsViewRateLimit, previewRateLimit, rateLimitPerUser, sendLetterRateLimit } from "../auth/rate-limit.js";
 import { requireRole, requireWorkspaceAccess } from "../auth/service.js";
 import { recordLog } from "../logs/service.js";
-import { letterTemplateSchema, mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
+import { coordinationCcRecipientsSchema, letterTemplateSchema, mailRecipientsSchema, previewFieldsSchema, sendLetterSchema, smtpSettingsSchema } from "./schema.js";
 import { clearOperatorContacts, extractSiteNumber, getOperatorContactsMetadata, loadOperatorContacts, OperatorContactsLookupError, parseOperatorContactsWorkbook, resolveOperatorRecipients, saveOperatorContacts } from "./operator-contacts.js";
 import {
   buildLetterFromDocx,
   describeSendError,
   isSmtpConfigured,
+  loadCoordinationCcRecipients,
   loadLetterTemplate,
   loadSmtpSettings,
   saveMailRecipients,
+  saveCoordinationCcRecipients,
   saveLetterTemplate,
   saveSmtpSettings,
   sendLetter,
@@ -45,12 +47,14 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
 
   app.get("/api/coordination/config", { preHandler: readAccess }, async (_request, reply) => {
     try {
-      const [settings, template] = await Promise.all([
+      const [settings, template, ccRecipients] = await Promise.all([
         loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message)),
-        loadLetterTemplate(prisma)
+        loadLetterTemplate(prisma),
+        loadCoordinationCcRecipients(prisma)
       ]);
       return {
         template,
+        ccRecipients,
         smtpConfigured: isSmtpConfigured(settings),
         // Пароль в ответ не попадает — только флаг, что он задан.
         smtp: {
@@ -77,6 +81,19 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
     } catch (error) {
       app.log.error({ err: error }, "Could not save coordination letter template");
       return reply.code(500).send({ error: "Не удалось сохранить шаблон письма." });
+    }
+  });
+
+  app.put("/api/coordination/avr-cc-recipients", { preHandler: readAccess }, async (request, reply) => {
+    const parsed = coordinationCcRecipientsSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Проверьте адреса для копии." });
+    try {
+      await saveCoordinationCcRecipients(prisma, parsed.data.recipients);
+      app.log.warn({ actor: request.sessionUser?.login, count: parsed.data.recipients.length }, "Coordination AVR CC recipients updated");
+      return { recipients: parsed.data.recipients };
+    } catch (error) {
+      app.log.error({ err: error }, "Could not save coordination AVR CC recipients");
+      return reply.code(500).send({ error: "Не удалось сохранить адреса для копии." });
     }
   });
 
@@ -282,7 +299,8 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       }
       try {
         const directory = await resolveOperatorRecipients(prisma, siteNumber);
-        return { ...letter, fileName: normalized.slice(0, 255), siteNumber, recipients: directory.recipients, directoryImportedAt: directory.directoryImportedAt };
+        const ccRecipients = await loadCoordinationCcRecipients(prisma);
+        return { ...letter, fileName: normalized.slice(0, 255), siteNumber, recipients: directory.recipients, ccRecipients, directoryImportedAt: directory.directoryImportedAt };
       } catch (error) {
         if (error instanceof OperatorContactsLookupError) {
           app.log.warn({ actor: request.sessionUser?.login, siteNumber, lookupCode: error.code }, "Could not determine coordination email recipients");
@@ -322,7 +340,10 @@ export async function registerCoordinationRoutes(app: FastifyInstance, prisma: P
       return reply.code(409).send({ error: "Справочник адресатов обновился после предпросмотра. Пересоберите письмо и проверьте адресатов." });
     }
     const recipients = parsed.data.recipients;
-    const cc = parsed.data.cc;
+    const configuredCc = await loadCoordinationCcRecipients(prisma);
+    const toSet = new Set(recipients.map((address) => address.toLowerCase()));
+    const cc = [...new Set([...configuredCc, ...parsed.data.cc].map((address) => address.trim()).filter((address) => !toSet.has(address.toLowerCase())))];
+    if (cc.length > 50) return reply.code(400).send({ error: "В поле «Копия» можно указать не больше 50 адресов." });
     const smtpSettings = await loadSmtpSettings(prisma, (message) => app.log.warn({ module: "coordination" }, message));
     const actor = request.sessionUser;
     const logBase = {

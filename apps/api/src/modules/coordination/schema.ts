@@ -61,6 +61,11 @@ export const mailRecipientsSchema = z.object({
     )
 });
 
+export const coordinationCcRecipientsSchema = z.object({
+  recipients: z.array(emailSchema).max(20, "Можно добавить не больше 20 адресов в копию.")
+    .refine((items) => new Set(items.map((item) => item.toLowerCase())).size === items.length, "Адреса в копии не должны повторяться.")
+});
+
 export const letterTemplateSchema = z.object({
   subject: z.string().trim().min(1, "Шаблон темы письма не может быть пустым.").max(500),
   body: z.string().trim().min(1, "Шаблон письма не может быть пустым.").max(100_000)

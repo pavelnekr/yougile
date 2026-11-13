@@ -28,6 +28,7 @@ type LetterPreview = {
   siteNumber: string;
   directoryImportedAt: string;
   recipients: string[];
+  ccRecipients: string[];
   extracted: {
     avrNumber: string | null;
     site: string | null;
@@ -142,7 +143,8 @@ export default function CoordinationPage({ onBack }: { onBack?: () => void }) {
       }
       setPreview(data);
       setRecipientInput(data.recipients.join("; "));
-      setCcInput("");
+      const toAddresses = new Set(data.recipients.map((address) => address.toLowerCase()));
+      setCcInput((data.ccRecipients ?? []).filter((address) => !toAddresses.has(address.toLowerCase())).join("; "));
       setBodyMode("rendered");
       setBodyRevision((value) => value + 1);
     } catch (reason) {
